@@ -303,8 +303,8 @@ export default function AddIncomeModal({ initialIncome = null, onClose, onSucces
                   <input
                     type="number"
                     required
-                    min="1"
-                    step="250"
+                    min="0"
+                    step="any"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="مثال: 50000"

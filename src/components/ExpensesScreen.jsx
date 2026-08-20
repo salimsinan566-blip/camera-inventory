@@ -461,11 +461,11 @@ export default function ExpensesScreen({ user }) {
                 <input
                   type="number"
                   required
-                  min="250"
-                  step="250"
+                  min="0"
+                  step="any"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  placeholder="250"
+                  placeholder="0"
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
                 />
               </div>

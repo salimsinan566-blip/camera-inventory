@@ -345,7 +345,8 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, onC
                   <div className="relative">
                     <input
                       type="number"
-                      step="250"
+                      step="any"
+                      min="0"
                       required
                       value={actualAmount}
                       onChange={(e) => setActualAmount(e.target.value)}

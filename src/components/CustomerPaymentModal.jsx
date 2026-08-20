@@ -163,9 +163,9 @@ export default function CustomerPaymentModal({ sale, onClose, onSuccess }) {
                 </div>
                 <input
                   type="number"
-                  min="250"
+                  min="0"
                   max={remainingDebt}
-                  step="250"
+                  step="any"
                   required
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}

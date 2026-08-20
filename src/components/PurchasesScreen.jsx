@@ -1622,7 +1622,7 @@ export default function PurchasesScreen({ products = [], user }) {
                                     <input
                                       type="number"
                                       min="0"
-                                      step="250"
+                                      step="any"
                                       value={manualShippingMap[idx] !== undefined ? manualShippingMap[idx] : alloc.unitShip}
                                       onChange={(e) => {
                                         const val = e.target.value;
