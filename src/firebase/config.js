@@ -7,21 +7,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyA8J5GjYyrtf-YrMzi5bHrrWtY5myaevhU',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'safe-zone-inv.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'safe-zone-inv',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'safe-zone-inv.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '121093072046',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:121093072046:web:f22510081336eb7341393f',
 };
-
-// تحقق مبكر: لو نسي المستخدم إعداد .env، نطبع تحذيراً واضحاً بدل فشل صامت
-if (!firebaseConfig.projectId) {
-  // eslint-disable-next-line no-console
-  console.error(
-    '⚠️ إعدادات Firebase غير مكتملة. تأكد من إنشاء ملف .env بناءً على .env.example'
-  );
-}
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
