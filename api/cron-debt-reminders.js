@@ -154,8 +154,8 @@ export default async function handler(req, res) {
       const phone = c.phone1 || c.phone;
       if (!phone) return; // لا يوجد هاتف
 
-      const schedule = c.reminderSchedule || 'default';
-      if (schedule === 'disabled') return; // تم تعطيل التذكير لهذا العميل
+      const schedule = c.reminderSchedule || 'disabled';
+      if (!schedule || schedule === 'disabled') return; // معطل تماماً لأمان التجربة، لا ترسل إلا لمن فعّلته بيدك
 
       const isHourly = schedule.startsWith('hourly_') || (schedule.startsWith('custom_') && schedule.includes('_hours'));
 

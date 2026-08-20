@@ -392,6 +392,13 @@ app.get('/scheduled', (req, res) => {
   });
 });
 
+// Clear all scheduled jobs from queue
+app.all('/scheduled/clear-all', (req, res) => {
+  saveScheduledJobs([]);
+  console.log('🗑️ [Scheduler] تم إفراغ طابور الرسائل المجدولة بالكامل');
+  res.json({ success: true, message: 'تم إفراغ طابور الرسائل المجدولة بالكامل' });
+});
+
 // Cancel scheduled job
 app.delete('/scheduled/:id', (req, res) => {
   const { id } = req.params;
