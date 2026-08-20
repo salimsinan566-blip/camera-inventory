@@ -193,7 +193,7 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
       const sPhone = normalizePhone(s.customerPhone || s.phone);
 
       const isNameMatch = Boolean(sNameNorm && targetNameNorm && sNameNorm === targetNameNorm);
-      const isPhoneMatch = Boolean(p1 && p1.length >= 7 && sPhone && sPhone.length >= 7 && (p1.endsWith(sPhone) || sPhone.endsWith(rawCustPhone || p1)));
+      const isPhoneMatch = Boolean(p1 && p1.length >= 7 && sPhone && sPhone.length >= 7 && (p1.endsWith(sPhone) || sPhone.endsWith(p1)));
 
       if (isNameMatch || isPhoneMatch) {
         customerSales.push({
