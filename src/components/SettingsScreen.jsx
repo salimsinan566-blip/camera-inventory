@@ -48,7 +48,7 @@ export default function SettingsScreen() {
     setLocalServerState(prev => ({ ...prev, checking: true }));
     try {
       const apiUrl = whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '';
-      let baseUrl = 'https://fence-centuries-arrow-freebsd.trycloudflare.com';
+      let baseUrl = 'https://commander-air-olympus-commission.trycloudflare.com';
       if (apiUrl.startsWith('http') && !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1')) {
         baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '');
       }
@@ -78,7 +78,7 @@ export default function SettingsScreen() {
         connected: false,
         phone: '',
         name: '',
-        serverUrl: 'https://fence-centuries-arrow-freebsd.trycloudflare.com',
+        serverUrl: 'https://commander-air-olympus-commission.trycloudflare.com',
       });
       toast(`تعذر الوصول للسيرفر السحابي (${e.message})`, 'error');
     }
@@ -154,7 +154,7 @@ export default function SettingsScreen() {
         whatsappToken: settings.whatsappToken || 'SafeZone2026',
         whatsappApiUrl: (settings.whatsappApiUrl && !settings.whatsappApiUrl.includes('@') && !settings.whatsappApiUrl.includes('ultramsg') && !settings.whatsappApiUrl.includes('localhost') && !settings.whatsappApiUrl.includes('127.0.0.1'))
           ? settings.whatsappApiUrl
-          : 'https://fence-centuries-arrow-freebsd.trycloudflare.com/messages/chat',
+          : 'https://commander-air-olympus-commission.trycloudflare.com/messages/chat',
         whatsappInvoiceTemplate: settings.whatsappInvoiceTemplate || DEFAULT_WHATSAPP_TEMPLATES.invoice,
         whatsappDebtReminderTemplate: settings.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder,
       });
@@ -960,7 +960,7 @@ export default function SettingsScreen() {
                       🔄 تحديث الحالة
                     </button>
                     <a
-                      href={localServerState.serverUrl || "http://13.61.182.143:3005"}
+                      href={localServerState.serverUrl || "https://commander-air-olympus-commission.trycloudflare.com"}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold hover:bg-emerald-800 flex items-center gap-1"
@@ -992,7 +992,7 @@ export default function SettingsScreen() {
                       🔄 فحص الاتصال
                     </button>
                     <a
-                      href={localServerState.serverUrl || "http://13.61.182.143:3005"}
+                      href={localServerState.serverUrl || "https://commander-air-olympus-commission.trycloudflare.com"}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs bg-amber-600 text-white px-3.5 py-1.5 rounded-lg font-bold hover:bg-amber-700 flex items-center gap-1"
