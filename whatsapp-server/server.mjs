@@ -41,6 +41,9 @@ let reconnectAttempts = 0;
 // Logger
 const logger = pino({ level: 'silent' });
 
+// Cache for sent messages to resolve WhatsApp E2E encryption retry requests
+const sentMessagesStore = new Map();
+
 async function initWhatsApp() {
   connectionStatus = 'connecting';
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -54,6 +57,12 @@ async function initWhatsApp() {
     generateHighQualityLinkPreview: true,
     browser: ['SafeZone POS', 'Chrome', '1.0.0'],
     syncFullHistory: false,
+    getMessage: async (key) => {
+      if (key?.id && sentMessagesStore.has(key.id)) {
+        return sentMessagesStore.get(key.id);
+      }
+      return undefined;
+    }
   });
 
   sock.ev.on('creds.update', saveCreds);
