@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// الحماية: حساب دخول واحد (Firebase Auth email/password).
+// أي طلب قراءة أو كتابة يجب أن يأتي من مستخدم مسجّل الدخول،
+// وإلا يُرفض بالكامل. لا يوجد Backend وسيط، فهذه القواعد هي
+// خط الدفاع الوحيد عن بياناتك.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

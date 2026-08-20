@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+
+.vercel
+*.zip
+*.rar
+whatsapp-server/auth_session
+whatsapp-server/node_modules

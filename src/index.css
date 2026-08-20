@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Tajawal', 'Inter', sans-serif;
+  @apply bg-slate-50 text-slate-900 overflow-x-hidden;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+}
+
+@layer components {
+  .input {
+    @apply w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white shadow-sm transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 
+           hover:border-indigo-300
+           disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed;
+  }
+  
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden transition-all duration-300 hover:shadow-md hover:border-indigo-100;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  .btn-primary {
+    @apply bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/20 focus:ring-indigo-600;
+  }
+  .btn-danger {
+    @apply bg-red-500 text-white hover:bg-red-600 hover:shadow-lg hover:shadow-red-500/20 focus:ring-red-500;
+  }
+  .btn-secondary {
+    @apply bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-200;
+  }
+
+  /* Glassmorphism utilities */
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+  .glass-dark {
+    @apply bg-slate-900/80 backdrop-blur-md border border-slate-800/50 shadow-2xl;
+  }
+}
+
+/* Mobile Optimizations */
+html, body {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media screen and (max-width: 768px) {
+  /* Prevent iOS automatic zoom on focus */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+

@@ -1,0 +1,18 @@
+{
+  "name": "safezone-whatsapp-gateway",
+  "version": "1.0.0",
+  "description": "خادم وبوابة واتساب مستقلة لنظام المنطقة الآمنة - قابلة للتشغيل محلياً وعلى AWS",
+  "main": "server.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4"
+  }
+}
