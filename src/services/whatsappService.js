@@ -99,7 +99,7 @@ export async function sendWhatsAppMessageViaGateway({
 
   const instanceId = settings?.whatsappInstanceId?.trim();
   const token = settings?.whatsappToken?.trim() || 'SafeZone2026';
-  const defaultBase = 'https://budapest-dry-ata-berlin.trycloudflare.com';
+  const defaultBase = 'https://dress-plus-outcomes-somerset.trycloudflare.com';
   
   let apiUrl = settings?.whatsappApiUrl?.trim();
   if (!apiUrl || apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
