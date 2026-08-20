@@ -451,7 +451,13 @@ app.post('/scheduled/:id/send-now', async (req, res) => {
 
 // Calculate next scheduled occurrence
 function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new Date()) {
-  // 0. Hourly Schedules (e.g. hourly_1, hourly_2)
+  // 0. Minute Schedules (e.g. minutely_15, minutely_30)
+  if (schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')))) {
+    const intervalMinutes = parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
+    return now.getTime() + intervalMinutes * 60 * 1000;
+  }
+
+  // 0.1 Hourly Schedules (e.g. hourly_1, hourly_2)
   if (schedCode.startsWith('hourly_') || (schedCode.startsWith('custom_') && schedCode.includes('_hours'))) {
     const intervalHours = parseInt(schedCode.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2;
     return now.getTime() + intervalHours * 60 * 60 * 1000;

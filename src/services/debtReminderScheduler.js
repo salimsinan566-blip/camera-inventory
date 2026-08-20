@@ -41,6 +41,11 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     }
   }
 
+  const isMinutely = schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')));
+  const intervalMinutes = isMinutely
+    ? (parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15)
+    : 0;
+
   const isHourly = schedCode.startsWith('hourly_') || (schedCode.startsWith('custom_') && schedCode.includes('_hours'));
   const intervalHours = isHourly 
     ? (parseInt(schedCode.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2)
@@ -49,13 +54,24 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
   // 1. In-memory session duplicate guard
   if (customer.id && sessionSentDebtors.has(customer.id)) {
     const lastSessionSent = sessionSentDebtors.get(customer.id);
-    const minSessionGap = isHourly ? (intervalHours * 60 * 60 * 1000 - 60000) : (18 * 60 * 60 * 1000);
+    const minSessionGap = isMinutely
+      ? (intervalMinutes * 60 * 1000 - 5000)
+      : isHourly 
+        ? (intervalHours * 60 * 60 * 1000 - 60000) 
+        : (18 * 60 * 60 * 1000);
     if (Date.now() - lastSessionSent < minSessionGap) {
       return false;
     }
   }
 
   // 2. Persistent duplicate guard:
+  if (isMinutely) {
+    if (!customer.lastDebtReminderSent) return true;
+    const lastSentDate = new Date(customer.lastDebtReminderSent);
+    const diffMinutes = (now.getTime() - lastSentDate.getTime()) / (1000 * 60);
+    return diffMinutes >= (intervalMinutes - 0.05); // Allow slight clock variance
+  }
+
   if (isHourly) {
     if (!customer.lastDebtReminderSent) return true;
     const lastSentDate = new Date(customer.lastDebtReminderSent);
@@ -144,6 +160,18 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
     if (parts[1] && parts[1].includes(':')) {
       targetTimeStr = parts[1];
     }
+  }
+
+  if (schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')))) {
+    const intervalMinutes = parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
+    if (customer?.lastDebtReminderSent) {
+      const lastSent = new Date(customer.lastDebtReminderSent);
+      const nextDate = new Date(lastSent.getTime() + intervalMinutes * 60 * 1000);
+      if (nextDate.getTime() > now.getTime()) {
+        return nextDate.getTime();
+      }
+    }
+    return now.getTime() + intervalMinutes * 60 * 1000;
   }
 
   if (schedCode.startsWith('hourly_') || (schedCode.startsWith('custom_') && schedCode.includes('_hours'))) {

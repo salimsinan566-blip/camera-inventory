@@ -95,27 +95,31 @@ export default function AppleSchedulePicker({
     }
 
     if (!raw || raw === 'default') {
-      return { mode: 'default', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, time: extractedTime };
+      return { mode: 'default', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, customMinutes: 15, time: extractedTime };
     }
     if (raw === 'disabled') {
-      return { mode: 'disabled', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, time: extractedTime };
+      return { mode: 'disabled', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, customMinutes: 15, time: extractedTime };
+    }
+    if (raw.startsWith('minutely_') || (raw.startsWith('custom_') && (raw.includes('_mins') || raw.includes('_min')))) {
+      const minutes = parseInt(raw.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
+      return { mode: 'minutes', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, customMinutes: minutes, time: extractedTime };
     }
     if (raw.startsWith('hourly_') || (raw.startsWith('custom_') && raw.includes('_hours'))) {
       const hours = parseInt(raw.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2;
-      return { mode: 'hourly', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: hours, time: extractedTime };
+      return { mode: 'hourly', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: hours, customMinutes: 15, time: extractedTime };
     }
     if (DAYS_OF_WEEK.some(d => d.id === raw)) {
-      return { mode: 'weekly', dayOfWeek: raw, dayOfMonth: 25, customDays: 7, customHours: 2, time: extractedTime };
+      return { mode: 'weekly', dayOfWeek: raw, dayOfMonth: 25, customDays: 7, customHours: 2, customMinutes: 15, time: extractedTime };
     }
     if (raw.startsWith('monthly_')) {
       const day = parseInt(raw.replace('monthly_', ''), 10) || 25;
-      return { mode: 'monthly', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: day, customDays: 7, customHours: 2, time: extractedTime };
+      return { mode: 'monthly', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: day, customDays: 7, customHours: 2, customMinutes: 15, time: extractedTime };
     }
     if (raw.startsWith('custom_')) {
       const days = parseInt(raw.replace('custom_', '').replace('_days', ''), 10) || 7;
-      return { mode: 'custom', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: days, customHours: 2, time: extractedTime };
+      return { mode: 'custom', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: days, customHours: 2, customMinutes: 15, time: extractedTime };
     }
-    return { mode: 'default', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, time: extractedTime };
+    return { mode: 'default', dayOfWeek: defaultStoreDay || 'thursday', dayOfMonth: 25, customDays: 7, customHours: 2, customMinutes: 15, time: extractedTime };
   }, [value, defaultStoreDay, defaultStoreTime, timeValue]);
 
   const [mode, setMode] = useState(parsed.mode);
@@ -123,6 +127,7 @@ export default function AppleSchedulePicker({
   const [selectedMonthDay, setSelectedMonthDay] = useState(parsed.dayOfMonth);
   const [customDays, setCustomDays] = useState(parsed.customDays);
   const [customHours, setCustomHours] = useState(parsed.customHours || 2);
+  const [customMinutes, setCustomMinutes] = useState(parsed.customMinutes || 15);
   const [selectedTime, setSelectedTime] = useState(parsed.time);
 
   // Sync internal state when external value changes
@@ -132,15 +137,18 @@ export default function AppleSchedulePicker({
     setSelectedMonthDay(parsed.dayOfMonth);
     setCustomDays(parsed.customDays);
     setCustomHours(parsed.customHours || 2);
+    setCustomMinutes(parsed.customMinutes || 15);
     setSelectedTime(parsed.time);
   }, [parsed]);
 
   // Emit change when any sub-control changes
-  const updateSchedule = (newMode, newDay, newMonthDay, newCustomDays, newCustomHours, newTime) => {
+  const updateSchedule = (newMode, newDay, newMonthDay, newCustomDays, newCustomHours, newCustomMinutes, newTime) => {
     const t = newTime !== undefined ? newTime : selectedTime;
     let baseValue = 'default';
     if (newMode === 'default') {
       baseValue = 'default';
+    } else if (newMode === 'minutes') {
+      baseValue = `minutely_${newCustomMinutes || 15}`;
     } else if (newMode === 'hourly') {
       baseValue = `hourly_${newCustomHours || 2}`;
     } else if (newMode === 'weekly') {
@@ -154,7 +162,7 @@ export default function AppleSchedulePicker({
     }
 
     let finalValue = baseValue;
-    if (baseValue !== 'default' && baseValue !== 'disabled' && !baseValue.startsWith('hourly_') && t) {
+    if (baseValue !== 'default' && baseValue !== 'disabled' && !baseValue.startsWith('hourly_') && !baseValue.startsWith('minutely_') && t) {
       finalValue = `${baseValue}@${t}`;
     }
 
@@ -164,35 +172,41 @@ export default function AppleSchedulePicker({
 
   const handleModeChange = (newMode) => {
     setMode(newMode);
-    updateSchedule(newMode, selectedDay, selectedMonthDay, customDays, customHours, selectedTime);
+    updateSchedule(newMode, selectedDay, selectedMonthDay, customDays, customHours, customMinutes, selectedTime);
+  };
+
+  const handleCustomMinutesChange = (delta) => {
+    const next = Math.max(1, Math.min(180, customMinutes + delta));
+    setCustomMinutes(next);
+    updateSchedule('minutes', selectedDay, selectedMonthDay, customDays, customHours, next, selectedTime);
   };
 
   const handleHourlyHoursChange = (delta) => {
     const next = Math.max(1, Math.min(48, customHours + delta));
     setCustomHours(next);
-    updateSchedule('hourly', selectedDay, selectedMonthDay, customDays, next, selectedTime);
+    updateSchedule('hourly', selectedDay, selectedMonthDay, customDays, next, customMinutes, selectedTime);
   };
 
   const handleDaySelect = (dayId) => {
     setSelectedDay(dayId);
-    updateSchedule('weekly', dayId, selectedMonthDay, customDays, customHours, selectedTime);
+    updateSchedule('weekly', dayId, selectedMonthDay, customDays, customHours, customMinutes, selectedTime);
   };
 
   const handleMonthDaySelect = (dayNum) => {
     const clamped = Math.max(1, Math.min(31, dayNum));
     setSelectedMonthDay(clamped);
-    updateSchedule('monthly', selectedDay, clamped, customDays, customHours, selectedTime);
+    updateSchedule('monthly', selectedDay, clamped, customDays, customHours, customMinutes, selectedTime);
   };
 
   const handleCustomDaysChange = (delta) => {
     const next = Math.max(1, Math.min(90, customDays + delta));
     setCustomDays(next);
-    updateSchedule('custom', selectedDay, selectedMonthDay, next, customHours, selectedTime);
+    updateSchedule('custom', selectedDay, selectedMonthDay, next, customHours, customMinutes, selectedTime);
   };
 
   const handleTimeSelect = (t) => {
     setSelectedTime(t);
-    updateSchedule(mode, selectedDay, selectedMonthDay, customDays, customHours, t);
+    updateSchedule(mode, selectedDay, selectedMonthDay, customDays, customHours, customMinutes, t);
   };
 
   // Human friendly summary text
@@ -206,6 +220,15 @@ export default function AppleSchedulePicker({
         desc: 'لن يرسل النظام أي رسائل تلقائية لهذا العميل (يمكنك الإرسال يدوياً متى شئت).',
         badge: 'معطل',
         badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
+      };
+    }
+    if (mode === 'minutes') {
+      return {
+        icon: '⚡',
+        title: `تذكير دوري بالدقائق: بعد / كل ${customMinutes} دقيقة`,
+        desc: `يتم حساب الفارق الزمني بالدقائق بالضبط من آخر إرسال وإطلاق التذكير فوراً (ممتاز للتجارب).`,
+        badge: `كل ${customMinutes} دقيقة`,
+        badgeColor: 'bg-amber-50 text-amber-800 border-amber-300'
       };
     }
     if (mode === 'hourly') {
@@ -257,7 +280,7 @@ export default function AppleSchedulePicker({
       };
     }
     return { icon: '⏰', title: 'مجدول', desc: '', badge: '', badgeColor: '' };
-  }, [mode, selectedDay, selectedMonthDay, customDays, customHours, selectedTime, defaultStoreDay]);
+  }, [mode, selectedDay, selectedMonthDay, customDays, customHours, customMinutes, selectedTime, defaultStoreDay]);
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -275,7 +298,20 @@ export default function AppleSchedulePicker({
           }`}
         >
           <span>🏢</span>
-          <span className="truncate">موعد المحل</span>
+          <span className="truncate">المحل</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleModeChange('minutes')}
+          className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer ${
+            mode === 'minutes'
+              ? 'bg-white text-amber-700 shadow-sm ring-1 ring-amber-600/10'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <span>⚡</span>
+          <span className="truncate">دقائق</span>
         </button>
 
         <button
@@ -348,7 +384,73 @@ export default function AppleSchedulePicker({
 
       {/* 2. Interactive Sub-Controls with Apple HIG Precision */}
 
-      {/* A. Hourly Interval Selector (Apple Presets + Stepper) */}
+      {/* A. Minutes Interval Selector (Apple Presets: 15, 30, 45 mins + Stepper) */}
+      {mode === 'minutes' && (
+        <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-950">تكرار الإرسال بالدقائق (مخصص للتجارب المباشرة):</span>
+            <span className="text-xs font-black text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 font-mono">
+              كل {customMinutes} دقيقة
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-amber-200 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">⚡</span>
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">إرسال رسالة تذكير بعد / كل:</span>
+                <span className="text-[11px] text-slate-500">حساب الفارق بالدقائق بالضبط من آخر إرسال</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCustomMinutesChange(-5)}
+                disabled={customMinutes <= 1}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-900 font-black text-sm flex items-center justify-center transition-colors cursor-pointer"
+              >
+                -
+              </button>
+              <div className="text-center min-w-[65px]">
+                <span className="text-base font-black font-mono text-amber-700 block leading-tight">{customMinutes}</span>
+                <span className="text-[10px] text-slate-500 font-bold">دقيقة ⏱️</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCustomMinutesChange(5)}
+                disabled={customMinutes >= 180}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-900 font-black text-sm flex items-center justify-center transition-colors cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Minute Chips */}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            {[1, 5, 10, 15, 20, 30, 45, 60].map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setCustomMinutes(m);
+                  updateSchedule('minutes', selectedDay, selectedMonthDay, customDays, customHours, m, selectedTime);
+                }}
+                className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer border ${
+                  customMinutes === m
+                    ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                    : 'bg-white hover:bg-amber-100 text-amber-900 border-amber-200'
+                }`}
+              >
+                {m} د
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* B. Hourly Interval Selector (Apple Presets + Stepper) */}
       {mode === 'hourly' && (
         <div className="bg-purple-50/60 border border-purple-200/80 rounded-2xl p-3.5 space-y-3 animate-in fade-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between">

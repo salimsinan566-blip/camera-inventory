@@ -180,8 +180,21 @@ export default async function handler(req, res) {
       // فحص هل الموعد مستحق لهذا العميل
       let isDueToday = false;
 
+      const isMinutely = schedule.startsWith('minutely_') || (schedule.startsWith('custom_') && (schedule.includes('_mins') || schedule.includes('_min')));
+
       if (force) {
         isDueToday = true;
+      } else if (isMinutely) {
+        const intervalMinutes = parseInt(schedule.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
+        if (!c.lastDebtReminderSent) {
+          isDueToday = true;
+        } else {
+          const lastDate = new Date(c.lastDebtReminderSent);
+          const diffMinutes = Math.abs(iraqDate - lastDate) / (1000 * 60);
+          if (diffMinutes >= (intervalMinutes - 0.1)) {
+            isDueToday = true;
+          }
+        }
       } else if (isHourly) {
         const intervalHours = parseInt(schedule.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2;
         if (!c.lastDebtReminderSent) {
