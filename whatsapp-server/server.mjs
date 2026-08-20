@@ -75,10 +75,15 @@ async function initWhatsApp() {
       connectionStatus = 'qr_ready';
       try {
         qrDataUrl = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
+        const qrTerminal = await qrcode.toString(qr, { type: 'terminal', small: true });
+        console.log('\n======================================================');
+        console.log('⚡ [WhatsApp] امسح رمز الـ QR Code التالي من هاتفك:');
+        console.log('======================================================\n');
+        console.log(qrTerminal);
+        console.log('======================================================\n');
       } catch (err) {
         console.error('Failed to generate QR data URL:', err);
       }
-      console.log('⚡ [WhatsApp] رمز الـ QR Code جاهز للمسح من هاتفك!');
     }
 
     if (connection === 'open') {
