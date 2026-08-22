@@ -59,8 +59,16 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
           const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(trimmedName)}`;
           const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
           const totalDebt = customer?.totalDebt || 0;
+          const rawPhone = String(phone1 || '').replace(/[^\d]/g, '');
+          const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
+          const password = pinCode || last4 || 'آخر 4 أرقام من هاتفك';
+
           const msg = renderWhatsAppTemplate(template, {
             customerName: trimmedName,
+            username: trimmedName,
+            password: password,
+            pin: password,
+            phone: phone1,
             storeName: settings?.storeName || 'المحل',
             totalDebt: Number(totalDebt).toLocaleString('en-US'),
             unpaidInvoicesCount: customer?.unpaidInvoicesCount || 1,

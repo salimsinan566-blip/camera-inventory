@@ -594,9 +594,17 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         debtSection = `⏳ المتبقي (الدين): ${rem.toLocaleString()} د.ع\n`;
       }
 
+      const rawTargetPhone = String(targetPhone || sale.customerPhone || '').replace(/[^\d]/g, '');
+      const last4 = rawTargetPhone.length >= 4 ? rawTargetPhone.slice(-4) : rawTargetPhone;
+      const customerPin = matchedCustomer?.pinCode || matchedCustomer?.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+
       const template = settings?.whatsappInvoiceTemplate || DEFAULT_WHATSAPP_TEMPLATES.invoice;
       const text = renderWhatsAppTemplate(template, {
         customerName: sale.customerName || 'عزيزي العميل',
+        username: sale.customerName || 'عزيزي العميل',
+        password: customerPin,
+        pin: customerPin,
+        phone: targetPhone,
         storeName: settings?.storeName || 'المحل',
         invoiceNumber: sale.invoiceNumber || sale.id,
         invoiceDate: formatDate(sale.createdAt),

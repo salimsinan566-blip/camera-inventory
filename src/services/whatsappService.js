@@ -50,8 +50,10 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
 💰 الإجمالي: {total} د.ع
 💵 الواصل: {paidAmount} د.ع
 {debtSection}
-🔗 يمكنك استعراض وتحميل فاتورتك رسمياً من خلال الرابط:
-{statementLink}
+🌐 للاطلاع على الفاتورة وتفاصيل كشف الحساب عبر بوابة العملاء:
+🔗 الرابط: {statementLink}
+👤 اسم المستخدم: {username}
+🔑 رمز المرور (الباسورد): {password}
 
 نتشرف بخدمتكم دائماً ✨`,
 
@@ -63,8 +65,10 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
 🔴 المبلغ المتبقي: {totalDebt} د.ع
 📋 عدد الفواتير غير المسددة: {unpaidInvoicesCount} فاتورة
 
-🔗 للاطلاع على كشف حسابك وفواتيرك بالتفصيل:
-{statementLink}
+🌐 للاطلاع على كشف حسابك وفواتيرك بالتفصيل عبر بوابة العملاء:
+🔗 الرابط: {statementLink}
+👤 اسم المستخدم: {username}
+🔑 رمز المرور (الباسورد): {password}
 
 شاكرين لكم حسن تعاونكم الدائم 🙏✨`
 };
@@ -74,9 +78,25 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
  */
 export function renderWhatsAppTemplate(templateStr, variables = {}) {
   let result = templateStr || '';
-  Object.keys(variables).forEach((key) => {
+
+  // Smart resolution for username and password
+  const username = variables.username || variables.customerName || '';
+  const rawPhone = String(variables.phone || variables.phone1 || '').replace(/[^\d]/g, '');
+  const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
+  const password = variables.password || variables.pin || variables.pinCode || last4 || 'آخر 4 أرقام من هاتفك';
+
+  const mergedVars = {
+    ...variables,
+    username: variables.username || username,
+    password: variables.password || password,
+    pin: variables.pin || password,
+    pinCode: variables.pinCode || password,
+    portalLink: variables.portalLink || variables.statementLink || ''
+  };
+
+  Object.keys(mergedVars).forEach((key) => {
     const regex = new RegExp(`\\{${key}\\}`, 'g');
-    result = result.replace(regex, variables[key] !== undefined ? String(variables[key]) : '');
+    result = result.replace(regex, mergedVars[key] !== undefined ? String(mergedVars[key]) : '');
   });
   return result;
 }

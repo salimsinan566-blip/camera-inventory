@@ -349,9 +349,16 @@ export default function CustomersScreen() {
     setSendingIndividualId(cust.id);
     const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}`;
     const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
+    const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
+    const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
+    const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
 
     const message = renderWhatsAppTemplate(template, {
       customerName: cust.name,
+      username: cust.name,
+      password: password,
+      pin: password,
+      phone: cust.phone1,
       storeName: settings?.storeName || 'المحل',
       totalDebt: formatIQD(cust.totalDebt),
       unpaidInvoicesCount: cust.unpaidInvoicesCount || 1,
@@ -439,8 +446,16 @@ export default function CustomersScreen() {
       try {
         const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}`;
         const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
+        const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
+        const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
+        const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+
         const message = renderWhatsAppTemplate(template, {
           customerName: cust.name,
+          username: cust.name,
+          password: password,
+          pin: password,
+          phone: cust.phone1,
           storeName: settings?.storeName || 'المحل',
           totalDebt: formatIQD(cust.totalDebt),
           unpaidInvoicesCount: cust.unpaidInvoicesCount || 1,

@@ -1220,11 +1220,13 @@ export default function SettingsScreen() {
                 <span className="text-xs font-bold text-slate-700 block mb-1.5">المتغيرات الذكية المتاحة للاستخدام داخل النصوص:</span>
                 <div className="flex flex-wrap gap-2 text-[11px] font-mono">
                   <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{customerName}`} (اسم العميل)</span>
-                  <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{storeName}`} (اسم المحل)</span>
+                  <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{username}`} (اسم المستخدم للدخول)</span>
+                  <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{password}`} (رمز المرور / الباسورد)</span>
+                  <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{statementLink}`} (رابط بوابة العملاء)</span>
                   <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{totalDebt}`} (المبلغ المتبقي)</span>
+                  <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{storeName}`} (اسم المحل)</span>
                   <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{invoiceNumber}`} (رقم الفاتورة)</span>
                   <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{total}`} (مبلغ الفاتورة)</span>
-                  <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">{`{statementLink}`} (رابط كشف الحساب)</span>
                 </div>
               </div>
             </div>

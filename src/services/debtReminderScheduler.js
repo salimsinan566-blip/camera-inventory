@@ -308,10 +308,19 @@ export async function processAutomatedDebtReminders({
     const fin = debtMap[key] || { totalDebt: 0, unpaidInvoicesCount: 0 };
 
     if (fin.totalDebt > 0 && cust.phone1) {
-      const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}`;
+      const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
+      const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}`;
       const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
+      const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
+      const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
+      const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+
       const message = renderWhatsAppTemplate(template, {
         customerName: cust.name,
+        username: cust.name,
+        password: password,
+        pin: password,
+        phone: cust.phone1,
         storeName: settings?.storeName || 'المحل',
         totalDebt: Number(fin.totalDebt).toLocaleString('en-US'),
         unpaidInvoicesCount: fin.unpaidInvoicesCount || 1,
@@ -333,10 +342,19 @@ export async function processAutomatedDebtReminders({
       // Instantly mark in memory to prevent rapid duplicate calls
       sessionSentDebtors.set(cust.id, Date.now());
       try {
-        const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}`;
+        const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
+        const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}`;
         const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
+        const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
+        const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
+        const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+
         const message = renderWhatsAppTemplate(template, {
           customerName: cust.name,
+          username: cust.name,
+          password: password,
+          pin: password,
+          phone: cust.phone1,
           storeName: settings?.storeName || 'المحل',
           totalDebt: Number(fin.totalDebt).toLocaleString('en-US'),
           unpaidInvoicesCount: fin.unpaidInvoicesCount || 1,
