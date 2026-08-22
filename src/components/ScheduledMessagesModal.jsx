@@ -111,7 +111,16 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
       // CRITICAL: NEVER include or queue anyone with 0 debt!
       if (calculatedDebt <= 0) return;
 
-      const targetTimestamp = calculateNextCustomerReminderTimestamp(cust, settings, now);
+      const existingServerJob = (jobs || []).find(j => 
+        j.status === 'pending' && 
+        (j.customerId === cust.id || j.id === `job_debt_${cust.id}` || j.id === `debt_sched_${cust.id}`) &&
+        j.targetTimestamp && j.targetTimestamp > now.getTime()
+      );
+
+      const targetTimestamp = existingServerJob 
+        ? existingServerJob.targetTimestamp 
+        : calculateNextCustomerReminderTimestamp(cust, settings, now);
+
       if (!targetTimestamp) return;
 
       let cleanPhone = String(cust.phone1).replace(/[^\d]/g, '').trim();
@@ -138,7 +147,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     });
 
     return reminders;
-  }, [customers, sales, incomes, settings]);
+  }, [customers, sales, incomes, settings, jobs]);
 
   // Sync scheduled debtors with AWS server when modal is open
   useEffect(() => {
@@ -225,8 +234,9 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
         const rawPhone = String(job.cleanPhone || '').replace(/[^\d]/g, '');
         const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
         const password = job.pinCode || job.passcode || last4 || 'آخر 4 أرقام من هاتفك';
-        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
-        const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(job.customerName)}${pinParam}`;
+        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${password}` : '';
+        const idParam = rawPhone ? `phone=${rawPhone}` : `name=${encodeURIComponent(job.customerName)}`;
+        const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&${idParam}${pinParam}`;
         const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
         const message = renderWhatsAppTemplate(template, {

@@ -306,8 +306,9 @@ export async function processAutomatedDebtReminders({
       const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
       const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
       const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
-      const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
-      const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}${pinParam}`;
+      const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${password}` : '';
+      const idParam = rawPhone ? `phone=${rawPhone}` : `name=${encodeURIComponent(cust.name)}`;
+      const portalUrl = `${portalBaseUrl}?portal=customer&${idParam}${pinParam}`;
       const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
       const message = renderWhatsAppTemplate(template, {
@@ -341,8 +342,9 @@ export async function processAutomatedDebtReminders({
         const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
         const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
         const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
-        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
-        const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}${pinParam}`;
+        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${password}` : '';
+        const idParam = rawPhone ? `phone=${rawPhone}` : `name=${encodeURIComponent(cust.name)}`;
+        const portalUrl = `${portalBaseUrl}?portal=customer&${idParam}${pinParam}`;
         const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
         const message = renderWhatsAppTemplate(template, {

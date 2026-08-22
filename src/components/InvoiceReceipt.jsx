@@ -586,9 +586,9 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
 
       const rawTargetPhone = String(targetPhone || sale.customerPhone || '').replace(/[^\d]/g, '');
       const last4 = rawTargetPhone.length >= 4 ? rawTargetPhone.slice(-4) : rawTargetPhone;
-      const customerPin = matchedCustomer?.pinCode || matchedCustomer?.passcode || last4 || 'آخر 4 أرقام من هاتفك';
-      const pinParam = (customerPin && customerPin !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(customerPin)}` : '';
-      const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(sale.customerName || '')}${pinParam}`;
+      const pinParam = (customerPin && customerPin !== 'آخر 4 أرقام من هاتفك') ? `&pin=${customerPin}` : '';
+      const idParam = rawTargetPhone ? `phone=${rawTargetPhone}` : `name=${encodeURIComponent(sale.customerName || '')}`;
+      const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&${idParam}${pinParam}`;
       
       let debtSection = '';
       if (sale.invoiceType === 'debt') {
