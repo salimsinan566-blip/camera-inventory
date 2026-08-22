@@ -36,25 +36,18 @@ function cleanPhoneNumber(p) {
 
 function getSaleRemainingDebt(s) {
   if (!s) return 0;
-  
-  if (s.isSettled === true && (s.remainingDebt === 0 || s.remainingDebt === undefined)) {
-    return 0;
-  }
-  if (s.paymentStatus === 'paid' && (s.remainingDebt === 0 || s.remainingDebt === undefined)) {
+  if (s.isSettled === true || s.paymentStatus === 'paid') {
     return 0;
   }
 
   const total = Number(s.total || 0);
   const paid = Number(s.paidAmount || 0);
 
-  if (s.remainingDebt !== undefined && s.remainingDebt !== null && !isNaN(Number(s.remainingDebt))) {
-    const rem = Number(s.remainingDebt);
-    if (s.isSettled === true && rem <= 0) return 0;
-    return Math.max(0, rem);
-  }
-
-  if (s.invoiceType === 'debt' || (s.paidAmount !== undefined && paid < total)) {
-    return Math.max(0, total - paid);
+  if (s.invoiceType === 'debt') {
+    const remaining = s.remainingDebt !== undefined 
+      ? Math.min(Number(s.remainingDebt), Math.max(0, total - paid)) 
+      : Math.max(0, total - paid);
+    return Math.max(0, remaining);
   }
 
   return 0;
@@ -68,22 +61,15 @@ function isSaleMatchedToCustomer(sale, customer) {
     return true;
   }
 
-  const sName = normalizeArabic(sale.customerName || sale.payerName);
+  const sName = normalizeArabic(sale.customerName);
   const cName = normalizeArabic(customer.name);
 
-  // 2. Normalized Name Exact Match
+  // 2. Exact Normalized Name Match
   if (sName && cName && sName === cName) {
     return true;
   }
 
-  // 3. Substring match for names with 3+ characters
-  if (sName && cName && Math.min(sName.length, cName.length) >= 3) {
-    if (sName.includes(cName) || cName.includes(sName)) {
-      return true;
-    }
-  }
-
-  // 4. Phone Match
+  // 3. Exact Phone Match
   const sPhone = cleanPhoneNumber(sale.customerPhone || sale.phone);
   const cPhone1 = cleanPhoneNumber(customer.phone1);
   const cPhone2 = cleanPhoneNumber(customer.phone2);
@@ -114,7 +100,7 @@ export default function CustomersScreen() {
 
   const isGlobalAutoDisabled = settings?.whatsappAutoReminders === false;
 
-  // Merge registered customers with any customers discovered in sales & compute accurate financial aggregates
+  // Merge registered customers with any customers discovered in sales & compute accurate financial aggregates (100% matched with Statement)
   const allMergedCustomers = useMemo(() => {
     const list = [...customers];
     const registeredNames = new Set(customers.map(c => normalizeArabic(c.name)));
@@ -148,36 +134,25 @@ export default function CustomersScreen() {
       (sales || []).forEach(sale => {
         if (isSaleMatchedToCustomer(sale, c)) {
           const total = Number(sale.total || 0);
-          const remaining = getSaleRemainingDebt(sale);
-          const paid = sale.invoiceType === 'debt' 
-            ? Number(sale.paidAmount || (total - remaining)) 
-            : (total - remaining);
-
+          const isDebt = sale.invoiceType === 'debt';
           totalPurchases += total;
-          totalPaid += paid;
-          totalDebt += remaining;
           invoicesCount += 1;
 
-          if (remaining > 0) {
-            unpaidInvoicesCount += 1;
+          if (isDebt) {
+            const paid = Number(sale.paidAmount || 0);
+            const remaining = sale.remainingDebt !== undefined 
+              ? Math.min(Number(sale.remainingDebt), Math.max(0, total - paid)) 
+              : Math.max(0, total - paid);
+            totalPaid += paid;
+            totalDebt += Math.max(0, remaining);
+            if (remaining > 0 && !sale.isSettled) {
+              unpaidInvoicesCount += 1;
+            }
+          } else {
+            totalPaid += total;
           }
         }
       });
-
-      // Manual debt payment records in incomes (ONLY if explicitly categorized as debt repayment)
-      (incomes || []).forEach(inc => {
-        if (inc.category === 'تسديد ديون قديمة' && isSaleMatchedToCustomer(inc, c) && !inc.relatedSaleId) {
-          const amt = Number(inc.amount || 0);
-          totalPaid += amt;
-          totalDebt = Math.max(0, totalDebt - amt);
-        }
-      });
-
-      // If sale-based debt is 0, but customer record has an initial/opening debt
-      if (totalDebt === 0 && Number(c.totalDebt || c.openingDebt || c.openingBalance || 0) > 0) {
-        totalDebt = Number(c.totalDebt || c.openingDebt || c.openingBalance);
-        unpaidInvoicesCount = Math.max(1, unpaidInvoicesCount);
-      }
 
       return {
         ...c,
@@ -190,7 +165,7 @@ export default function CustomersScreen() {
         unpaidInvoicesCount
       };
     });
-  }, [customers, sales, incomes]);
+  }, [customers, sales]);
 
   const allCustomersDisabled = useMemo(() => {
     if (allMergedCustomers.length === 0) return false;

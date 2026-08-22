@@ -90,32 +90,25 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
         const matchesId = sale.customerId && cust.id && String(sale.customerId) === String(cust.id);
         const sName = normalizeArabic(sale.customerName);
         const cName = normalizeArabic(cust.name);
-        const nameMatches = sName && cName && (sName === cName || (Math.min(sName.length, cName.length) >= 3 && (sName.includes(cName) || cName.includes(sName))));
+        const nameMatches = sName && cName && sName === cName;
         const cleanP = p => String(p || '').replace(/[^\d]/g, '').replace(/^00964|^964|^0/, '');
         const phoneMatches = cleanP(sale.customerPhone) && cleanP(sale.customerPhone) === cleanP(cust.phone1);
 
         if (matchesId || nameMatches || phoneMatches) {
-          const total = Number(sale.total || 0);
-          const paid = Number(sale.paidAmount || 0);
-          let rem = 0;
-          if (sale.isSettled !== true && sale.paymentStatus !== 'paid') {
-            if (sale.remainingDebt !== undefined && !isNaN(Number(sale.remainingDebt))) {
-              rem = Math.max(0, Number(sale.remainingDebt));
-            } else if (sale.invoiceType === 'debt' || (sale.paidAmount !== undefined && paid < total)) {
-              rem = Math.max(0, total - paid);
+          const isDebt = sale.invoiceType === 'debt';
+          if (isDebt && sale.isSettled !== true && sale.paymentStatus !== 'paid') {
+            const total = Number(sale.total || 0);
+            const paid = Number(sale.paidAmount || 0);
+            const remaining = sale.remainingDebt !== undefined 
+              ? Math.min(Number(sale.remainingDebt), Math.max(0, total - paid)) 
+              : Math.max(0, total - paid);
+            if (remaining > 0) {
+              calculatedDebt += remaining;
+              unpaidInvoicesCount += 1;
             }
-          }
-          if (rem > 0) {
-            calculatedDebt += rem;
-            unpaidInvoicesCount += 1;
           }
         }
       });
-
-      if (calculatedDebt === 0 && Number(cust.totalDebt || cust.openingDebt || 0) > 0) {
-        calculatedDebt = Number(cust.totalDebt || cust.openingDebt);
-        unpaidInvoicesCount = Math.max(1, unpaidInvoicesCount);
-      }
       
       // CRITICAL: NEVER include or queue anyone with 0 debt!
       if (calculatedDebt <= 0) return;
