@@ -47,10 +47,10 @@ export default function SettingsScreen() {
   const checkLocalServer = async () => {
     setLocalServerState(prev => ({ ...prev, checking: true }));
     try {
-      const apiUrl = whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '';
+      let rawApiUrl = (whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '').trim().replace(/[,;\s]+$/, '');
       let baseUrl = 'https://commander-air-olympus-commission.trycloudflare.com';
-      if (apiUrl.startsWith('http') && !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1')) {
-        baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '');
+      if (rawApiUrl.startsWith('http') && !rawApiUrl.includes('localhost') && !rawApiUrl.includes('127.0.0.1')) {
+        baseUrl = rawApiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
       }
       
       const controller = new AbortController();
@@ -302,9 +302,20 @@ export default function SettingsScreen() {
     if (e) e.preventDefault();
     setSavingWhatsApp(true);
     try {
+      let cleanApiUrl = String(whatsappConfig.whatsappApiUrl || '').trim().replace(/[,;\s]+$/, '');
+      if (cleanApiUrl.startsWith('http') && !cleanApiUrl.includes('/messages/')) {
+        cleanApiUrl = cleanApiUrl.replace(/\/+$/, '') + '/messages/chat';
+      }
+
+      const updatedConfig = {
+        ...whatsappConfig,
+        whatsappApiUrl: cleanApiUrl,
+      };
+      setWhatsappConfig(updatedConfig);
+
       const updatedStoreInfo = {
         ...storeInfo,
-        ...whatsappConfig,
+        ...updatedConfig,
       };
       setStoreInfo(updatedStoreInfo);
       await updateStoreSettings(updatedStoreInfo);
