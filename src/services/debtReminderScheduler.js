@@ -367,7 +367,7 @@ export async function processAutomatedDebtReminders({
 
         dispatched.push(cust);
         if (onNotification) {
-          onNotification(cust, fin.totalDebt);
+          onNotification(cust, totalDebt);
         }
         console.log(`⏰ [AutoDebtReminder] تم إرسال تذكير الديون تلقائياً للعميل «${cust.name}» (هاتف: ${cust.phone1})`);
       } catch (err) {

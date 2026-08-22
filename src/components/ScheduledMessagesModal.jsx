@@ -129,7 +129,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
         customerName: cust.name,
         cleanPhone,
         totalDebt: calculatedDebt,
-        unpaidInvoicesCount: fin.unpaidInvoicesCount || 1,
+        unpaidInvoicesCount: unpaidInvoicesCount || 1,
         targetTimestamp,
         scheduledAt: new Date(targetTimestamp).toISOString(),
         status: 'pending',
