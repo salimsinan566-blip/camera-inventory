@@ -159,7 +159,8 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
       totalDebt: d.totalDebt,
       reminderSchedule: d.customer?.reminderSchedule || 'default',
       lastDebtReminderSent: d.customer?.lastDebtReminderSent || null,
-      renderedMessage: d.renderedMessage || undefined
+      renderedMessage: d.renderedMessage || undefined,
+      targetTimestamp: d.targetTimestamp
     }));
 
     fetch(`${baseUrl}/reminders/sync`, {

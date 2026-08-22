@@ -659,9 +659,10 @@ app.post('/reminders/sync', async (req, res) => {
         console.error(`❌ [AutoDebtReminder] فشل الإرسال إلى ${cleanPhone}:`, err.message);
       }
     } else {
+      const jobId = `job_debt_${cust.id}`;
       // Check if this customer already has an active pending countdown job
       const existingJob = jobs.find(j => 
-        (j.id === jobId || j.customerId === cust.id || (!j.isDebtReminder && (j.jid === jid || j.cleanPhone === cleanPhone))) &&
+        (j.id === jobId || j.id === `debt_sched_${cust.id}` || j.customerId === cust.id || (!j.isDebtReminder && (j.jid === jid || j.cleanPhone === cleanPhone))) &&
         j.status === 'pending' &&
         j.targetTimestamp &&
         j.targetTimestamp > now.getTime()
@@ -670,7 +671,7 @@ app.post('/reminders/sync', async (req, res) => {
       // Preserve existing countdown target time if available, otherwise calculate next slot
       const finalTargetTimestamp = existingJob 
         ? existingJob.targetTimestamp 
-        : targetTimestamp;
+        : (cust.targetTimestamp || targetTimestamp);
 
       // Remove any existing pending job for this customer
       jobs = jobs.filter(j => 
