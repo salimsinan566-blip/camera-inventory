@@ -17,6 +17,47 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const { settings = {} } = useSettings();
   const { toast } = useUI();
 
+  // Exchange Rate (IQD / USD)
+  const exchangeRate = useMemo(() => {
+    return Number(settings?.usdExchangeRate || settings?.exchangeRate || 1500);
+  }, [settings]);
+
+  // Price Resolver
+  const getProductPrice = (p) => {
+    if (!p) return { iqd: 0, usd: 0 };
+    
+    let iqd = 0;
+    if (p.retailPrice !== undefined && p.retailPrice !== null && p.retailPrice !== '') {
+      iqd = Number(p.retailPrice);
+    } else if (p.price !== undefined && p.price !== null && p.price !== '') {
+      iqd = Number(p.price);
+    } else if (p.sellingPrice !== undefined && p.sellingPrice !== null && p.sellingPrice !== '') {
+      iqd = Number(p.sellingPrice);
+    } else if (p.selling_price !== undefined && p.selling_price !== null && p.selling_price !== '') {
+      iqd = Number(p.selling_price);
+    } else if (p.wholesalePrice !== undefined && p.wholesalePrice !== null && p.wholesalePrice !== '') {
+      iqd = Number(p.wholesalePrice);
+    }
+    if (isNaN(iqd)) iqd = 0;
+
+    let usd = 0;
+    if (p.retailPriceUSD !== undefined && p.retailPriceUSD !== null && p.retailPriceUSD !== '') {
+      usd = Number(p.retailPriceUSD);
+    } else if (p.priceUSD !== undefined && p.priceUSD !== null && p.priceUSD !== '') {
+      usd = Number(p.priceUSD);
+    } else if (iqd > 0 && exchangeRate > 0) {
+      usd = Number((iqd / exchangeRate).toFixed(2));
+    }
+    if (isNaN(usd)) usd = 0;
+
+    // If IQD is 0 but USD is available, compute IQD
+    if (iqd === 0 && usd > 0 && exchangeRate > 0) {
+      iqd = Math.round(usd * exchangeRate);
+    }
+
+    return { iqd, usd };
+  };
+
   // Login Form States (If not logged in)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -150,15 +191,15 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
     // 3. Sorting
     if (sortBy === 'price_asc') {
-      list.sort((a, b) => Number(a.retailPrice || a.price || 0) - Number(b.retailPrice || b.price || 0));
+      list.sort((a, b) => getProductPrice(a).iqd - getProductPrice(b).iqd);
     } else if (sortBy === 'price_desc') {
-      list.sort((a, b) => Number(b.retailPrice || b.price || 0) - Number(a.retailPrice || a.price || 0));
+      list.sort((a, b) => getProductPrice(b).iqd - getProductPrice(a).iqd);
     } else if (sortBy === 'name') {
       list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
     }
 
     return list;
-  }, [products, searchTerm, selectedCategory, stockFilter, sortBy]);
+  }, [products, searchTerm, selectedCategory, stockFilter, sortBy, exchangeRate]);
 
   // Cart operations
   const addToCart = (product) => {
@@ -166,7 +207,8 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       const existing = prev.find(item => item.productId === product.id);
       const storeQty = Number(product.storeQty !== undefined ? product.storeQty : product.quantity || 0);
       const totalQty = storeQty + Number(product.warehouseQty || 0);
-      const unitPrice = Number(product.retailPrice || product.price || product.sellingPrice || 0);
+      const priceObj = getProductPrice(product);
+      const unitPrice = priceObj.iqd;
 
       if (existing) {
         if (activeTab === 'pos' && existing.quantity >= (storeQty > 0 ? storeQty : totalQty)) {
@@ -223,6 +265,20 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     }));
   };
 
+  const updateCartUnitPrice = (productId, newPrice) => {
+    const p = Math.max(0, Number(newPrice) || 0);
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId) {
+        return {
+          ...item,
+          unitPrice: p,
+          lineTotal: item.quantity * p
+        };
+      }
+      return item;
+    }));
+  };
+
   const removeFromCart = (productId) => {
     setCart(prev => prev.filter(item => item.productId !== productId));
   };
@@ -238,7 +294,6 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const cartTotal = taxableAmount + taxAmount;
   const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const exchangeRate = Number(settings?.usdExchangeRate || settings?.exchangeRate || 1500);
   const cartTotalUSD = exchangeRate > 0 ? (cartTotal / exchangeRate).toFixed(2) : 0;
 
   // Submit Order (POS or Quotation)
@@ -571,7 +626,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         {productsLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-xs">
             <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p>جارٍ تحميل قائمة المنتجات...</p>
+            <p>جارٍ تحميل قائمة المنتجات والأسعار...</p>
           </div>
         ) : productsError ? (
           <div className="text-center py-16 px-6 bg-white rounded-3xl border border-rose-200 text-rose-600 shadow-xs space-y-2">
@@ -601,8 +656,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               const storeQty = Number(p.storeQty !== undefined ? p.storeQty : p.quantity || 0);
               const warehouseQty = Number(p.warehouseQty || 0);
               const totalStock = storeQty + warehouseQty;
-              const priceIQD = Number(p.retailPrice || p.price || p.sellingPrice || 0);
-              const priceUSD = exchangeRate > 0 ? (priceIQD / exchangeRate).toFixed(1) : 0;
+              const priceObj = getProductPrice(p);
               const isOutOfStock = activeTab === 'pos' && totalStock <= 0;
 
               return (
@@ -644,11 +698,20 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                     </h3>
                     <div className="mt-1.5 flex items-baseline justify-between">
                       <span className="text-sm font-black text-brand-600 font-mono">
-                        {priceIQD.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">د.ع</span>
+                        {priceObj.iqd > 0 ? (
+                          <>
+                            {priceObj.iqd.toLocaleString()}{' '}
+                            <span className="text-[10px] font-normal text-slate-500">د.ع</span>
+                          </>
+                        ) : priceObj.usd > 0 ? (
+                          <span className="text-emerald-600">${priceObj.usd}</span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">غير محدد</span>
+                        )}
                       </span>
-                      {priceUSD > 0 && (
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          ${priceUSD}
+                      {priceObj.usd > 0 && priceObj.iqd > 0 && (
+                        <span className="text-[10px] text-slate-400 font-mono font-medium">
+                          ${priceObj.usd}
                         </span>
                       )}
                     </div>
@@ -845,7 +908,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               {/* Cart Items List */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-700 block mb-1">
-                  البنود المحددة:
+                  البنود المحددة (اضغط على السعر لتعديله):
                 </label>
                 {cart.map(item => (
                   <div 
@@ -854,9 +917,14 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   >
                     <div className="flex-1 min-w-0">
                       <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
-                        <span>{item.unitPrice.toLocaleString()} د.ع</span>
-                        <span>×</span>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-1">
+                        <input
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateCartUnitPrice(item.productId, e.target.value)}
+                          className="w-20 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs text-brand-600 font-bold font-mono focus:ring-1 focus:ring-brand-500"
+                        />
+                        <span>د.ع ×</span>
                         <span className="text-brand-600 font-bold">{item.quantity}</span>
                         <span>=</span>
                         <span className="text-slate-900 font-bold">{item.lineTotal.toLocaleString()} د.ع</span>
