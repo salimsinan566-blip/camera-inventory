@@ -19,6 +19,7 @@ export default function AddIncomeModal({ initialIncome = null, onClose, onSucces
   const [category, setCategory] = useState(initialIncome?.category || 'فواتير قديمة سابقة');
   const [amount, setAmount] = useState(initialIncome?.amount || '');
   const [payerName, setPayerName] = useState(initialIncome?.payerName || initialIncome?.customerName || '');
+  const [paymentMethod, setPaymentMethod] = useState(initialIncome?.paymentMethod || 'cash');
   const [notes, setNotes] = useState(initialIncome?.notes || '');
   const [incomeDate, setIncomeDate] = useState((initialIncome?.date || initialIncome?.createdAt || '').slice(0, 10) || new Date().toISOString().slice(0, 10));
   const [selectedPresetId, setSelectedPresetId] = useState(initialIncome ? null : 'old_invoice');
@@ -33,6 +34,7 @@ export default function AddIncomeModal({ initialIncome = null, onClose, onSucces
       setCategory(initialIncome.category || 'فواتير قديمة سابقة');
       setAmount(initialIncome.amount || '');
       setPayerName(initialIncome.payerName || initialIncome.customerName || '');
+      setPaymentMethod(initialIncome.paymentMethod || 'cash');
       setNotes(initialIncome.notes || '');
       setIncomeDate((initialIncome.date || initialIncome.createdAt || '').slice(0, 10) || new Date().toISOString().slice(0, 10));
       setActiveTab('form');
@@ -92,6 +94,7 @@ export default function AddIncomeModal({ initialIncome = null, onClose, onSucces
           amount: numAmount,
           payerName: (payerName || '').trim(),
           customerName: (payerName || '').trim(),
+          paymentMethod: paymentMethod || 'cash',
           notes: (notes || '').trim(),
           date: incomeDate ? new Date(incomeDate).toISOString() : new Date().toISOString()
         });
@@ -103,11 +106,12 @@ export default function AddIncomeModal({ initialIncome = null, onClose, onSucces
           amount: numAmount,
           payerName: (payerName || '').trim(),
           customerName: (payerName || '').trim(),
+          paymentMethod: paymentMethod || 'cash',
           notes: (notes || '').trim(),
           date: incomeDate ? new Date(incomeDate).toISOString() : new Date().toISOString(),
           createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
         });
-        toast(`تمت إضافة ${formatIQD(numAmount)} د.ع إلى النقد الفعلي وصندوق المكتب بنجاح ✓ 💵`, 'success');
+        toast(`تمت إضافة ${formatIQD(numAmount)} د.ع إلى ${paymentMethod === 'mastercard' ? 'قاصة الماستركارد' : 'النقد الفعلي في القاصة'} بنجاح ✓ 💵`, 'success');
       }
 
       handleResetForm();
@@ -288,11 +292,44 @@ export default function AddIncomeModal({ initialIncome = null, onClose, onSucces
                   </div>
                 </div>
 
+                {/* Destination Drawer (Cash vs Mastercard) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    جهة الإيداع (القاصة المستلمة) *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('cash')}
+                      className={`p-2.5 rounded-xl border text-center text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                        paymentMethod === 'cash'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>💵</span>
+                      <span>قاصة النقد (الكاش)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('mastercard')}
+                      className={`p-2.5 rounded-xl border text-center text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                        paymentMethod === 'mastercard'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>💳</span>
+                      <span>قاصة الماستركارد</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Amount & Quick Buttons */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700">
-                      المبلغ المضاف للنقد الفعلي (د.ع) *
+                      المبلغ المضاف (د.ع) *
                     </label>
                     {Number(amount) > 0 && (
                       <span className="text-xs font-bold text-emerald-700 font-mono">

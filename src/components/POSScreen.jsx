@@ -286,6 +286,7 @@ export default function POSScreen({
     taxRate,
     customerName,
     invoiceType,
+    paymentMethod: invoiceType === 'mastercard' ? 'mastercard' : (invoiceType === 'debt' ? 'debt' : 'cash'),
     phone1,
     phone2,
     offerName,
@@ -1002,29 +1003,43 @@ export default function POSScreen({
                       </div>
                     )}
 
-                    {/* Cash / Debt Toggle */}
+                    {/* Cash / Mastercard / Debt Toggle */}
                     <div className="flex gap-1 bg-ink-50 p-0.5 rounded-lg border border-ink-200">
                       <button
                         type="button"
                         onClick={() => setInvoiceType('cash')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                           invoiceType === 'cash'
                             ? 'bg-emerald-600 text-white shadow-2xs'
                             : 'text-ink-500 hover:text-ink-900'
                         }`}
                       >
-                        نقد
+                        <span>💵</span>
+                        <span>نقد</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceType('mastercard')}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                          invoiceType === 'mastercard'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-ink-500 hover:text-ink-900'
+                        }`}
+                      >
+                        <span>💳</span>
+                        <span>ماستركارد</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setInvoiceType('debt')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                           invoiceType === 'debt'
                             ? 'bg-warn-500 text-white shadow-2xs'
                             : 'text-ink-500 hover:text-ink-900'
                         }`}
                       >
-                        ديون
+                        <span>⏳</span>
+                        <span>ديون</span>
                       </button>
                     </div>
 

@@ -221,6 +221,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       phone1: phone1 || '',
       phone2: phone2 || '',
       invoiceType,
+      paymentMethod: orderOptions?.paymentMethod || (invoiceType === 'mastercard' ? 'mastercard' : (invoiceType === 'debt' ? 'debt' : 'cash')),
       stockSource,
       technicianId: technicianId || null,
       technicianName: technicianName || null,

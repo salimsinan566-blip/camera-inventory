@@ -21,12 +21,20 @@ export async function saveCashReconciliation({
   actualCashAmount,
   calculatedAmount = 0,
   difference = 0,
+  actualMastercardAmount = 0,
+  calculatedMastercardAmount = 0,
+  mastercardDifference = 0,
   notes = '',
   createdBy = ''
 }) {
   const numActual = Number(actualCashAmount) || 0;
   const numCalculated = Number(calculatedAmount) || 0;
   const numDiff = numActual - numCalculated;
+
+  const numActualMastercard = Number(actualMastercardAmount) || 0;
+  const numCalculatedMastercard = Number(calculatedMastercardAmount) || 0;
+  const numMastercardDiff = numActualMastercard - numCalculatedMastercard;
+
   const nowIso = new Date().toISOString();
 
   // 1) إضافة سجل التسوية إلى السجل التاريخي
@@ -34,6 +42,9 @@ export async function saveCashReconciliation({
     actualCashAmount: numActual,
     calculatedAmount: numCalculated,
     difference: numDiff,
+    actualMastercardAmount: numActualMastercard,
+    calculatedMastercardAmount: numCalculatedMastercard,
+    mastercardDifference: numMastercardDiff,
     notes: (notes || '').trim(),
     createdBy: createdBy || 'المدير',
     createdAt: nowIso,
@@ -46,6 +57,7 @@ export async function saveCashReconciliation({
     latestReconciliation: {
       id: recRef.id,
       actualCashAmount: numActual,
+      actualMastercardAmount: numActualMastercard,
       date: nowIso,
       notes: (notes || '').trim(),
       createdBy: createdBy || 'المدير'

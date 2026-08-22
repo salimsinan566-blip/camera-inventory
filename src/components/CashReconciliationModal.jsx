@@ -12,7 +12,7 @@ function formatIQD(num) {
   return Number(Math.round(num || 0)).toLocaleString('en-US');
 }
 
-export default function CashReconciliationModal({ currentCalculatedCash = 0, onClose, onReconciliationSaved }) {
+export default function CashReconciliationModal({ currentCalculatedCash = 0, currentCalculatedMastercard = 0, onClose, onReconciliationSaved }) {
   const { user } = useAuth();
   const { toast, confirm } = useUI();
   const { reconciliations } = useCashReconciliation();
@@ -30,8 +30,9 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, onC
 
   const [activeTab, setActiveTab] = useState('reconcile'); // 'reconcile' | 'advances' | 'reimbursements'
 
-  // 1. Reconciliation Form State
+  // 1. Reconciliation Form State (Cash & Mastercard)
   const [actualAmount, setActualAmount] = useState('');
+  const [actualMastercardAmount, setActualMastercardAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [viewHistory, setViewHistory] = useState(false);
@@ -81,7 +82,11 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, onC
   const numCalculated = Number(currentCalculatedCash) || 0;
   const difference = numActual - numCalculated;
 
-  // Handle Cash Reconciliation Save
+  const numActualMastercard = Number(actualMastercardAmount) || 0;
+  const numCalculatedMastercard = Number(currentCalculatedMastercard) || 0;
+  const mastercardDifference = numActualMastercard - numCalculatedMastercard;
+
+  // Handle Cash & Mastercard Reconciliation Save
   const handleSaveReconciliation = async (e) => {
     e.preventDefault();
     if (!actualAmount && actualAmount !== 0) {
@@ -95,12 +100,15 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, onC
         actualCashAmount: numActual,
         calculatedAmount: numCalculated,
         difference: difference,
-        notes: notes || 'تسوية وتثبيت رصيد القاصة الفعلي',
+        actualMastercardAmount: actualMastercardAmount !== '' ? numActualMastercard : numCalculatedMastercard,
+        calculatedMastercardAmount: numCalculatedMastercard,
+        mastercardDifference: actualMastercardAmount !== '' ? mastercardDifference : 0,
+        notes: notes || 'تسوية وتثبيت رصيد القاصة والماستركارد الفعلي',
         createdBy: user?.displayName || user?.email || 'المدير'
       });
 
-      toast('تم تثبيت وتسوية رصيد القاصة بنجاح!', 'success');
-      if (onReconciliationSaved) onReconciliationSaved(numActual);
+      toast('تم تثبيت وتسوية رصيد القاصة والماستركارد بنجاح!', 'success');
+      if (onReconciliationSaved) onReconciliationSaved(numActual, numActualMastercard);
       onClose();
     } catch (err) {
       toast(`فشل حفظ التسوية: ${err.message}`, 'error');
@@ -324,62 +332,99 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, onC
 
               <form onSubmit={handleSaveReconciliation} className="space-y-4">
                 
-                {/* Calculated Current System Cash */}
-                <div className="p-4 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs text-slate-500 font-bold block">الرصيد التراكمي المحسوب بالنظام حالياً:</span>
-                    <span className="text-lg font-bold font-mono text-slate-800">
-                      {formatIQD(numCalculated)} <span className="text-xs font-normal">د.ع</span>
+                {/* 1. Cash Drawer Section */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <span>💵</span>
+                      <span>قاصة النقد (الكاش الفعلي)</span>
+                    </span>
+                    <span className="text-xs text-slate-500 font-mono">
+                      المحسوب: <strong>{formatIQD(numCalculated)}</strong> د.ع
                     </span>
                   </div>
-                  <span className="text-xs text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-300 font-mono">
-                    قبل التسوية
-                  </span>
-                </div>
 
-                {/* Input: Actual Cash Amount in Drawer */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    النقد الفعلي الموجود في القاصة الآن (د.ع) <span className="text-rose-600">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      required
-                      value={actualAmount}
-                      onChange={(e) => setActualAmount(e.target.value)}
-                      placeholder="مثال: 900000"
-                      className="w-full pl-12 pr-4 py-3 bg-white border-2 border-indigo-300 focus:border-indigo-600 focus:outline-none rounded-xl text-lg font-bold font-mono text-slate-900"
-                      autoFocus
-                    />
-                    <span className="absolute left-3 top-3.5 text-xs font-bold text-slate-500">د.ع</span>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      النقد الفعلي في القاصة الآن (د.ع) <span className="text-rose-600">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        required
+                        value={actualAmount}
+                        onChange={(e) => setActualAmount(e.target.value)}
+                        placeholder="مثال: 900000"
+                        className="w-full pl-12 pr-4 py-2.5 bg-white border-2 border-emerald-400 focus:border-emerald-600 focus:outline-none rounded-xl text-base font-bold font-mono text-slate-900"
+                        autoFocus
+                      />
+                      <span className="absolute left-3 top-3 text-xs font-bold text-slate-500">د.ع</span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Live Difference Display */}
-                {actualAmount !== '' && (
-                  <div className={`p-4 rounded-xl border text-xs flex items-center justify-between ${
-                    difference === 0 
-                      ? 'bg-slate-50 border-slate-200 text-slate-700' 
-                      : difference > 0 
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-                      : 'bg-rose-50 border-rose-200 text-rose-900'
-                  }`}>
-                    <div>
-                      <span className="font-bold block">
-                        {difference === 0 ? 'القاصة مطابقة تماماً' : difference > 0 ? 'فائض نقدي مسجل:' : 'فارق تسوية / سحوبات سابقة:'}
-                      </span>
-                      <span className="font-mono text-base font-black mt-0.5 block">
+                  {actualAmount !== '' && (
+                    <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                      difference === 0 
+                        ? 'bg-white border-slate-200 text-slate-700' 
+                        : difference > 0 
+                        ? 'bg-emerald-100 border-emerald-300 text-emerald-900' 
+                        : 'bg-rose-100 border-rose-300 text-rose-900'
+                    }`}>
+                      <span className="font-bold">فارق قاصة النقد:</span>
+                      <span className="font-mono font-black">
                         {difference > 0 ? `+${formatIQD(difference)}` : formatIQD(difference)} د.ع
                       </span>
                     </div>
-                    <span className="text-[11px] opacity-80">
-                      {difference < 0 ? 'سيتم قيد الفارق كسحوبات مالك/تسوية' : 'تحديث الرصيد المعتمد'}
+                  )}
+                </div>
+
+                {/* 2. Mastercard Drawer Section */}
+                <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                      <span>💳</span>
+                      <span>قاصة الماستركارد (الدفع الإلكتروني)</span>
+                    </span>
+                    <span className="text-xs text-indigo-600 font-mono">
+                      المحسوب: <strong>{formatIQD(numCalculatedMastercard)}</strong> د.ع
                     </span>
                   </div>
-                )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      رصيد الماستركارد الفعلي الآن (د.ع) <span className="text-xs font-normal text-slate-500">(اختياري للمطابقة)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={actualMastercardAmount}
+                        onChange={(e) => setActualMastercardAmount(e.target.value)}
+                        placeholder={`الافتراضي: ${numCalculatedMastercard}`}
+                        className="w-full pl-12 pr-4 py-2.5 bg-white border-2 border-indigo-300 focus:border-indigo-600 focus:outline-none rounded-xl text-base font-bold font-mono text-slate-900"
+                      />
+                      <span className="absolute left-3 top-3 text-xs font-bold text-slate-500">د.ع</span>
+                    </div>
+                  </div>
+
+                  {actualMastercardAmount !== '' && (
+                    <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                      mastercardDifference === 0 
+                        ? 'bg-white border-indigo-200 text-indigo-900' 
+                        : mastercardDifference > 0 
+                        ? 'bg-indigo-100 border-indigo-300 text-indigo-950' 
+                        : 'bg-rose-100 border-rose-300 text-rose-900'
+                    }`}>
+                      <span className="font-bold">فارق قاصة الماستركارد:</span>
+                      <span className="font-mono font-black">
+                        {mastercardDifference > 0 ? `+${formatIQD(mastercardDifference)}` : formatIQD(mastercardDifference)} د.ع
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {/* Notes / Reason */}
                 <div>
