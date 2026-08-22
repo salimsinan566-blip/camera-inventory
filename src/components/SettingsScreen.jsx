@@ -48,7 +48,7 @@ export default function SettingsScreen() {
     setLocalServerState(prev => ({ ...prev, checking: true }));
     try {
       let rawApiUrl = (whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '').trim().replace(/[,;\s]+$/, '');
-      let baseUrl = 'https://commander-air-olympus-commission.trycloudflare.com';
+      let baseUrl = 'https://offerings-maybe-dem-representative.trycloudflare.com';
       if (rawApiUrl.startsWith('http') && !rawApiUrl.includes('localhost') && !rawApiUrl.includes('127.0.0.1')) {
         baseUrl = rawApiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
       }
@@ -78,7 +78,7 @@ export default function SettingsScreen() {
         connected: false,
         phone: '',
         name: '',
-        serverUrl: 'https://commander-air-olympus-commission.trycloudflare.com',
+        serverUrl: 'https://offerings-maybe-dem-representative.trycloudflare.com',
       });
       toast(`تعذر الوصول للسيرفر السحابي (${e.message})`, 'error');
     }
@@ -118,9 +118,12 @@ export default function SettingsScreen() {
   const [savingStore, setSavingStore] = useState(false);
 
   // Labor info state
+  const { laborCharges, loading: laborLoading } = useLaborCharges();
   const [newLabor, setNewLabor] = useState({ name: '', price: '' });
   const [editingLaborId, setEditingLaborId] = useState(null);
   const [editLabor, setEditLabor] = useState({ name: '', price: '' });
+  const [testPhone, setTestPhone] = useState('');
+  const [testingWhatsApp, setTestingWhatsApp] = useState(false);
 
   // Categories management state
   const { products = [] } = useProducts();
@@ -131,8 +134,8 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     if (settings) {
-      const initialCats = (settings.categories && settings.categories.length > 0)
-        ? settings.categories
+      const initialCats = Array.isArray(settings.categories) && settings.categories.length > 0 
+        ? settings.categories 
         : CATEGORIES;
 
       setStoreInfo({
@@ -154,7 +157,7 @@ export default function SettingsScreen() {
         whatsappToken: settings.whatsappToken || 'SafeZone2026',
         whatsappApiUrl: (settings.whatsappApiUrl && !settings.whatsappApiUrl.includes('@') && !settings.whatsappApiUrl.includes('ultramsg') && !settings.whatsappApiUrl.includes('localhost') && !settings.whatsappApiUrl.includes('127.0.0.1'))
           ? settings.whatsappApiUrl
-          : 'https://commander-air-olympus-commission.trycloudflare.com/messages/chat',
+          : 'https://offerings-maybe-dem-representative.trycloudflare.com/messages/chat',
         whatsappInvoiceTemplate: settings.whatsappInvoiceTemplate || DEFAULT_WHATSAPP_TEMPLATES.invoice,
         whatsappDebtReminderTemplate: settings.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder,
       });
@@ -971,7 +974,7 @@ export default function SettingsScreen() {
                       🔄 تحديث الحالة
                     </button>
                     <a
-                      href={localServerState.serverUrl || "https://commander-air-olympus-commission.trycloudflare.com"}
+                      href={localServerState.serverUrl || "https://offerings-maybe-dem-representative.trycloudflare.com"}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold hover:bg-emerald-800 flex items-center gap-1"
@@ -1003,7 +1006,7 @@ export default function SettingsScreen() {
                       🔄 فحص الاتصال
                     </button>
                     <a
-                      href={localServerState.serverUrl || "https://commander-air-olympus-commission.trycloudflare.com"}
+                      href={localServerState.serverUrl || "https://offerings-maybe-dem-representative.trycloudflare.com"}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs bg-amber-600 text-white px-3.5 py-1.5 rounded-lg font-bold hover:bg-amber-700 flex items-center gap-1"

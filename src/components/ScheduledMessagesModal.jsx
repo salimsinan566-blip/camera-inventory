@@ -19,7 +19,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
   const { incomes = [] } = useIncomes();
   const [, setTick] = useState(0);
 
-  const defaultBase = 'https://commander-air-olympus-commission.trycloudflare.com';
+  const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
   const apiUrl = settings?.whatsappApiUrl || `${defaultBase}/messages/chat`;
   let baseUrl = defaultBase;
   if (apiUrl.startsWith('http') && !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1')) {
