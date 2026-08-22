@@ -54,7 +54,7 @@ async function initWhatsApp() {
     logger,
     printQRInTerminal: true,
     auth: state,
-    generateHighQualityLinkPreview: true,
+    generateHighQualityLinkPreview: false,
     browser: ['SafeZone POS', 'Chrome', '1.0.0'],
     syncFullHistory: false,
     getMessage: async (key) => {
