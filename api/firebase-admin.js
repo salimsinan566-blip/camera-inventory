@@ -1,36 +1,100 @@
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { initializeApp as initAdminApp, getApps as getAdminApps, cert } from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { initializeApp as initClientApp, getApps as getClientApps } from 'firebase/app';
+import { 
+  getFirestore as getClientFirestore, 
+  collection as clientCol, 
+  doc as clientDoc, 
+  getDoc as clientGetDoc, 
+  getDocs as clientGetDocs, 
+  updateDoc as clientUpdateDoc 
+} from 'firebase/firestore';
 
 const DEFAULT_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'safe-zone-inv';
 
-if (getApps().length === 0) {
+const firebaseClientConfig = {
+  apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyA8J5GjYyrtf-YrMzi5bHrrWtY5myaevhU',
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'safe-zone-inv.firebaseapp.com',
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'safe-zone-inv',
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'safe-zone-inv.firebasestorage.app',
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '121093072046',
+  appId: process.env.VITE_FIREBASE_APP_ID || '1:121093072046:web:f22510081336eb7341393f',
+};
+
+let _adminDb = null;
+let _clientDb = null;
+
+if (getAdminApps().length === 0) {
   try {
     const rawSa = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_SERVICE_ACCOUNT;
     if (rawSa) {
       const sa = typeof rawSa === 'string' ? JSON.parse(rawSa) : rawSa;
-      initializeApp({
+      initAdminApp({
         credential: cert(sa),
         projectId: sa.project_id || DEFAULT_PROJECT_ID
       });
+      _adminDb = getAdminFirestore();
     }
   } catch (error) {
-    console.warn('Firebase Admin Service Account initialization skipped (local dev):', error.message);
+    console.warn('Firebase Admin init skipped:', error.message);
   }
+} else {
+  try {
+    _adminDb = getAdminFirestore();
+  } catch (e) {}
 }
 
-let _dbInstance = null;
+function getClientDb() {
+  if (!_clientDb) {
+    const app = getClientApps().length > 0 ? getClientApps()[0] : initClientApp(firebaseClientConfig);
+    _clientDb = getClientFirestore(app);
+  }
+  return _clientDb;
+}
 
 export const db = {
-  collection: (name) => {
-    try {
-      if (!_dbInstance) {
-        if (getApps().length === 0) return null;
-        _dbInstance = getFirestore();
-      }
-      return _dbInstance ? _dbInstance.collection(name) : null;
-    } catch (err) {
-      console.warn('Firebase Admin Firestore not available in local dev:', err.message);
-      return null;
+  collection: (colName) => {
+    if (_adminDb) {
+      try {
+        return _adminDb.collection(colName);
+      } catch (e) {}
     }
+
+    // Fallback: Universal Client Firestore Adapter
+    const cDb = getClientDb();
+    const cCollection = clientCol(cDb, colName);
+
+    return {
+      get: async () => {
+        const snap = await clientGetDocs(cCollection);
+        const docs = snap.docs.map(d => ({
+          id: d.id,
+          exists: d.exists(),
+          data: () => d.data()
+        }));
+        return {
+          docs,
+          empty: snap.empty,
+          size: snap.size,
+          forEach: (cb) => docs.forEach(cb)
+        };
+      },
+      doc: (docId) => {
+        const dRef = clientDoc(cDb, colName, docId);
+        return {
+          get: async () => {
+            const dSnap = await clientGetDoc(dRef);
+            return {
+              id: dSnap.id,
+              exists: dSnap.exists(),
+              data: () => (dSnap.exists() ? dSnap.data() : undefined)
+            };
+          },
+          update: async (data) => {
+            return clientUpdateDoc(dRef, data);
+          }
+        };
+      }
+    };
   }
 };
