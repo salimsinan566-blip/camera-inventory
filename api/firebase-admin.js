@@ -44,10 +44,21 @@ if (getAdminApps().length === 0) {
   } catch (e) {}
 }
 
-function getClientDb() {
+import { getAuth, signInAnonymously } from 'firebase/auth';
+
+async function getClientDb() {
   if (!_clientDb) {
     const app = getClientApps().length > 0 ? getClientApps()[0] : initClientApp(firebaseClientConfig);
     _clientDb = getClientFirestore(app);
+  }
+  try {
+    const app = getClientApps()[0];
+    const auth = getAuth(app);
+    if (!auth.currentUser) {
+      await signInAnonymously(auth);
+    }
+  } catch (authErr) {
+    console.warn('Anonymous auth note:', authErr.message);
   }
   return _clientDb;
 }
@@ -60,12 +71,10 @@ export const db = {
       } catch (e) {}
     }
 
-    // Fallback: Universal Client Firestore Adapter
-    const cDb = getClientDb();
-    const cCollection = clientCol(cDb, colName);
-
     return {
       get: async () => {
+        const cDb = await getClientDb();
+        const cCollection = clientCol(cDb, colName);
         const snap = await clientGetDocs(cCollection);
         const docs = snap.docs.map(d => ({
           id: d.id,
@@ -80,9 +89,10 @@ export const db = {
         };
       },
       doc: (docId) => {
-        const dRef = clientDoc(cDb, colName, docId);
         return {
           get: async () => {
+            const cDb = await getClientDb();
+            const dRef = clientDoc(cDb, colName, docId);
             const dSnap = await clientGetDoc(dRef);
             return {
               id: dSnap.id,
@@ -91,6 +101,8 @@ export const db = {
             };
           },
           update: async (data) => {
+            const cDb = await getClientDb();
+            const dRef = clientDoc(cDb, colName, docId);
             return clientUpdateDoc(dRef, data);
           }
         };
