@@ -119,7 +119,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
       const existingServerJob = (jobs || []).find(j => 
         j.status === 'pending' && 
         (j.customerId === cust.id || j.id === `job_debt_${cust.id}` || j.id === `debt_sched_${cust.id}`) &&
-        j.targetTimestamp && j.targetTimestamp > now.getTime()
+        j.targetTimestamp
       );
 
       const targetTimestamp = existingServerJob 
