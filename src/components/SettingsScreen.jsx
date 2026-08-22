@@ -341,6 +341,50 @@ export default function SettingsScreen() {
     }
   };
 
+  const [activatingTelegram, setActivatingTelegram] = useState(false);
+
+  const handleActivateTelegramWebhook = async () => {
+    const token = (storeInfo.telegramBotToken || '').trim();
+    if (!token) {
+      toast('يرجى إدخال توكن البوت أولاً (Bot Token)', 'warning');
+      return;
+    }
+
+    setActivatingTelegram(true);
+    try {
+      const webhookUrl = `${window.location.origin}/api/telegram-webhook`;
+      const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+      const data = await res.json();
+
+      if (!data.ok) {
+        throw new Error(data.description || 'فشل ضبط الويب هوك');
+      }
+
+      // Also set commands
+      await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commands: [
+            { command: 'pos', description: '🛒 فتح نقطة البيع المصغرة (Mini App)' },
+            { command: 'offer', description: '📑 إنشاء وتصدير عرض سعر رسمي' },
+            { command: 'income', description: '💰 تقرير الدخل والصندوق وحساب اليوم' },
+            { command: 'debtors', description: '👥 قائمة ديون العملاء (المدينون)' },
+            { command: 'creditors', description: '🏢 ديون الموردين (الدائنون)' },
+            { command: 'shortages', description: '📊 تقرير النواقص في المخزون' },
+            { command: 'start', description: '🌟 القائمة الرئيسية والمساعدة' }
+          ]
+        })
+      }).catch(() => {});
+
+      toast('تم ربط وتفعيل بوت التليجرام مع هذا السيرفر بنجاح! 🤖🎉 جرب إرسال /start الآن في البوت.', 'success');
+    } catch (err) {
+      toast(`فشل تفعيل البوت: ${err.message}`, 'error');
+    } finally {
+      setActivatingTelegram(false);
+    }
+  };
+
   const handleAddLabor = async (e) => {
     e.preventDefault();
     if (!newLabor.name || !newLabor.price) {
@@ -802,6 +846,20 @@ export default function SettingsScreen() {
                     dir="ltr"
                     placeholder="مثال: -1001234567890"
                   />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={activatingTelegram || !storeInfo.telegramBotToken}
+                    onClick={handleActivateTelegramWebhook}
+                    className="w-full py-2.5 px-4 bg-[#229ED9] hover:bg-[#1E88C7] text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>{activatingTelegram ? 'جارٍ ربط البوت... ⏳' : '🔗 تفعيل وربط البوت مع هذا السيرفر (Set Webhook)'}</span>
+                  </button>
+                  <p className="text-[11px] text-ink-500 mt-1.5 text-center">
+                    اضغط هنا لتوجيه رسائل البوت وأمر <code>/pos</code> و <code>/offer</code> إلى هذا المشروع تلقائياً.
+                  </p>
                 </div>
               </div>
             </div>
