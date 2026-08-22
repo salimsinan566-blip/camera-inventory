@@ -44,6 +44,21 @@ const logger = pino({ level: 'silent' });
 // Cache for sent messages to resolve WhatsApp E2E encryption retry requests
 const sentMessagesStore = new Map();
 
+// Helper: store every sent message so WhatsApp can retry E2E encryption
+function storeOutgoingMessage(result, content) {
+  try {
+    const msgId = result?.key?.id;
+    if (msgId && content) {
+      sentMessagesStore.set(msgId, content);
+      // Auto-cleanup: keep max 500 messages, remove oldest if exceeded
+      if (sentMessagesStore.size > 500) {
+        const firstKey = sentMessagesStore.keys().next().value;
+        sentMessagesStore.delete(firstKey);
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
 async function initWhatsApp() {
   connectionStatus = 'connecting';
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -224,6 +239,7 @@ app.post('/messages/chat', async (req, res) => {
 
   try {
     const result = await sock.sendMessage(jid, { text: String(body) });
+    storeOutgoingMessage(result, { text: String(body) });
     console.log(`📤 [WhatsApp] تم إرسال رسالة بنجاح إلى: +${cleanPhone}`);
     return res.json({
       sent: 'true',
@@ -345,15 +361,13 @@ setInterval(async () => {
         }
 
         if (job.type === 'document' && docBuffer) {
-          await sock.sendMessage(job.jid, {
-            document: docBuffer,
-            mimetype: job.mimetype || 'application/pdf',
-            fileName: job.filename || 'invoice.pdf',
-            caption: job.caption || undefined,
-          });
+          const docContent = { document: docBuffer, mimetype: job.mimetype || 'application/pdf', fileName: job.filename || 'invoice.pdf', caption: job.caption || undefined };
+          const docResult = await sock.sendMessage(job.jid, docContent);
+          storeOutgoingMessage(docResult, docContent);
           console.log(`⏰ [Scheduler] تم إرسال المستند المجدول بنجاح إلى: +${job.cleanPhone} (${job.filename})`);
         } else if (job.type === 'chat' && job.body) {
-          await sock.sendMessage(job.jid, { text: job.body });
+          const chatResult = await sock.sendMessage(job.jid, { text: job.body });
+          storeOutgoingMessage(chatResult, { text: job.body });
           console.log(`⏰ [Scheduler] تم إرسال الرسالة المجدولة بنجاح إلى: +${job.cleanPhone}`);
         }
 
@@ -495,14 +509,12 @@ app.post('/scheduled/:id/send-now', async (req, res) => {
   try {
     if (job.type === 'document' && job.document) {
       const buffer = Buffer.from(job.document, 'base64');
-      await sock.sendMessage(job.jid, {
-        document: buffer,
-        mimetype: job.mimetype || 'application/pdf',
-        fileName: job.filename || 'invoice.pdf',
-        caption: job.caption || '',
-      });
+      const docContent = { document: buffer, mimetype: job.mimetype || 'application/pdf', fileName: job.filename || 'invoice.pdf', caption: job.caption || '' };
+      const docResult = await sock.sendMessage(job.jid, docContent);
+      storeOutgoingMessage(docResult, docContent);
     } else if (job.type === 'chat' && job.body) {
-      await sock.sendMessage(job.jid, { text: job.body });
+      const chatResult = await sock.sendMessage(job.jid, { text: job.body });
+      storeOutgoingMessage(chatResult, { text: job.body });
     }
 
     job.status = 'completed';
@@ -652,7 +664,8 @@ app.post('/reminders/sync', async (req, res) => {
       }
 
       try {
-        await sock.sendMessage(jid, { text: msgBody });
+        const debtResult = await sock.sendMessage(jid, { text: msgBody });
+        storeOutgoingMessage(debtResult, { text: msgBody });
         console.log(`🚀 [AutoDebtReminder] تم إرسال تذكير الديون بنجاح للعميل «${cust.name}» (+${cleanPhone})`);
         dispatchedImmediate.push({ id: cust.id, name: cust.name, phone: cleanPhone });
       } catch (err) {
@@ -830,12 +843,9 @@ app.post('/messages/document', async (req, res) => {
       throw new Error('فشل توليد أو استخراج ملف الـ PDF');
     }
 
-    const result = await sock.sendMessage(jid, {
-      document: buffer,
-      mimetype: mimetype,
-      fileName: filename,
-      caption: caption || undefined,
-    });
+    const docContent = { document: buffer, mimetype: mimetype, fileName: filename, caption: caption || undefined };
+    const result = await sock.sendMessage(jid, docContent);
+    storeOutgoingMessage(result, docContent);
 
     console.log(`📤 [WhatsApp] تم إرسال مستند PDF بنجاح إلى: +${cleanPhone} (${filename})`);
     return res.json({

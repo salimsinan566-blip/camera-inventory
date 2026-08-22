@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../hooks/useSettings';
 import { useCustomers } from '../hooks/useCustomers';
@@ -37,6 +37,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
   const { sales = [] } = useSales();
   const { incomes = [] } = useIncomes();
   const [, setTick] = useState(0);
+  const initialLoadDone = useRef(false);
 
   const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
   const apiUrl = settings?.whatsappApiUrl || `${defaultBase}/messages/chat`;
@@ -58,6 +59,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
       const res = await fetch(`${baseUrl}/scheduled`);
       const data = await res.json();
       setJobs(data.jobs || []);
+      initialLoadDone.current = true;
     } catch (e) {
       console.warn('Failed to fetch scheduled queue:', e);
     } finally {
@@ -66,7 +68,10 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
   }
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      initialLoadDone.current = false;
+      return;
+    }
     fetchQueue();
     const interval = setInterval(fetchQueue, 3000);
     return () => clearInterval(interval);
@@ -149,9 +154,9 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     return reminders;
   }, [customers, sales, incomes, settings, jobs]);
 
-  // Sync scheduled debtors with AWS server when modal is open
+  // Sync scheduled debtors with AWS server when modal is open (ONLY after first queue load)
   useEffect(() => {
-    if (!isOpen || upcomingDebtorReminders.length === 0) return;
+    if (!isOpen || !initialLoadDone.current || upcomingDebtorReminders.length === 0) return;
     const syncCustomers = upcomingDebtorReminders.map(d => ({
       id: d.customerId,
       name: d.customerName,
