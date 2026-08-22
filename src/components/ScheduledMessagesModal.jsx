@@ -8,6 +8,25 @@ import { calculateNextCustomerReminderTimestamp } from '../services/debtReminder
 import { sendWhatsAppMessageViaGateway, renderWhatsAppTemplate, DEFAULT_WHATSAPP_TEMPLATES } from '../services/whatsappService';
 import { updateCustomer } from '../services/customersService';
 
+function normalizeArabic(text) {
+  if (!text) return '';
+  return String(text)
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\u064B-\u065F]/g, '');
+}
+
+function normalizePhoneDigits(phone) {
+  if (!phone) return '';
+  let clean = String(phone).replace(/[^\d]/g, '').trim();
+  if (clean.startsWith('964')) clean = clean.slice(3);
+  if (clean.startsWith('0')) clean = clean.slice(1);
+  return clean;
+}
+
 export default function ScheduledMessagesModal({ isOpen, onClose }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +78,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
 
     const debtMap = {};
     sales.forEach((sale) => {
-      const name = (sale.customerName || '').trim().toLowerCase();
+      const name = normalizeArabic(sale.customerName);
       if (!name) return;
       if (!debtMap[name]) debtMap[name] = { totalDebt: 0, unpaidInvoicesCount: 0 };
       if (sale.invoiceType === 'debt') {
@@ -74,7 +93,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     });
 
     incomes.forEach((inc) => {
-      const name = (inc.customerName || inc.payerName || '').trim().toLowerCase();
+      const name = normalizeArabic(inc.customerName || inc.payerName);
       if (!name) return;
       if (!debtMap[name]) debtMap[name] = { totalDebt: 0, unpaidInvoicesCount: 0 };
       debtMap[name].totalDebt = Math.max(0, debtMap[name].totalDebt - Number(inc.amount || 0));
@@ -86,9 +105,12 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     customers.forEach((cust) => {
       const schedule = cust?.reminderSchedule || 'disabled';
       if (!cust?.phone1?.trim() || schedule === 'disabled') return;
-      const key = (cust.name || '').trim().toLowerCase();
+      const key = normalizeArabic(cust.name);
       const fin = debtMap[key] || { totalDebt: 0, unpaidInvoicesCount: 0 };
-      if (fin.totalDebt <= 0) return;
+      const calculatedDebt = fin.totalDebt > 0 ? fin.totalDebt : Number(cust.totalDebt || 0);
+      
+      // CRITICAL: NEVER include or queue anyone with 0 debt!
+      if (calculatedDebt <= 0) return;
 
       const targetTimestamp = calculateNextCustomerReminderTimestamp(cust, settings, now);
       if (!targetTimestamp) return;
@@ -107,7 +129,7 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
         customerId: cust.id,
         customerName: cust.name,
         cleanPhone,
-        totalDebt: fin.totalDebt,
+        totalDebt: calculatedDebt,
         unpaidInvoicesCount: fin.unpaidInvoicesCount || 1,
         targetTimestamp,
         scheduledAt: new Date(targetTimestamp).toISOString(),
@@ -143,26 +165,49 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     }).then(() => fetchQueue()).catch(() => {});
   }, [isOpen, upcomingDebtorReminders.length]);
 
-  // Combined pending list deduplicated and sorted by time
+  // Combined pending list deduplicated by Customer ID, Normalized Phone, and Normalized Name
   const allPending = useMemo(() => {
     const serverPending = jobs.filter(j => j.status === 'pending');
     const seenCustIds = new Set();
     const seenPhones = new Set();
+    const seenNames = new Set();
     const result = [];
+
+    const isDuplicateOrInvalid = (item) => {
+      const cId = item.customerId || (item.id?.startsWith('job_debt_') ? item.id.replace('job_debt_', '') : null) || (item.id?.startsWith('debt_sched_') ? item.id.replace('debt_sched_', '') : null);
+      const phoneDigits = normalizePhoneDigits(item.cleanPhone || item.phone || item.phone1);
+      const nameNorm = normalizeArabic(item.customerName || item.name);
+      const debtAmt = Number(item.totalDebt ?? (item.customer?.totalDebt || 0));
+
+      // 1. If it's a debt reminder and debt is 0 or negative -> DO NOT SHOW
+      if (item.isDebtReminder && debtAmt <= 0 && item.totalDebt !== undefined) {
+        return true;
+      }
+
+      // 2. If seen by Customer ID, Phone, or Name -> DUPLICATE -> SKIP
+      if (cId && seenCustIds.has(cId)) return true;
+      if (phoneDigits && phoneDigits.length >= 7 && seenPhones.has(phoneDigits)) return true;
+      if (nameNorm && seenNames.has(nameNorm)) return true;
+
+      // Mark as seen
+      if (cId) seenCustIds.add(cId);
+      if (phoneDigits && phoneDigits.length >= 7) seenPhones.add(phoneDigits);
+      if (nameNorm) seenNames.add(nameNorm);
+      return false;
+    };
 
     // 1. Add server pending jobs first
     for (const job of serverPending) {
-      const cId = job.customerId || (job.id?.startsWith('job_debt_') ? job.id.replace('job_debt_', '') : null);
-      if (cId) seenCustIds.add(cId);
-      if (job.cleanPhone) seenPhones.add(job.cleanPhone);
-      result.push(job);
+      if (!isDuplicateOrInvalid(job)) {
+        result.push(job);
+      }
     }
 
-    // 2. Add frontend upcoming debtor reminders only if not already present on server
+    // 2. Add frontend upcoming debtor reminders
     for (const item of upcomingDebtorReminders) {
-      if (item.customerId && seenCustIds.has(item.customerId)) continue;
-      if (item.cleanPhone && seenPhones.has(item.cleanPhone)) continue;
-      result.push(item);
+      if (!isDuplicateOrInvalid(item)) {
+        result.push(item);
+      }
     }
 
     return result.sort((a, b) => (a.targetTimestamp || 0) - (b.targetTimestamp || 0));

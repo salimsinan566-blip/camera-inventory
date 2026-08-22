@@ -661,8 +661,14 @@ app.post('/reminders/sync', async (req, res) => {
     } else {
       // Register or update future scheduled job
       const jobId = `job_debt_${cust.id || cleanPhone}`;
-      // Remove any existing pending job for this customer
-      jobs = jobs.filter(j => j.id !== jobId);
+      // Remove any existing pending job for this customer (by ID, customerId, or phone/jid)
+      jobs = jobs.filter(j => 
+        j.id !== jobId && 
+        j.customerId !== cust.id && 
+        j.id !== `debtor_${cust.id}` && 
+        j.id !== `debt_sched_${cust.id}` &&
+        (!j.isDebtReminder || (j.jid !== jid && j.cleanPhone !== cleanPhone))
+      );
 
       const newJob = {
         id: jobId,
@@ -674,6 +680,7 @@ app.post('/reminders/sync', async (req, res) => {
         customerId: cust.id,
         customerName: cust.name,
         cleanPhone,
+        totalDebt,
         jid,
         body: msgBody,
         scheduledAt: new Date(targetTimestamp).toISOString(),
