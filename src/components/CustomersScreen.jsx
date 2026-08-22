@@ -56,24 +56,16 @@ function getSaleRemainingDebt(s) {
 function isSaleMatchedToCustomer(sale, customer) {
   if (!sale || !customer) return false;
 
-  // 1. Direct ID match
+  // Direct ID match
   if (sale.customerId && customer.id && String(sale.customerId) === String(customer.id)) {
     return true;
   }
 
-  const sName = normalizeArabic(sale.customerName);
-  const cName = normalizeArabic(customer.name);
+  const sName = (sale.customerName || '').trim().toLowerCase();
+  const cName = (customer.name || '').trim().toLowerCase();
 
-  // 2. Exact Normalized Name Match
+  // Exact Name Match (matching CustomerStatementModal exactly)
   if (sName && cName && sName === cName) {
-    return true;
-  }
-
-  // 3. Exact Phone Match
-  const sPhone = cleanPhoneNumber(sale.customerPhone || sale.phone);
-  const cPhone1 = cleanPhoneNumber(customer.phone1);
-  const cPhone2 = cleanPhoneNumber(customer.phone2);
-  if (sPhone && ((cPhone1 && sPhone === cPhone1) || (cPhone2 && sPhone === cPhone2))) {
     return true;
   }
 
@@ -103,11 +95,11 @@ export default function CustomersScreen() {
   // Merge registered customers with any customers discovered in sales & compute accurate financial aggregates (100% matched with Statement)
   const allMergedCustomers = useMemo(() => {
     const list = [...customers];
-    const registeredNames = new Set(customers.map(c => normalizeArabic(c.name)));
+    const registeredNames = new Set(customers.map(c => (c.name || '').trim().toLowerCase()));
 
     (sales || []).forEach((sale) => {
       const name = (sale.customerName || '').trim();
-      const norm = normalizeArabic(name);
+      const norm = name.toLowerCase();
       if (name && !registeredNames.has(norm)) {
         const alreadyMatched = list.some(c => isSaleMatchedToCustomer(sale, c));
         if (!alreadyMatched) {
@@ -131,8 +123,14 @@ export default function CustomersScreen() {
       let invoicesCount = 0;
       let unpaidInvoicesCount = 0;
 
+      const cName = (c.name || '').trim().toLowerCase();
+
       (sales || []).forEach(sale => {
-        if (isSaleMatchedToCustomer(sale, c)) {
+        const sName = (sale.customerName || '').trim().toLowerCase();
+        const matchesId = sale.customerId && c.id && String(sale.customerId) === String(c.id);
+        const nameMatches = sName && cName && sName === cName;
+
+        if (matchesId || nameMatches) {
           const total = Number(sale.total || 0);
           const isDebt = sale.invoiceType === 'debt';
           totalPurchases += total;

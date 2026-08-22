@@ -88,13 +88,11 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
 
       (sales || []).forEach((sale) => {
         const matchesId = sale.customerId && cust.id && String(sale.customerId) === String(cust.id);
-        const sName = normalizeArabic(sale.customerName);
-        const cName = normalizeArabic(cust.name);
+        const sName = (sale.customerName || '').trim().toLowerCase();
+        const cName = (cust.name || '').trim().toLowerCase();
         const nameMatches = sName && cName && sName === cName;
-        const cleanP = p => String(p || '').replace(/[^\d]/g, '').replace(/^00964|^964|^0/, '');
-        const phoneMatches = cleanP(sale.customerPhone) && cleanP(sale.customerPhone) === cleanP(cust.phone1);
 
-        if (matchesId || nameMatches || phoneMatches) {
+        if (matchesId || nameMatches) {
           const isDebt = sale.invoiceType === 'debt';
           if (isDebt && sale.isSettled !== true && sale.paymentStatus !== 'paid') {
             const total = Number(sale.total || 0);
