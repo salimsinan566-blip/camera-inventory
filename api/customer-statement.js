@@ -146,10 +146,10 @@ export default async function handler(req, res) {
       const sNameNorm = normalizeArabic(s.customerName);
       const sPhone = normalizePhone(s.customerPhone || s.phone);
       
+      const matchesId = s.customerId && matchedCustomer.id && String(s.customerId) === String(matchedCustomer.id);
       const isNameMatch = Boolean(sNameNorm && customerNameNorm && sNameNorm === customerNameNorm);
-      const isPhoneMatch = Boolean(rawCustPhone && rawCustPhone.length >= 7 && sPhone && sPhone.length >= 7 && (rawCustPhone.endsWith(sPhone) || sPhone.endsWith(rawCustPhone)));
 
-      if (isNameMatch || isPhoneMatch) {
+      if (matchesId || isNameMatch) {
         const sanitizedItems = (s.items || []).map((item) => ({
           name: item.name || 'مادة',
           sku: item.sku || '',

@@ -17,14 +17,23 @@ export function useSettings() {
 
   useEffect(() => {
     const docRef = doc(db, 'settings', 'store_info');
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setSettings(docSnap.data());
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('useSettings onSnapshot note (e.g. unauthenticated portal):', err?.message);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
 
-    return unsubscribe;
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, []);
 
   return { settings, loading };
