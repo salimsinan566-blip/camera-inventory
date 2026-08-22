@@ -143,11 +143,29 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     }).then(() => fetchQueue()).catch(() => {});
   }, [isOpen, upcomingDebtorReminders.length]);
 
-  // Combined pending list sorted by time
+  // Combined pending list deduplicated and sorted by time
   const allPending = useMemo(() => {
     const serverPending = jobs.filter(j => j.status === 'pending');
-    const combined = [...serverPending, ...upcomingDebtorReminders];
-    return combined.sort((a, b) => (a.targetTimestamp || 0) - (b.targetTimestamp || 0));
+    const seenCustIds = new Set();
+    const seenPhones = new Set();
+    const result = [];
+
+    // 1. Add server pending jobs first
+    for (const job of serverPending) {
+      const cId = job.customerId || (job.id?.startsWith('job_debt_') ? job.id.replace('job_debt_', '') : null);
+      if (cId) seenCustIds.add(cId);
+      if (job.cleanPhone) seenPhones.add(job.cleanPhone);
+      result.push(job);
+    }
+
+    // 2. Add frontend upcoming debtor reminders only if not already present on server
+    for (const item of upcomingDebtorReminders) {
+      if (item.customerId && seenCustIds.has(item.customerId)) continue;
+      if (item.cleanPhone && seenPhones.has(item.cleanPhone)) continue;
+      result.push(item);
+    }
+
+    return result.sort((a, b) => (a.targetTimestamp || 0) - (b.targetTimestamp || 0));
   }, [jobs, upcomingDebtorReminders]);
 
   const completedJobs = useMemo(() => {
@@ -184,9 +202,11 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
           settings
         });
 
-        await updateCustomer(job.customerId, {
-          lastDebtReminderSent: new Date().toISOString()
-        });
+        if (job.customerId) {
+          await updateCustomer(job.customerId, {
+            lastDebtReminderSent: new Date().toISOString()
+          }).catch(() => {});
+        }
 
         toast(`تم إرسال تذكير الديون لـ «${job.customerName}» فوراً بنجاح! 🚀`, 'success');
       } else {
@@ -196,8 +216,8 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         toast('تم إرسال الرسالة للعميل فوراً بنجاح! 🚀', 'success');
-        fetchQueue();
       }
+      fetchQueue();
     } catch (err) {
       toast(`فشل الإرسال الفوري: ${err.message}`, 'error');
     } finally {
@@ -205,24 +225,30 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     }
   }
 
-  // Cancel job
+  // Cancel and completely remove job from server and database
   async function handleCancel(job) {
-    if (job.isDebtReminder) {
-      if (job.customerId) {
-        try {
-          await updateCustomer(job.customerId, { reminderSchedule: 'disabled' });
-          toast(`تم إيقاف تذكير «${job.customerName}» وإزالته من الطابور بنجاح 🔕`, 'info');
-        } catch (e) {
-          toast(`فشل الإلغاء: ${e.message}`, 'error');
-        }
-      }
-      return;
-    }
+    const customerId = job.customerId || 
+      (job.id?.startsWith('job_debt_') ? job.id.replace('job_debt_', '') : null) ||
+      (job.id?.startsWith('debt_sched_') ? job.id.replace('debt_sched_', '') : null) ||
+      (job.id?.startsWith('debtor_') ? job.id.replace('debtor_', '') : null);
+
     try {
-      await fetch(`${baseUrl}/scheduled/${job.id}`, {
-        method: 'DELETE'
-      });
-      toast('تم إلغاء الموعد المجدول بنجاح', 'info');
+      // 1. If it's a debtor, disable the reminder in database
+      if (customerId) {
+        await updateCustomer(customerId, { reminderSchedule: 'disabled' }).catch(() => {});
+      }
+
+      // 2. Delete from server queue
+      await fetch(`${baseUrl}/scheduled/${job.id}`, { method: 'DELETE' }).catch(() => {});
+      if (customerId) {
+        await fetch(`${baseUrl}/scheduled/${customerId}`, { method: 'DELETE' }).catch(() => {});
+        await fetch(`${baseUrl}/scheduled/job_debt_${customerId}`, { method: 'DELETE' }).catch(() => {});
+      }
+
+      // 3. Immediately remove from local state
+      setJobs(prev => prev.filter(j => j.id !== job.id && j.customerId !== customerId));
+
+      toast(`تم إلغاء الموعد وإزالته نهائياً من الطابور والسيرفر 🔕`, 'info');
       fetchQueue();
     } catch (err) {
       toast(`فشل الإلغاء: ${err.message}`, 'error');
@@ -232,18 +258,28 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
   // Clear all pending jobs from server and disable all pending debtor reminders
   async function handleClearAllQueue() {
     try {
-      const serverJobs = jobs.filter(j => j.status === 'pending');
-      for (const j of serverJobs) {
-        await fetch(`${baseUrl}/scheduled/${j.id}`, { method: 'DELETE' }).catch(() => {});
-      }
-      const debtorPromises = upcomingDebtorReminders.map(d => {
-        if (d.customerId) {
-          return updateCustomer(d.customerId, { reminderSchedule: 'disabled' });
-        }
-        return Promise.resolve();
+      // 1. Tell server to clear everything
+      await fetch(`${baseUrl}/scheduled/clear-all`, { method: 'POST' }).catch(() => {});
+      await fetch(`${baseUrl}/scheduled/clear-all`, { method: 'GET' }).catch(() => {});
+
+      // 2. Collect all customer IDs and disable them
+      const debtorCustIds = new Set();
+      jobs.forEach(j => {
+        const cId = j.customerId || (j.id?.startsWith('job_debt_') ? j.id.replace('job_debt_', '') : null);
+        if (cId) debtorCustIds.add(cId);
       });
-      await Promise.all(debtorPromises);
-      toast('تم إفراغ وإلغاء جميع المواعيد من الطابور بالكامل بنجاح 🗑️', 'success');
+      upcomingDebtorReminders.forEach(d => {
+        if (d.customerId) debtorCustIds.add(d.customerId);
+      });
+
+      const promises = Array.from(debtorCustIds).map(cId => 
+        updateCustomer(cId, { reminderSchedule: 'disabled' }).catch(() => {})
+      );
+      await Promise.all(promises);
+
+      // 3. Clear local UI state
+      setJobs([]);
+      toast('تم إفراغ وإلغاء جميع المواعيد من الطابور والسيرفر بالكامل 🗑️', 'success');
       fetchQueue();
     } catch (err) {
       toast(`فشل إفراغ الطابور: ${err.message}`, 'error');

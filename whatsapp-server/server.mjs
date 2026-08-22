@@ -469,9 +469,16 @@ app.all('/scheduled/clear-all', (req, res) => {
 app.delete('/scheduled/:id', (req, res) => {
   const { id } = req.params;
   const jobs = loadScheduledJobs();
-  const nextJobs = jobs.filter(j => j.id !== id);
+  const nextJobs = jobs.filter(j => 
+    j.id !== id && 
+    j.customerId !== id && 
+    j.id !== `job_debt_${id}` && 
+    j.id !== `debtor_${id}` &&
+    j.id !== `debt_sched_${id}`
+  );
   saveScheduledJobs(nextJobs);
-  res.json({ message: 'تم إلغاء الرسالة المجدولة بنجاح' });
+  console.log(`🗑️ [Scheduler] تم حذف وإلغاء المهمة (${id}) من طابور السيرفر بنجاح`);
+  res.json({ success: true, message: 'تم إلغاء الرسالة المجدولة بنجاح' });
 });
 
 // Force immediate dispatch of scheduled job
@@ -589,6 +596,21 @@ app.post('/reminders/sync', async (req, res) => {
 
   const now = new Date();
   let jobs = loadScheduledJobs();
+
+  // 1. Purge disabled or settled debtors from server queue
+  const activeCustomerIds = new Set(
+    customers
+      .filter(c => c && (c.phone1 || c.phone) && c.reminderSchedule !== 'disabled' && Number(c.totalDebt || 0) > 0)
+      .map(c => String(c.id))
+  );
+
+  jobs = jobs.filter(j => {
+    if (!j.isDebtReminder) return true;
+    const cId = String(j.customerId || (j.id?.startsWith('job_debt_') ? j.id.replace('job_debt_', '') : '') || (j.id?.startsWith('debtor_') ? j.id.replace('debtor_', '') : ''));
+    if (!cId) return true;
+    return activeCustomerIds.has(cId);
+  });
+
   const dispatchedImmediate = [];
   const registeredScheduled = [];
 
