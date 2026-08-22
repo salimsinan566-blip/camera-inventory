@@ -2,13 +2,30 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // إتاحة قراءة إعدادات ومعلومات المتجر العامة (الاسم والشعار) للجميع لعرضها في بوابة العملاء وإيصالات الفواتير
-    match /settings/store_info {
+    // إتاحة قراءة إعدادات ومعلومات المتجر العامة للجميع
+    match /settings/{document=**} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // جميع المجموعات والبيانات الأخرى تتطلب تسجيل الدخول
+    // إتاحة قراءة المنتجات للـ POS وعروض الأسعار والكتالوج
+    match /products/{product=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // عروض الأسعار
+    match /offers/{offer=**} {
+      allow read, write: if true;
+    }
+
+    // دليل العملاء
+    match /customers/{customer=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // جميع المجموعات والعمليات الحساسة الأخرى تتطلب تسجيل الدخول
     match /{document=**} {
       allow read, write: if request.auth != null;
     }

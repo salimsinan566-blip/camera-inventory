@@ -1,28 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { useProducts } from '../hooks/useProducts';
 import { useCustomers } from '../hooks/useCustomers';
 import { useSettings } from '../hooks/useSettings';
 import { useUI } from '../contexts/UIContext';
 import { checkoutSale } from '../services/salesService';
 import { createOffer } from '../services/offersService';
+import { login, logout } from '../firebase/auth';
 import InvoiceReceipt from './InvoiceReceipt';
-import { signInAnonymously, signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase/auth';
 
 export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
-  const { products = [], loading: productsLoading } = useProducts();
+  const { user, loading: authLoading } = useAuth();
+  const { products = [], loading: productsLoading, error: productsError } = useProducts();
   const { customers = [] } = useCustomers();
   const { settings = {} } = useSettings();
   const { toast } = useUI();
 
-  // Seller / Cashier State
-  const [cashierName, setCashierName] = useState(() => {
-    return localStorage.getItem('sz_telegram_cashier_name') || '';
-  });
-  const [cashierPin, setCashierPin] = useState('');
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return Boolean(localStorage.getItem('sz_telegram_cashier_name'));
-  });
+  // Login Form States (If not logged in)
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   // Mode: 'pos' (بيع حقيقي) or 'offer' (عرض سعر)
   const [activeTab, setActiveTab] = useState('pos'); // 'pos' | 'offer'
@@ -52,14 +50,8 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const [telegramUser, setTelegramUser] = useState(null);
   const [chatId, setChatId] = useState(null);
 
-  // Auto-init Telegram WebApp & silent Firebase session
+  // Read Telegram WebApp context
   useEffect(() => {
-    try {
-      if (auth && !auth.currentUser) {
-        signInAnonymously(auth).catch(() => {});
-      }
-    } catch (e) {}
-
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
@@ -67,16 +59,10 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       try {
         tg.enableClosingConfirmation();
       } catch (e) {}
-      const user = tg.initDataUnsafe?.user;
-      if (user) {
-        setTelegramUser(user);
-        setChatId(user.id);
-        if (!cashierName) {
-          const autoName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'موظف مبيعات';
-          setCashierName(autoName);
-          setIsLoggedIn(true);
-          localStorage.setItem('sz_telegram_cashier_name', autoName);
-        }
+      const tgU = tg.initDataUnsafe?.user;
+      if (tgU) {
+        setTelegramUser(tgU);
+        setChatId(tgU.id);
       }
     }
 
@@ -85,23 +71,37 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     if (params.get('chat_id')) setChatId(params.get('chat_id'));
   }, []);
 
-  // Handle Cashier Login
-  const handleLogin = (e) => {
-    if (e) e.preventDefault();
-    if (!cashierName.trim()) {
-      toast('يرجى كتابة اسم البائع / الموظف للمتابعة', 'warning');
-      return;
+  // Handle Firebase Login
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      await login(email.trim(), password);
+      toast('تم تسجيل الدخول بنجاح! 🚀', 'success');
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError(err.message || 'بيانات الدخول غير صحيحة');
+      toast('فشل تسجيل الدخول: تأكد من البريد وكلمة المرور', 'error');
+    } finally {
+      setLoginLoading(false);
     }
-    localStorage.setItem('sz_telegram_cashier_name', cashierName.trim());
-    setIsLoggedIn(true);
-    toast(`مرحباً بك يا ${cashierName.trim()} 👤`, 'success');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('sz_telegram_cashier_name');
-    setIsLoggedIn(false);
-    setCashierName('');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast('تم تسجيل الخروج', 'info');
+    } catch (e) {}
   };
+
+  // Seller Name
+  const sellerName = useMemo(() => {
+    if (user?.displayName) return user.displayName;
+    if (user?.email) return user.email.split('@')[0];
+    if (telegramUser?.first_name) return `${telegramUser.first_name} ${telegramUser.last_name || ''}`.trim();
+    return 'البائع / الكاشير';
+  }, [user, telegramUser]);
 
   // Sync customer phone if selected from list
   const handleSelectCustomer = (cId) => {
@@ -127,13 +127,8 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     return ['all', ...Array.from(set)];
   }, [products]);
 
-  // Determine if search or filters are active
-  const isSearchActive = searchTerm.trim().length > 0 || selectedCategory !== 'all' || stockFilter !== 'all';
-
-  // Filtered and Sorted Products
+  // Filtered and Sorted Products (Always returns matching products)
   const filteredProducts = useMemo(() => {
-    if (!isSearchActive) return [];
-
     let list = [...products];
 
     // 1. Category Filter
@@ -164,15 +159,15 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
     // 4. Sorting
     if (sortBy === 'price_asc') {
-      list.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+      list.sort((a, b) => Number(a.price || a.sellingPrice || 0) - Number(b.price || b.sellingPrice || 0));
     } else if (sortBy === 'price_desc') {
-      list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+      list.sort((a, b) => Number(b.price || b.sellingPrice || 0) - Number(a.price || a.sellingPrice || 0));
     } else if (sortBy === 'name') {
       list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
     }
 
     return list;
-  }, [products, selectedCategory, stockFilter, searchTerm, sortBy, isSearchActive]);
+  }, [products, selectedCategory, stockFilter, searchTerm, sortBy]);
 
   // Cart operations
   const addToCart = (product) => {
@@ -264,7 +259,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
     setSubmitting(true);
     try {
-      const activeSeller = cashierName.trim() || (telegramUser ? `@${telegramUser.username || telegramUser.first_name}` : 'بائع تيليجرام');
+      const activeSeller = user?.email || sellerName;
 
       if (activeTab === 'offer') {
         // إنشاء عرض سعر
@@ -383,8 +378,17 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     }
   };
 
-  // 1. CASHIER LOGIN SCREEN (If not logged in)
-  if (!isLoggedIn) {
+  // 1. LOADING AUTH
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-xs text-slate-500 font-bold" dir="rtl">
+        جارٍ التحقق من جلسة الدخول...
+      </div>
+    );
+  }
+
+  // 2. CASHIER LOGIN SCREEN (If not logged in to Firebase)
+  if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4" dir="rtl">
         <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-sm shadow-xl text-center space-y-5">
@@ -398,33 +402,56 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
           <div>
             <h2 className="text-lg font-black text-slate-900">
-              {settings?.storeName || 'Safe Zone'} — نقطة البيع
+              {settings?.storeName || 'Safe Zone'} — تسجيل الدخول
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              يرجى تحديد اسم البائع / الكاشير لبدء العمليات
+              يرجى تسجيل الدخول بحساب الموظف للوصول إلى المنتجات ونقطة البيع
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-3.5 text-right">
+          {loginError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-bold text-right">
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-3 text-right">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                اسم البائع / الموظف:
+                البريد الإلكتروني:
               </label>
               <input
-                type="text"
+                type="email"
                 required
-                value={cashierName}
-                onChange={(e) => setCashierName(e.target.value)}
-                placeholder="مثال: أحمد علي / البائع 1"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seller@safezone.com"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all text-left font-mono"
+                dir="ltr"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                كلمة المرور:
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all text-left font-mono"
+                dir="ltr"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2"
+              disabled={loginLoading}
+              className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 mt-2"
             >
-              <span>دخول وبدء البيع</span>
+              <span>{loginLoading ? 'جارٍ التحقق...' : 'تسجيل الدخول وبدء العمل'}</span>
               <span>⬅️</span>
             </button>
           </form>
@@ -433,13 +460,13 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     );
   }
 
-  // 2. MAIN APP SCREEN (Clean Safe Zone Light Theme)
+  // 3. MAIN POS & QUOTATION SCREEN (Products are always visible & filterable)
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-28" dir="rtl">
-      {/* Top Navigation Bar */}
+      {/* Top Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 shadow-xs">
         <div className="flex items-center justify-between gap-3">
-          {/* Brand & Cashier Tag */}
+          {/* Logo & Cashier Info */}
           <div className="flex items-center gap-2.5">
             {settings?.logoUrl ? (
               <img src={settings.logoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-contain bg-slate-50 p-0.5 border border-slate-200" />
@@ -453,21 +480,21 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 {settings?.storeName || 'Safe Zone'}
               </h1>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1 truncate max-w-[120px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  {cashierName}
+                  {sellerName}
                 </span>
                 <button
                   onClick={handleLogout}
                   className="text-[10px] text-slate-400 hover:text-rose-500 underline mr-1"
                 >
-                  (تبديل)
+                  (خروج)
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Mode Switch Tabs (POS vs Offer) */}
+          {/* Mode Switcher */}
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               onClick={() => setActiveTab('pos')}
@@ -494,7 +521,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
           </div>
         </div>
 
-        {/* Search & Advanced Filters Bar */}
+        {/* Search & Filter Controls */}
         <div className="mt-3 space-y-2.5">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -547,47 +574,23 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Product List / Grid */}
       <main className="p-3.5 max-w-2xl mx-auto">
         {productsLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-xs">
             <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p>جارٍ تحميل بيانات المنتجات والمخزون...</p>
+            <p>جارٍ تحميل قائمة المنتجات...</p>
           </div>
-        ) : !isSearchActive ? (
-          /* INITIAL CLEAN STATE (When no search or category selected) */
-          <div className="text-center py-16 px-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-4">
-            <div className="w-16 h-16 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center text-3xl mx-auto border border-brand-100">
-              🔍
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                ابحث عن منتج أو اختر قسماً للبدء
-              </h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                اكتب اسم المادة، أو الباركود، أو اختر أحد الأقسام أعلاه لعرض وتحديد المواد المطلوبة للفاتورة.
-              </p>
-            </div>
-
-            {/* Quick Category Buttons */}
-            <div className="flex flex-wrap justify-center gap-2 pt-2">
-              {categories.filter(c => c !== 'all').slice(0, 6).map(c => (
-                <button
-                  key={c}
-                  onClick={() => setSelectedCategory(c)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-slate-700 text-xs font-bold transition-all border border-slate-200"
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+        ) : productsError ? (
+          <div className="text-center py-16 px-6 bg-white rounded-3xl border border-rose-200 text-rose-600 shadow-xs space-y-2">
+            <p className="font-bold text-sm">حدث خطأ أثناء جلب المنتجات</p>
+            <p className="text-xs text-slate-500">{productsError}</p>
           </div>
         ) : filteredProducts.length === 0 ? (
-          /* NO RESULTS FOUND */
           <div className="text-center py-16 px-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-3">
             <div className="text-4xl">❌</div>
             <h3 className="text-sm font-bold text-slate-900">لم يتم العثور على أي منتجات مطابقة</h3>
-            <p className="text-xs text-slate-500">جرب تعديل كلمات البحث أو الفلاتر المحددة</p>
+            <p className="text-xs text-slate-500">جرب تعديل كلمات البحث أو تصفية الأقسام</p>
             <button
               onClick={() => {
                 setSearchTerm('');
@@ -600,7 +603,6 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             </button>
           </div>
         ) : (
-          /* PRODUCTS GRID */
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {filteredProducts.map(p => {
               const inCart = cart.find(x => x.productId === p.id);
@@ -616,7 +618,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                     inCart ? 'border-brand-500 ring-2 ring-brand-500/20' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  {/* Top Bar (SKU & Stock) */}
+                  {/* Top SKU & Stock Badge */}
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] text-slate-400 font-mono truncate max-w-[80px]">
                       {p.sku || ''}
@@ -632,7 +634,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                     </span>
                   </div>
 
-                  {/* Product Thumbnail */}
+                  {/* Thumbnail */}
                   <div className="h-24 w-full bg-slate-50 rounded-xl mb-2.5 flex items-center justify-center overflow-hidden border border-slate-100">
                     {p.imageUrl || p.image ? (
                       <img src={p.imageUrl || p.image} alt={p.name} className="h-full w-full object-contain p-1.5" />
@@ -658,7 +660,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                     </div>
                   </div>
 
-                  {/* Add to Cart / Stepper */}
+                  {/* Add / Stepper */}
                   {inCart ? (
                     <div className="flex items-center justify-between bg-slate-50 border border-brand-300 rounded-xl p-1">
                       <button
@@ -750,7 +752,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         </div>
       )}
 
-      {/* Advanced Filters Modal */}
+      {/* Filters Modal */}
       {showFiltersModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
@@ -759,7 +761,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               <button onClick={() => setShowFiltersModal(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
             </div>
 
-            {/* Stock Availability */}
+            {/* Stock Filter */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">حالة التوفر بالمخزن:</label>
               <div className="grid grid-cols-3 gap-1.5 text-xs font-bold">
@@ -784,7 +786,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               </div>
             </div>
 
-            {/* Sorting */}
+            {/* Sort Filter */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">ترتيب النتائج:</label>
               <select
@@ -821,7 +823,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         </div>
       )}
 
-      {/* Cart & Checkout Drawer Modal */}
+      {/* Cart & Checkout Drawer */}
       {isCartOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end">
           <div className="bg-white border-t border-slate-200 rounded-t-3xl max-h-[90vh] flex flex-col w-full max-w-lg mx-auto shadow-2xl animate-in slide-in-from-bottom duration-200">
@@ -894,7 +896,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 ))}
               </div>
 
-              {/* Customer Selection */}
+              {/* Customer Info */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
                 <label className="text-xs font-bold text-slate-700 block">
                   👤 معلومات العميل:
@@ -933,7 +935,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 </div>
               </div>
 
-              {/* Mode-Specific Settings */}
+              {/* Mode Specific Settings */}
               {activeTab === 'offer' ? (
                 <div className="bg-amber-50/60 p-3.5 rounded-2xl border border-amber-200 space-y-3">
                   <label className="text-xs font-bold text-amber-900 block">
@@ -1027,7 +1029,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 </div>
               </div>
 
-              {/* Totals Summary */}
+              {/* Totals Breakdown */}
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs space-y-1.5">
                 <div className="flex justify-between text-slate-600">
                   <span>المجموع الفرعي:</span>
@@ -1052,7 +1054,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               </div>
             </div>
 
-            {/* Footer Submit Buttons */}
+            {/* Footer Submit */}
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-2">
               <button
                 type="button"
@@ -1092,7 +1094,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         </div>
       )}
 
-      {/* Success Receipt Modal */}
+      {/* Success Modal */}
       {completedDoc && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
@@ -1111,7 +1113,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 المبلغ: <strong>{Number(completedDoc.total || 0).toLocaleString()} د.ع</strong>
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                البائع: <strong>{completedDoc.cashierEmail || cashierName}</strong>
+                البائع: <strong>{completedDoc.cashierEmail || sellerName}</strong>
               </p>
             </div>
 
