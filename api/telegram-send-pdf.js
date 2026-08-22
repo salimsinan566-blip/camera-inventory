@@ -72,7 +72,13 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
     color: rgb(1, 1, 1),
   });
 
-  page.drawText(`Type: ${isOffer ? 'QUOTATION / OFFER' : (docObj.invoiceType === 'debt' ? 'DEBT / CREDIT' : 'CASH')}`, {
+  const paymentTypeLabel = isOffer 
+    ? 'QUOTATION / OFFER' 
+    : (docObj.invoiceType === 'debt' 
+        ? 'DEBT / CREDIT' 
+        : (docObj.invoiceType === 'card' ? 'MASTERCARD / CARD' : 'CASH'));
+
+  page.drawText(`Type: ${paymentTypeLabel}`, {
     x: width - 200,
     y: height - 80,
     size: 10,
@@ -261,9 +267,13 @@ export default async function handler(req, res) {
     formData.append('chat_id', String(targetChatId));
     formData.append('document', blob, filename);
 
+    const paymentArabic = docObj.invoiceType === 'debt' 
+      ? 'آجل / دين 🔴' 
+      : (docObj.invoiceType === 'card' ? 'ماستر كارد / دفع إلكتروني 💳' : 'نقداً 💵');
+
     const caption = docObj ? (isOffer 
       ? `📑 <b>عرض سعر رسمي #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>`
-      : `🧾 <b>فاتورة بيع رسمية #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>\n💳 الدفع: <b>${docObj.invoiceType === 'debt' ? 'آجل / دين 🔴' : 'نقداً 💵'}</b>`
+      : `🧾 <b>فاتورة بيع رسمية #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>\n💳 طريقة الدفع: <b>${paymentArabic}</b>`
     ) : `📄 مستند رسمي من Safe Zone`;
 
     formData.append('caption', caption);

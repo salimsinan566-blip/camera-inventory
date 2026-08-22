@@ -449,6 +449,40 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     }
   };
 
+  // Send PDF Before Confirmation (Draft / Quote)
+  const handleSendDraftPdfToTelegram = async () => {
+    if (cart.length === 0) {
+      toast('يرجى إضافة منتجات إلى السلة أولاً', 'warning');
+      return;
+    }
+
+    const activeSeller = user?.email || sellerName;
+    const finalPaid = paymentType === 'debt' 
+      ? (paidAmount !== '' ? Number(paidAmount) : 0)
+      : cartTotal;
+
+    const draftDoc = {
+      isOffer: activeTab === 'offer',
+      invoiceNumber: activeTab === 'offer' ? `عرض-سعر-${Math.floor(1000 + Math.random() * 9000)}` : `مسودة-${Math.floor(1000 + Math.random() * 9000)}`,
+      offerNumber: activeTab === 'offer' ? `عرض-سعر-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
+      customerName: customerName.trim() || 'زبون عام',
+      customerPhone: customerPhone.trim(),
+      items: cart,
+      subtotal: cartSubtotal,
+      discount: totalDiscount,
+      taxRate: Number(taxRate) || 0,
+      total: cartTotal,
+      paidAmount: finalPaid,
+      invoiceType: paymentType,
+      offerName: offerTitle.trim(),
+      notes: offerNotes.trim(),
+      cashierEmail: activeSeller,
+      createdAt: new Date().toISOString()
+    };
+
+    await handleSendToTelegram(draftDoc);
+  };
+
   // 1. LOADING AUTH
   if (authLoading) {
     return (
@@ -1047,25 +1081,36 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   <label className="text-xs font-bold text-slate-700 block">
                     💳 طريقة الدفع:
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
                       onClick={() => setPaymentType('cash')}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                      className={`py-2 rounded-xl text-xs font-bold transition-all border text-center ${
                         paymentType === 'cash'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs'
-                          : 'bg-white text-slate-600 border-slate-200'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs ring-1 ring-emerald-300'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      💵 نقداً (مسددة بالكامل)
+                      💵 نقداً
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType('card')}
+                      className={`py-2 rounded-xl text-xs font-bold transition-all border text-center ${
+                        paymentType === 'card'
+                          ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-xs ring-1 ring-blue-300'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      💳 ماستر كارد
                     </button>
                     <button
                       type="button"
                       onClick={() => setPaymentType('debt')}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                      className={`py-2 rounded-xl text-xs font-bold transition-all border text-center ${
                         paymentType === 'debt'
-                          ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-xs'
-                          : 'bg-white text-slate-600 border-slate-200'
+                          ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-xs ring-1 ring-rose-300'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
                       🔴 آجل / دين
@@ -1073,7 +1118,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   </div>
 
                   {paymentType === 'debt' && (
-                    <div>
+                    <div className="pt-1">
                       <label className="text-[11px] text-slate-500 block mb-1">
                         المبلغ الواصل الآن كاش (د.ع):
                       </label>
@@ -1140,41 +1185,54 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               </div>
             </div>
 
-            {/* Footer Submit */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-2">
+            {/* Footer Submit & Direct PDF Actions */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 space-y-2">
+              {/* Direct PDF send BEFORE confirmation */}
               <button
                 type="button"
-                onClick={() => setIsCartOpen(false)}
-                className="w-1/3 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold shadow-xs"
+                disabled={sendingTelegram || cart.length === 0}
+                onClick={handleSendDraftPdfToTelegram}
+                className="w-full py-3 rounded-xl bg-[#229ED9] hover:bg-[#1E88C7] text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
               >
-                رجوع
+                <span>{sendingTelegram ? '⏳' : '✈️'}</span>
+                <span>{sendingTelegram ? 'جارٍ إرسال الـ PDF لمحادثتك بالتليجرام... ⏳' : 'إرسال ملف PDF للمحادثة الآن (قبل تأكيد العملية) ✈️'}</span>
               </button>
-              <button
-                type="button"
-                disabled={submitting || cart.length === 0}
-                onClick={handleSubmit}
-                className={`w-2/3 py-3 rounded-xl font-black text-xs text-white shadow-sm transition-all flex items-center justify-center gap-2 ${
-                  submitting
-                    ? 'bg-slate-400 cursor-wait'
-                    : activeTab === 'offer'
-                    ? 'bg-amber-600 hover:bg-amber-700'
-                    : 'bg-brand-600 hover:bg-brand-700'
-                }`}
-              >
-                {submitting ? (
-                  <span>جارٍ الحفظ والمعالجة... ⏳</span>
-                ) : activeTab === 'offer' ? (
-                  <>
-                    <span>📑</span>
-                    <span>إنشاء وحفظ عرض السعر</span>
-                  </>
-                ) : (
-                  <>
-                    <span>✅</span>
-                    <span>تأكيد الفاتورة وإصدارها</span>
-                  </>
-                )}
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCartOpen(false)}
+                  className="w-1/3 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold shadow-xs"
+                >
+                  رجوع
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting || cart.length === 0}
+                  onClick={handleSubmit}
+                  className={`w-2/3 py-3 rounded-xl font-black text-xs text-white shadow-sm transition-all flex items-center justify-center gap-2 ${
+                    submitting
+                      ? 'bg-slate-400 cursor-wait'
+                      : activeTab === 'offer'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-brand-600 hover:bg-brand-700'
+                  }`}
+                >
+                  {submitting ? (
+                    <span>جارٍ الحفظ والمعالجة... ⏳</span>
+                  ) : activeTab === 'offer' ? (
+                    <>
+                      <span>📑</span>
+                      <span>تأكيد وحفظ عرض السعر</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✅</span>
+                      <span>تأكيد الفاتورة وخصم المخزن</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
