@@ -290,6 +290,9 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
     saveCustomerSession(result, remember);
     return result;
   } catch (err) {
+    if (err.message?.includes('permission') || err.message?.includes('Missing or insufficient permissions')) {
+      throw new Error('يرجى تفعيل (Anonymous Auth) أو نشر قواعد Firestore في لوحة تحكم Firebase للسماح للعملاء بعرض كشف الحساب من هواتفهم.');
+    }
     throw new Error(err.message || 'فشل الاتصال والتحقق من الحساب');
   }
 }
