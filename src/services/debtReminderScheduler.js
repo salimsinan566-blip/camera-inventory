@@ -267,35 +267,6 @@ export async function processAutomatedDebtReminders({
 }) {
   if (settings?.whatsappAutoReminders === false) return [];
 
-  // Compute live debt per customer
-  const debtMap = {};
-  sales.forEach((sale) => {
-    const name = (sale.customerName || '').trim();
-    if (!name) return;
-    const key = normalizeArabic(name);
-    if (!debtMap[key]) debtMap[key] = { totalDebt: 0, unpaidInvoicesCount: 0 };
-
-    if (sale.invoiceType === 'debt') {
-      const total = Number(sale.total || 0);
-      const paid = Number(sale.paidAmount || 0);
-      const remaining = sale.remainingDebt !== undefined 
-        ? Math.min(Number(sale.remainingDebt), Math.max(0, total - paid)) 
-        : Math.max(0, total - paid);
-      debtMap[key].totalDebt += remaining;
-      if (remaining > 0 && !sale.isSettled) {
-        debtMap[key].unpaidInvoicesCount += 1;
-      }
-    }
-  });
-
-  incomes.forEach((inc) => {
-    const name = (inc.customerName || inc.payerName || '').trim();
-    if (!name) return;
-    const key = normalizeArabic(name);
-    if (!debtMap[key]) debtMap[key] = { totalDebt: 0, unpaidInvoicesCount: 0 };
-    debtMap[key].totalDebt = Math.max(0, debtMap[key].totalDebt - Number(inc.amount || 0));
-  });
-
   const now = new Date();
   const dispatched = [];
 
@@ -304,10 +275,42 @@ export async function processAutomatedDebtReminders({
 
   for (const cust of customers) {
     if (!cust.id || cust.isDiscovered) continue;
-    const key = normalizeArabic(cust.name);
-    const fin = debtMap[key] || { totalDebt: 0, unpaidInvoicesCount: 0 };
 
-    if (fin.totalDebt > 0 && cust.phone1) {
+    let totalDebt = 0;
+    let unpaidInvoicesCount = 0;
+
+    (sales || []).forEach((sale) => {
+      const matchesId = sale.customerId && cust.id && String(sale.customerId) === String(cust.id);
+      const sName = normalizeArabic(sale.customerName);
+      const cName = normalizeArabic(cust.name);
+      const nameMatches = sName && cName && (sName === cName || (Math.min(sName.length, cName.length) >= 3 && (sName.includes(cName) || cName.includes(sName))));
+      const cleanP = p => String(p || '').replace(/[^\d]/g, '').replace(/^00964|^964|^0/, '');
+      const phoneMatches = cleanP(sale.customerPhone) && cleanP(sale.customerPhone) === cleanP(cust.phone1);
+
+      if (matchesId || nameMatches || phoneMatches) {
+        const total = Number(sale.total || 0);
+        const paid = Number(sale.paidAmount || 0);
+        let rem = 0;
+        if (sale.isSettled !== true && sale.paymentStatus !== 'paid') {
+          if (sale.remainingDebt !== undefined && !isNaN(Number(sale.remainingDebt))) {
+            rem = Math.max(0, Number(sale.remainingDebt));
+          } else if (sale.invoiceType === 'debt' || (sale.paidAmount !== undefined && paid < total)) {
+            rem = Math.max(0, total - paid);
+          }
+        }
+        if (rem > 0) {
+          totalDebt += rem;
+          unpaidInvoicesCount += 1;
+        }
+      }
+    });
+
+    if (totalDebt === 0 && Number(cust.totalDebt || cust.openingDebt || 0) > 0) {
+      totalDebt = Number(cust.totalDebt || cust.openingDebt);
+      unpaidInvoicesCount = Math.max(1, unpaidInvoicesCount);
+    }
+
+    if (totalDebt > 0 && cust.phone1) {
       const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
       const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}`;
       const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;

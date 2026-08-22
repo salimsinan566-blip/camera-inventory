@@ -76,38 +76,46 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
   const upcomingDebtorReminders = useMemo(() => {
     if (settings?.whatsappAutoReminders === false) return [];
 
-    const debtMap = {};
-    sales.forEach((sale) => {
-      const name = normalizeArabic(sale.customerName);
-      if (!name) return;
-      if (!debtMap[name]) debtMap[name] = { totalDebt: 0, unpaidInvoicesCount: 0 };
-      if (sale.invoiceType === 'debt') {
-        const total = Number(sale.total || 0);
-        const paid = Number(sale.paidAmount || 0);
-        const remaining = sale.remainingDebt !== undefined 
-          ? Math.min(Number(sale.remainingDebt), Math.max(0, total - paid)) 
-          : Math.max(0, total - paid);
-        debtMap[name].totalDebt += remaining;
-        if (remaining > 0 && !sale.isSettled) debtMap[name].unpaidInvoicesCount += 1;
-      }
-    });
-
-    incomes.forEach((inc) => {
-      const name = normalizeArabic(inc.customerName || inc.payerName);
-      if (!name) return;
-      if (!debtMap[name]) debtMap[name] = { totalDebt: 0, unpaidInvoicesCount: 0 };
-      debtMap[name].totalDebt = Math.max(0, debtMap[name].totalDebt - Number(inc.amount || 0));
-    });
-
     const now = new Date();
     const reminders = [];
 
     customers.forEach((cust) => {
       const schedule = cust?.reminderSchedule || 'disabled';
       if (!cust?.phone1?.trim() || schedule === 'disabled') return;
-      const key = normalizeArabic(cust.name);
-      const fin = debtMap[key] || { totalDebt: 0, unpaidInvoicesCount: 0 };
-      const calculatedDebt = fin.totalDebt > 0 ? fin.totalDebt : Number(cust.totalDebt || 0);
+
+      let calculatedDebt = 0;
+      let unpaidInvoicesCount = 0;
+
+      (sales || []).forEach((sale) => {
+        const matchesId = sale.customerId && cust.id && String(sale.customerId) === String(cust.id);
+        const sName = normalizeArabic(sale.customerName);
+        const cName = normalizeArabic(cust.name);
+        const nameMatches = sName && cName && (sName === cName || (Math.min(sName.length, cName.length) >= 3 && (sName.includes(cName) || cName.includes(sName))));
+        const cleanP = p => String(p || '').replace(/[^\d]/g, '').replace(/^00964|^964|^0/, '');
+        const phoneMatches = cleanP(sale.customerPhone) && cleanP(sale.customerPhone) === cleanP(cust.phone1);
+
+        if (matchesId || nameMatches || phoneMatches) {
+          const total = Number(sale.total || 0);
+          const paid = Number(sale.paidAmount || 0);
+          let rem = 0;
+          if (sale.isSettled !== true && sale.paymentStatus !== 'paid') {
+            if (sale.remainingDebt !== undefined && !isNaN(Number(sale.remainingDebt))) {
+              rem = Math.max(0, Number(sale.remainingDebt));
+            } else if (sale.invoiceType === 'debt' || (sale.paidAmount !== undefined && paid < total)) {
+              rem = Math.max(0, total - paid);
+            }
+          }
+          if (rem > 0) {
+            calculatedDebt += rem;
+            unpaidInvoicesCount += 1;
+          }
+        }
+      });
+
+      if (calculatedDebt === 0 && Number(cust.totalDebt || cust.openingDebt || 0) > 0) {
+        calculatedDebt = Number(cust.totalDebt || cust.openingDebt);
+        unpaidInvoicesCount = Math.max(1, unpaidInvoicesCount);
+      }
       
       // CRITICAL: NEVER include or queue anyone with 0 debt!
       if (calculatedDebt <= 0) return;

@@ -29,6 +29,71 @@ function normalizeArabic(text) {
     .replace(/[\u064B-\u065F]/g, '');
 }
 
+function cleanPhoneNumber(p) {
+  if (!p) return '';
+  return String(p).replace(/[^\d]/g, '').replace(/^00964|^964|^0/, '');
+}
+
+function getSaleRemainingDebt(s) {
+  if (!s) return 0;
+  
+  if (s.isSettled === true && (s.remainingDebt === 0 || s.remainingDebt === undefined)) {
+    return 0;
+  }
+  if (s.paymentStatus === 'paid' && (s.remainingDebt === 0 || s.remainingDebt === undefined)) {
+    return 0;
+  }
+
+  const total = Number(s.total || 0);
+  const paid = Number(s.paidAmount || 0);
+
+  if (s.remainingDebt !== undefined && s.remainingDebt !== null && !isNaN(Number(s.remainingDebt))) {
+    const rem = Number(s.remainingDebt);
+    if (s.isSettled === true && rem <= 0) return 0;
+    return Math.max(0, rem);
+  }
+
+  if (s.invoiceType === 'debt' || (s.paidAmount !== undefined && paid < total)) {
+    return Math.max(0, total - paid);
+  }
+
+  return 0;
+}
+
+function isSaleMatchedToCustomer(sale, customer) {
+  if (!sale || !customer) return false;
+
+  // 1. Direct ID match
+  if (sale.customerId && customer.id && String(sale.customerId) === String(customer.id)) {
+    return true;
+  }
+
+  const sName = normalizeArabic(sale.customerName || sale.payerName);
+  const cName = normalizeArabic(customer.name);
+
+  // 2. Normalized Name Exact Match
+  if (sName && cName && sName === cName) {
+    return true;
+  }
+
+  // 3. Substring match for names with 3+ characters
+  if (sName && cName && Math.min(sName.length, cName.length) >= 3) {
+    if (sName.includes(cName) || cName.includes(sName)) {
+      return true;
+    }
+  }
+
+  // 4. Phone Match
+  const sPhone = cleanPhoneNumber(sale.customerPhone || sale.phone);
+  const cPhone1 = cleanPhoneNumber(customer.phone1);
+  const cPhone2 = cleanPhoneNumber(customer.phone2);
+  if (sPhone && ((cPhone1 && sPhone === cPhone1) || (cPhone2 && sPhone === cPhone2))) {
+    return true;
+  }
+
+  return false;
+}
+
 function formatIQD(num) {
   return Number(Math.round(num || 0)).toLocaleString('en-US');
 }
@@ -47,90 +112,85 @@ export default function CustomersScreen() {
   const [sendingBulkReminders, setSendingBulkReminders] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null); // { current, total }
 
-  // Compute customer financial aggregates
-  const customerFinancials = useMemo(() => {
-    const map = {};
-
-    (sales || []).forEach((sale) => {
-      const name = (sale.customerName || '').trim();
-      if (!name) return;
-      const key = normalizeArabic(name);
-
-      if (!map[key]) {
-        map[key] = { totalPurchases: 0, totalPaid: 0, totalDebt: 0, invoicesCount: 0, unpaidInvoicesCount: 0 };
-      }
-
-      const total = Number(sale.total || 0);
-      map[key].totalPurchases += total;
-      map[key].invoicesCount += 1;
-
-      if (sale.invoiceType === 'debt') {
-        const paid = Number(sale.paidAmount || 0);
-        const remaining = sale.remainingDebt !== undefined ? Math.min(Number(sale.remainingDebt), Math.max(0, total - paid)) : Math.max(0, total - paid);
-        map[key].totalPaid += paid;
-        map[key].totalDebt += remaining;
-        if (remaining > 0 && !sale.isSettled) {
-          map[key].unpaidInvoicesCount += 1;
-        }
-      } else {
-        map[key].totalPaid += total;
-      }
-    });
-
-    (incomes || []).forEach((inc) => {
-      const name = (inc.customerName || inc.payerName || '').trim();
-      if (!name) return;
-      const key = normalizeArabic(name);
-
-      if (!map[key]) {
-        map[key] = { totalPurchases: 0, totalPaid: 0, totalDebt: 0, invoicesCount: 0, unpaidInvoicesCount: 0 };
-      }
-
-      const amt = Number(inc.amount || 0);
-      map[key].totalPaid += amt;
-      map[key].totalDebt = Math.max(0, map[key].totalDebt - amt);
-    });
-
-    return map;
-  }, [sales, incomes]);
-
   const isGlobalAutoDisabled = settings?.whatsappAutoReminders === false;
 
-  // Merge registered customers with any customers discovered in sales
+  // Merge registered customers with any customers discovered in sales & compute accurate financial aggregates
   const allMergedCustomers = useMemo(() => {
     const list = [...customers];
     const registeredNames = new Set(customers.map(c => normalizeArabic(c.name)));
 
     (sales || []).forEach((sale) => {
       const name = (sale.customerName || '').trim();
-      if (name && !registeredNames.has(normalizeArabic(name))) {
-        registeredNames.add(normalizeArabic(name));
-        list.push({
-          id: `discovered-${sale.id}`,
-          name: name,
-          phone1: sale.customerPhone || sale.phone || '',
-          customerType: 'customer',
-          reminderSchedule: 'disabled',
-          isDiscovered: true
-        });
+      const norm = normalizeArabic(name);
+      if (name && !registeredNames.has(norm)) {
+        const alreadyMatched = list.some(c => isSaleMatchedToCustomer(sale, c));
+        if (!alreadyMatched) {
+          registeredNames.add(norm);
+          list.push({
+            id: `discovered-${sale.id}`,
+            name: name,
+            phone1: sale.customerPhone || sale.phone || '',
+            customerType: 'customer',
+            reminderSchedule: 'disabled',
+            isDiscovered: true
+          });
+        }
       }
     });
 
     return list.map(c => {
-      const key = normalizeArabic(c.name);
-      const fin = customerFinancials[key] || { totalPurchases: 0, totalPaid: 0, totalDebt: 0, invoicesCount: 0, unpaidInvoicesCount: 0 };
+      let totalPurchases = 0;
+      let totalPaid = 0;
+      let totalDebt = 0;
+      let invoicesCount = 0;
+      let unpaidInvoicesCount = 0;
+
+      (sales || []).forEach(sale => {
+        if (isSaleMatchedToCustomer(sale, c)) {
+          const total = Number(sale.total || 0);
+          const remaining = getSaleRemainingDebt(sale);
+          const paid = sale.invoiceType === 'debt' 
+            ? Number(sale.paidAmount || (total - remaining)) 
+            : (total - remaining);
+
+          totalPurchases += total;
+          totalPaid += paid;
+          totalDebt += remaining;
+          invoicesCount += 1;
+
+          if (remaining > 0) {
+            unpaidInvoicesCount += 1;
+          }
+        }
+      });
+
+      // Manual debt payment records in incomes (ONLY if explicitly categorized as debt repayment)
+      (incomes || []).forEach(inc => {
+        if (inc.category === 'تسديد ديون قديمة' && isSaleMatchedToCustomer(inc, c) && !inc.relatedSaleId) {
+          const amt = Number(inc.amount || 0);
+          totalPaid += amt;
+          totalDebt = Math.max(0, totalDebt - amt);
+        }
+      });
+
+      // If sale-based debt is 0, but customer record has an initial/opening debt
+      if (totalDebt === 0 && Number(c.totalDebt || c.openingDebt || c.openingBalance || 0) > 0) {
+        totalDebt = Number(c.totalDebt || c.openingDebt || c.openingBalance);
+        unpaidInvoicesCount = Math.max(1, unpaidInvoicesCount);
+      }
+
       return {
         ...c,
         customerType: c.customerType || 'client',
         reminderSchedule: c.reminderSchedule || 'disabled',
-        totalPurchases: fin.totalPurchases,
-        totalPaid: fin.totalPaid,
-        totalDebt: fin.totalDebt,
-        invoicesCount: fin.invoicesCount,
-        unpaidInvoicesCount: fin.unpaidInvoicesCount || 0
+        totalPurchases,
+        totalPaid,
+        totalDebt,
+        invoicesCount,
+        unpaidInvoicesCount
       };
     });
-  }, [customers, sales, customerFinancials]);
+  }, [customers, sales, incomes]);
 
   const allCustomersDisabled = useMemo(() => {
     if (allMergedCustomers.length === 0) return false;
@@ -740,7 +800,15 @@ export default function CustomersScreen() {
                       
                       {/* Name */}
                       <td className="p-3.5">
-                        <div className="font-bold text-slate-900 text-sm">{cust.name}</div>
+                        <button
+                          type="button"
+                          onClick={() => setStatementCustomerName(cust.name)}
+                          className="font-bold text-slate-900 text-sm hover:text-indigo-600 transition-colors text-right cursor-pointer flex items-center gap-1.5"
+                          title="انقر لعرض كشف حساب وفواتير العميل"
+                        >
+                          <span>{cust.name}</span>
+                          <span className="text-xs opacity-0 hover:opacity-100 text-indigo-500">📄</span>
+                        </button>
                         {cust.notes && <div className="text-[11px] text-slate-400 mt-0.5">{cust.notes}</div>}
                       </td>
 
@@ -812,11 +880,20 @@ export default function CustomersScreen() {
                       {/* Total Debt */}
                       <td className="p-3.5 font-mono font-bold">
                         {hasDebt ? (
-                          <span className="text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 text-xs inline-block">
-                            {formatIQD(cust.totalDebt)} د.ع
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 text-xs inline-block font-black">
+                              {formatIQD(cust.totalDebt)} د.ع
+                            </span>
+                            {cust.unpaidInvoicesCount > 0 && (
+                              <span className="text-[10px] text-rose-600 bg-rose-100/60 px-1.5 py-0.5 rounded font-mono">
+                                {cust.unpaidInvoicesCount} فاتورة
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-emerald-700 font-bold">خالص</span>
+                          <span className="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-xs inline-block font-bold">
+                            خالص ✓
+                          </span>
                         )}
                       </td>
 
@@ -829,6 +906,16 @@ export default function CustomersScreen() {
                       <td className="p-3.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           
+                          {/* Statement Button */}
+                          <button
+                            onClick={() => setStatementCustomerName(cust.name)}
+                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-xs transition-colors cursor-pointer border border-indigo-200 flex items-center gap-1"
+                            title="عرض كشف حساب العميل بالكامل"
+                          >
+                            <span>📄</span>
+                            <span>كشف حساب</span>
+                          </button>
+
                           {/* Send WhatsApp Debt Reminder Button */}
                           {hasDebt && cust.phone1 && (
                             <button
