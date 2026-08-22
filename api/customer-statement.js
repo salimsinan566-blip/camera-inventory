@@ -231,14 +231,27 @@ export default async function handler(req, res) {
       }
     });
 
-    customerIncomes.forEach((inc) => {
-      const amt = Number(inc.amount) || 0;
-      oldInvoicesAmount += amt;
-      cashPaid += amt;
-    });
+    // 6. Fetch Store Settings (Logo, Name) for seamless customer display
+    let storeSettings = {
+      storeName: 'Safe Zone',
+      logoUrl: null
+    };
+    try {
+      const settingsDoc = await db.collection('settings').doc('store_info').get();
+      if (settingsDoc && settingsDoc.exists && typeof settingsDoc.data === 'function') {
+        const sData = settingsDoc.data() || {};
+        storeSettings = {
+          storeName: sData.storeName || 'Safe Zone',
+          logoUrl: sData.logoUrl || null
+        };
+      }
+    } catch (e) {
+      console.warn('Could not fetch store settings:', e.message);
+    }
 
     return res.status(200).json({
       success: true,
+      storeSettings,
       customer: {
         id: matchedCustomer.id,
         name: matchedCustomer.name,

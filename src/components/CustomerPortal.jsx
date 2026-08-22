@@ -14,10 +14,10 @@ function formatIQD(num) {
 
 export default function CustomerPortal({ onSwitchToStaffLogin }) {
   const { settings } = useSettings();
-  const activeLogo = settings?.logoUrl || logo;
-  const storeName = settings?.storeName || 'Safe Zone';
-
   const [session, setSession] = useState(() => getSavedCustomerSession());
+
+  const activeLogo = session?.storeSettings?.logoUrl || settings?.logoUrl || logo;
+  const storeName = session?.storeSettings?.storeName || settings?.storeName || 'Safe Zone';
   const [identifier, setIdentifier] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -170,7 +170,12 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
         <div className="max-w-md mx-auto w-full my-auto py-6">
           <div className="text-center mb-6">
             <div className="inline-block p-4 bg-white rounded-3xl shadow-xl mb-3 border border-white/20">
-              <img src={activeLogo} alt={storeName} className="h-20 sm:h-24 max-h-32 w-auto max-w-[260px] object-contain mx-auto" />
+              <img 
+                src={activeLogo} 
+                alt={storeName} 
+                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = logo; }}
+                className="h-20 sm:h-24 max-h-32 w-auto max-w-[260px] object-contain mx-auto" 
+              />
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">بوابة كشف حساب العملاء</h1>
             <p className="text-xs text-slate-300 mt-1">
@@ -301,7 +306,12 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
           
           {/* Logo & Client Greeting */}
           <div className="flex items-center gap-3 min-w-0">
-            <img src={activeLogo} alt={storeName} className="h-12 sm:h-14 w-auto max-w-[190px] object-contain shrink-0" />
+            <img 
+              src={activeLogo} 
+              alt={storeName} 
+              onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = logo; }}
+              className="h-12 sm:h-14 w-auto max-w-[190px] object-contain shrink-0" 
+            />
             <div className="min-w-0">
               <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">بوابة العميل</span>
               <h2 className="text-sm sm:text-base font-black text-slate-900 leading-tight truncate">

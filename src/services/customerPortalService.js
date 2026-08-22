@@ -84,6 +84,7 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
           summary: data.summary,
           sales: data.sales,
           incomes: data.incomes,
+          storeSettings: data.storeSettings || null,
           lastUpdated: new Date().toISOString()
         };
         saveCustomerSession(sessionData, remember);
