@@ -605,93 +605,314 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <div onClick={() => handleCardClick('sales')} className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${filterType === 'sales' ? 'bg-emerald-50/40 border-emerald-500 shadow-md ring-2 ring-emerald-500/20' : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-sm'}`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 flex items-center gap-1.5"><span>🛒</span><span>إجمالي قيمة المبيعات</span></span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-600">{filteredSales.length} فاتورة</span>
+      {/* 🚀 1. HERO DRAWER CARD (قاصة الصندوق والماستركارد - الرصيد الفعلي المعتمد) */}
+      <div 
+        onClick={() => handleCardClick('drawers')}
+        className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+          filterType === 'drawers'
+            ? 'bg-slate-900 text-white border-indigo-400 shadow-lg ring-2 ring-indigo-500/20'
+            : 'bg-slate-950 text-white border-slate-800 hover:border-slate-700 shadow-sm'
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏦</span>
+            <div>
+              <span className="text-sm font-black text-white block">قاصة الصندوق والماستركارد (الرصيد الفعلي المعتمد)</span>
+              <span className="text-[10px] text-slate-400 block font-mono">
+                {latestReconciliation ? `آخر تسوية: ${formatIQD(latestReconciliation.actualCashAmount)} د.ع` : 'رصيد تراكمي مستمر'}
+              </span>
+            </div>
           </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowReconciliationModal(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-colors border border-white/10 cursor-pointer shadow-xs"
+          >
+            <span>⚖️</span>
+            <span>تسوية وجرد القاصة</span>
+          </button>
+        </div>
+
+        {/* DUAL DISPLAY: CASH & MASTERCARD */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+          
+          {/* Drawer 1: Physical Cash */}
+          <div className="bg-white/5 border border-white/10 p-3.5 rounded-xl">
+            <div className="flex items-center justify-between text-xs text-slate-300 font-bold mb-1">
+              <span className="flex items-center gap-1.5">
+                <span>💵</span>
+                <span>النقد الفعلي في القاصة (الكاش)</span>
+              </span>
+            </div>
+            <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight block ${liveDrawerCash >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {liveDrawerCash < 0 ? `-${formatIQD(Math.abs(liveDrawerCash))}` : formatIQD(liveDrawerCash)}{' '}
+              <span className="text-xs font-normal text-slate-400">د.ع</span>
+            </span>
+            <span className="text-[10px] text-slate-400 mt-1 block">
+              {totalRemainingCustomerDebt > 0 ? `(ديون زبائن معلقة: ${formatIQD(totalRemainingCustomerDebt)} د.ع)` : 'لا توجد ديون معلقة'}
+            </span>
+          </div>
+
+          {/* Drawer 2: Mastercard Electronic */}
+          <div className="bg-white/5 border border-white/10 p-3.5 rounded-xl">
+            <div className="flex items-center justify-between text-xs text-slate-300 font-bold mb-1">
+              <span className="flex items-center gap-1.5">
+                <span>💳</span>
+                <span>رصيد الماستركارد (الدفع الإلكتروني)</span>
+              </span>
+            </div>
+            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-indigo-300 block">
+              {formatIQD(liveDrawerMastercard)}{' '}
+              <span className="text-xs font-normal text-slate-400">د.ع</span>
+            </span>
+            <span className="text-[10px] text-indigo-200/70 mt-1 block">
+              المقبوضات المستلمة عبر البطاقات الإلكترونية
+            </span>
+          </div>
+
+        </div>
+
+        <p className="text-[10px] text-slate-400 leading-tight">
+          💡 الرصيد الحي التراكمي المتبقي بالقاصة وحساب الماستركارد بعد خصم كافة المصاريف وسداد الموردين.
+        </p>
+      </div>
+
+      {/* 🚀 2. FINANCIAL STATS CARDS GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        
+        {/* CARD 1: TOTAL SALES (إجمالي المبيعات) */}
+        <div 
+          onClick={() => handleCardClick('sales')}
+          className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+            filterType === 'sales'
+              ? 'bg-emerald-50/40 border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
+              : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-sm'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+              <span>🛒</span>
+              <span>إجمالي قيمة المبيعات</span>
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-600">
+              {filteredSales.length} فاتورة
+            </span>
+          </div>
+
           <div>
-            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-950 block">{formatIQD(totalSalesRevenue)} <span className="text-xs font-normal text-slate-500">د.ع</span></span>
+            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-950 block">
+              {formatIQD(totalSalesRevenue)} <span className="text-xs font-normal text-slate-500">د.ع</span>
+            </span>
+
             <div className="grid grid-cols-3 gap-1 mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] font-bold">
-              <div className="text-emerald-700 bg-emerald-50/70 p-1.5 rounded-lg text-center"><span className="text-[9px] block text-emerald-600/80 font-normal">💵 نقدي</span><span className="font-mono">{formatIQD(directCashSales)}</span></div>
-              <div className="text-indigo-700 bg-indigo-50/70 p-1.5 rounded-lg text-center"><span className="text-[9px] block text-indigo-600/80 font-normal">💳 ماستر</span><span className="font-mono">{formatIQD(mastercardSales)}</span></div>
-              <div className="text-amber-700 bg-amber-50/70 p-1.5 rounded-lg text-center"><span className="text-[9px] block text-amber-600/80 font-normal">⏳ ديون</span><span className="font-mono">{formatIQD(debtSales)}</span></div>
+              <div className="text-emerald-700 bg-emerald-50/70 p-1.5 rounded-lg text-center">
+                <span className="text-[9px] block text-emerald-600/80 font-normal">💵 نقدي</span>
+                <span className="font-mono">{formatIQD(directCashSales)}</span>
+              </div>
+              <div className="text-indigo-700 bg-indigo-50/70 p-1.5 rounded-lg text-center">
+                <span className="text-[9px] block text-indigo-600/80 font-normal">💳 ماستر</span>
+                <span className="font-mono">{formatIQD(mastercardSales)}</span>
+              </div>
+              <div className="text-amber-700 bg-amber-50/70 p-1.5 rounded-lg text-center">
+                <span className="text-[9px] block text-amber-600/80 font-normal">⏳ ديون</span>
+                <span className="font-mono">{formatIQD(debtSales)}</span>
+              </div>
             </div>
           </div>
+
+          <p className="text-[10px] text-slate-400 leading-tight">
+            💡 إجمالي بضاعة المبيعات الصادرة (المقبوضة نقداً وماستركارد والديون المعلقة). اضغط لعرض الفواتير.
+          </p>
         </div>
 
-        <div onClick={() => handleCardClick('inflows')} className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${filterType === 'inflows' ? 'bg-teal-50/40 border-teal-500 shadow-md ring-2 ring-teal-500/20' : 'bg-white border-slate-200 hover:border-teal-300 hover:shadow-sm'}`}>
+        {/* CARD 2: CASH & MASTERCARD INFLOWS (المقبوضات النقدية الداخلة) */}
+        <div 
+          onClick={() => handleCardClick('inflows')}
+          className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+            filterType === 'inflows'
+              ? 'bg-teal-50/40 border-teal-500 shadow-md ring-2 ring-teal-500/20'
+              : 'bg-white border-slate-200 hover:border-teal-300 hover:shadow-sm'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-teal-900 flex items-center gap-1.5"><span>📥</span><span>المقبوضات النقدية الداخلة</span></span>
-            <span className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center text-xs font-bold">+</span>
+            <span className="text-xs font-black text-teal-900 flex items-center gap-1.5">
+              <span>📥</span>
+              <span>المقبوضات النقدية الداخلة</span>
+            </span>
+            <span className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center text-xs font-bold">
+              +
+            </span>
           </div>
+
           <div>
-            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-teal-700 block">+{formatIQD(totalCashCollected)} <span className="text-xs font-normal text-slate-500">د.ع</span></span>
+            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-teal-700 block">
+              +{formatIQD(totalCashCollected)} <span className="text-xs font-normal text-slate-500">د.ع</span>
+            </span>
+
             <div className="grid grid-cols-2 gap-1.5 mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] font-bold">
-              <div className="bg-slate-50 p-1.5 rounded-lg"><span className="text-[9px] block text-slate-500 font-normal">💵 كاش مقبوض</span><span className="font-mono text-emerald-800">+{formatIQD(totalCashInflow)}</span></div>
-              <div className="bg-slate-50 p-1.5 rounded-lg"><span className="text-[9px] block text-slate-500 font-normal">💳 ماستركارد</span><span className="font-mono text-indigo-800">+{formatIQD(totalMastercardInflow)}</span></div>
+              <div className="bg-slate-50 p-1.5 rounded-lg">
+                <span className="text-[9px] block text-slate-500 font-normal">💵 كاش مقبوض</span>
+                <span className="font-mono text-emerald-800">+{formatIQD(totalCashInflow)}</span>
+              </div>
+              <div className="bg-slate-50 p-1.5 rounded-lg">
+                <span className="text-[9px] block text-slate-500 font-normal">💳 ماستركارد</span>
+                <span className="font-mono text-indigo-800">+{formatIQD(totalMastercardInflow)}</span>
+              </div>
             </div>
           </div>
+
+          <p className="text-[10px] text-slate-400 leading-tight">
+            💡 مجموع كل الأموال المقبوضة فعلياً (مبيعات كاش + تسديدات ديون الزبائن + إيرادات قديمة).
+          </p>
         </div>
 
-        <div onClick={() => handleCardClick('drawers')} className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 relative group md:col-span-2 xl:col-span-2 ${filterType === 'drawers' ? 'bg-slate-900 text-white border-indigo-400 shadow-lg ring-2 ring-indigo-500/20' : 'bg-slate-950 text-white border-slate-800 hover:border-slate-700 shadow-sm'}`}>
+        {/* CARD 3: OPERATING EXPENSES (المصاريف التشغيلية) */}
+        <div 
+          onClick={() => handleCardClick('expenses')}
+          className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+            filterType === 'expenses'
+              ? 'bg-rose-50/40 border-rose-500 shadow-md ring-2 ring-rose-500/20'
+              : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-sm'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><span>🏦</span><div><span className="text-xs font-black text-white block">قاصة الصندوق والماستركارد (الرصيد الفعلي)</span><span className="text-[10px] text-slate-400 block font-mono">{latestReconciliation ? `آخر تسوية: ${formatIQD(latestReconciliation.actualCashAmount)} د.ع` : 'رصيد تراكمي مستمر'}</span></div></div>
-            <button onClick={(e) => { e.stopPropagation(); setShowReconciliationModal(true); }} className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1 transition-colors border border-white/10 cursor-pointer"><span>⚖️</span><span>تسوية القاصة</span></button>
+            <span className="text-xs font-black text-rose-900 flex items-center gap-1.5">
+              <span>📤</span>
+              <span>المصاريف والنثريات</span>
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-700">
+              {filteredExpenses.length} بنود
+            </span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
-            <div className="bg-white/5 border border-white/10 p-3 rounded-xl"><div className="flex items-center justify-between text-xs text-slate-300 font-bold mb-1"><span>💵 النقد الفعلي (الكاش)</span></div><span className={`text-xl sm:text-2xl font-black font-mono tracking-tight block ${liveDrawerCash >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{liveDrawerCash < 0 ? `-${formatIQD(Math.abs(liveDrawerCash))}` : formatIQD(liveDrawerCash)} <span className="text-xs font-normal text-slate-400">د.ع</span></span><span className="text-[10px] text-slate-400 mt-1 block">{totalRemainingCustomerDebt > 0 ? `(ديون معلقة: ${formatIQD(totalRemainingCustomerDebt)} د.ع)` : 'لا توجد ديون'}</span></div>
-            <div className="bg-white/5 border border-white/10 p-3 rounded-xl"><div className="flex items-center justify-between text-xs text-slate-300 font-bold mb-1"><span>💳 رصيد الماستركارد</span></div><span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-indigo-300 block">{formatIQD(liveDrawerMastercard)} <span className="text-xs font-normal text-slate-400">د.ع</span></span></div>
-          </div>
-        </div>
 
-        <div onClick={() => handleCardClick('expenses')} className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${filterType === 'expenses' ? 'bg-rose-50/40 border-rose-500 shadow-md ring-2 ring-rose-500/20' : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-sm'}`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-rose-900 flex items-center gap-1.5"><span>📤</span><span>المصاريف والنثريات</span></span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-700">{filteredExpenses.length} بنود</span>
-          </div>
           <div>
-            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-rose-700 block">-{formatIQD(totalExpensesAmount)} <span className="text-xs font-normal text-slate-500">د.ع</span></span>
-            <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] text-slate-600 font-medium">مصاريف تشغيلية، إيجار، رواتب، ووقود</div>
+            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-rose-700 block">
+              -{formatIQD(totalExpensesAmount)} <span className="text-xs font-normal text-slate-500">د.ع</span>
+            </span>
+
+            <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] text-slate-600 font-medium">
+              مصاريف تشغيلية، إيجار، رواتب، ووقود
+            </div>
           </div>
+
+          <p className="text-[10px] text-slate-400 leading-tight">
+            💡 الأموال الخارجة من الصندوق لتغطية النفقات والمصاريف الإدارية اليومية والشهرية.
+          </p>
         </div>
 
-        <div onClick={() => handleCardClick('purchases')} className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${filterType === 'purchases' ? 'bg-indigo-50/40 border-indigo-500 shadow-md ring-2 ring-indigo-500/20' : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm'}`}>
+        {/* CARD 4: CASH PURCHASES & SUPPLIERS (المشتريات وسداد الموردين) */}
+        <div 
+          onClick={() => handleCardClick('purchases')}
+          className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+            filterType === 'purchases'
+              ? 'bg-indigo-50/40 border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
+              : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5"><span>🛍️</span><span>المشتريات وسداد الموردين</span></span>
-            <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center text-xs font-bold">-</span>
+            <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+              <span>🛍️</span>
+              <span>المشتريات وسداد الموردين</span>
+            </span>
+            <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center text-xs font-bold">
+              -
+            </span>
           </div>
+
           <div>
-            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-indigo-800 block">-{formatIQD(totalCashPurchasesAmount)} <span className="text-xs font-normal text-slate-500">د.ع</span></span>
+            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-indigo-800 block">
+              -{formatIQD(totalCashPurchasesAmount)} <span className="text-xs font-normal text-slate-500">د.ع</span>
+            </span>
+
             <div className="grid grid-cols-2 gap-1.5 mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] font-bold">
-              <div className="bg-slate-50 p-1.5 rounded-lg"><span className="text-[9px] block text-slate-500 font-normal">شراء كاش</span><span className="font-mono text-indigo-900">{formatIQD(directPurchasesCash)}</span></div>
-              <div className="bg-slate-50 p-1.5 rounded-lg"><span className="text-[9px] block text-slate-500 font-normal">سداد موردين</span><span className="font-mono text-indigo-900">{formatIQD(supplierDebtsPaid)}</span></div>
+              <div className="bg-slate-50 p-1.5 rounded-lg">
+                <span className="text-[9px] block text-slate-500 font-normal">شراء كاش</span>
+                <span className="font-mono text-indigo-900">{formatIQD(directPurchasesCash)}</span>
+              </div>
+              <div className="bg-slate-50 p-1.5 rounded-lg">
+                <span className="text-[9px] block text-slate-500 font-normal">سداد موردين</span>
+                <span className="font-mono text-indigo-900">{formatIQD(supplierDebtsPaid)}</span>
+              </div>
             </div>
           </div>
+
+          <p className="text-[10px] text-slate-400 leading-tight">
+            💡 المبالغ النقدية الخارجة لشراء بضاعة جديدة أو تسديد حسابات وديون الموردين.
+          </p>
         </div>
 
-        <div onClick={() => handleCardClick('gifts')} className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${filterType === 'gifts' ? 'bg-purple-50/40 border-purple-500 shadow-md ring-2 ring-purple-500/20' : 'bg-white border-slate-200 hover:border-purple-300 hover:shadow-sm'}`}>
+        {/* CARD 5: FREE GIFTS & PROMOTIONS (الهدايا والمجانيات) */}
+        <div 
+          onClick={() => handleCardClick('gifts')}
+          className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+            filterType === 'gifts'
+              ? 'bg-purple-50/40 border-purple-500 shadow-md ring-2 ring-purple-500/20'
+              : 'bg-white border-slate-200 hover:border-purple-300 hover:shadow-sm'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-purple-900 flex items-center gap-1.5"><span>🎁</span><span>الهدايا والمجانيات</span></span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 font-mono">{totalGiftsItemsCount} قطعة</span>
+            <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+              <span>🎁</span>
+              <span>الهدايا والمجانيات</span>
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 font-mono">
+              {totalGiftsItemsCount} قطعة
+            </span>
           </div>
+
           <div>
-            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-purple-800 block">{formatIQD(totalGiftsCost)} <span className="text-xs font-normal text-slate-500">د.ع</span></span>
-            <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] text-purple-900 font-medium">محسوبة بسعر الجملة والتكلفة الأصلية</div>
+            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-purple-800 block">
+              {formatIQD(totalGiftsCost)} <span className="text-xs font-normal text-slate-500">د.ع</span>
+            </span>
+
+            <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] text-purple-900 font-medium">
+              محسوبة بسعر الجملة والتكلفة الأصلية
+            </div>
           </div>
+
+          <p className="text-[10px] text-slate-400 leading-tight">
+            💡 تكلفة المواد الممنوحة للعملاء بسعر (0 د.ع) كهدايا ترويجية وعروض مجانية.
+          </p>
         </div>
 
-        <div onClick={() => handleCardClick('all')} className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${filterType === 'all' ? 'bg-slate-100 border-slate-400 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'}`}>
+        {/* CARD 6: NET CASH FLOW (صافي التدفق المالي للفترة) */}
+        <div 
+          onClick={() => handleCardClick('all')}
+          className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 relative group ${
+            filterType === 'all'
+              ? 'bg-slate-100 border-slate-400 shadow-sm'
+              : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-800 flex items-center gap-1.5"><span>📊</span><span>صافي التدفق المالي</span></span>
-            <span className="text-xs font-mono font-bold text-slate-500">(الداخل - الخارج)</span>
+            <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <span>📊</span>
+              <span>صافي التدفق المالي للفترة</span>
+            </span>
+            <span className="text-xs font-mono font-bold text-slate-500">
+              (الداخل - الخارج)
+            </span>
           </div>
+
           <div>
-            <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight block ${netCashFlowForPeriod >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{netCashFlowForPeriod >= 0 ? `+${formatIQD(netCashFlowForPeriod)}` : `-${formatIQD(Math.abs(netCashFlowForPeriod))}`} <span className="text-xs font-normal text-slate-500">د.ع</span></span>
-            <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 font-mono">المقبوضات (+{formatIQD(totalCashCollected)}) - المدفوعات (-{formatIQD(totalCashOutflows)})</div>
+            <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight block ${netCashFlowForPeriod >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {netCashFlowForPeriod >= 0 ? `+${formatIQD(netCashFlowForPeriod)}` : `-${formatIQD(Math.abs(netCashFlowForPeriod))}`}{' '}
+              <span className="text-xs font-normal text-slate-500">د.ع</span>
+            </span>
+
+            <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 font-mono">
+              المقبوضات (+{formatIQD(totalCashCollected)}) - المدفوعات (-{formatIQD(totalCashOutflows)})
+            </div>
           </div>
+
+          <p className="text-[10px] text-slate-400 leading-tight">
+            💡 فارق المقبوضات النقدية مطروحاً منها كافة المصاريف والمشتريات وتكلفة الهدايا.
+          </p>
         </div>
+
       </div>
 
       <div id="transactions-ledger-section" className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
