@@ -233,9 +233,9 @@ export default async function handler(req, res) {
         }
       }
 
-      // فحص عدم تكرار الإرسال في نفس اليوم للأنماط اليومية/الأسبوعية، أما أنماط الساعات فتعمل بتكرارها
+      // فحص عدم تكرار الإرسال في نفس اليوم للأنماط اليومية/الأسبوعية، أما أنماط الدقائق والساعات فتعمل بتكرارها
       const lastSentDateStr = c.lastDebtReminderSent ? c.lastDebtReminderSent.slice(0, 10) : null;
-      const canDispatch = isDueToday && (isHourly || force || lastSentDateStr !== todayStr);
+      const canDispatch = isDueToday && (isMinutely || isHourly || force || lastSentDateStr !== todayStr);
 
       if (canDispatch) {
         targetCustomers.push({
@@ -252,13 +252,13 @@ export default async function handler(req, res) {
     if (targetCustomers.length === 0) {
       return res.status(200).json({ 
         status: 'completed', 
-        message: 'No due debtors to remind today.', 
+        message: 'No due debtors to remind right now.', 
         currentDay: currentDayName 
       });
     }
 
     // 5. إرسال رسائل التذكير عبر WhatsApp Gateway
-    const baseUrl = settings.customerPortalUrl || 'https://safe-zone-inv.vercel.app';
+    const baseUrl = settings.customerPortalUrl || 'https://camera-inventory-1qfh.vercel.app';
     const storeName = settings.storeName || 'المحل';
 
     let successCount = 0;

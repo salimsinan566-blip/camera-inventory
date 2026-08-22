@@ -374,18 +374,20 @@ setInterval(async () => {
   }
 }, 3000);
 
-// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Every 30 Minutes)
+// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 1 minute)
 setInterval(async () => {
   try {
     if (!isConnected || !sock) return;
-    const cronUrl = process.env.CRON_DEBT_URL || 'https://safe-zone-inv.vercel.app/api/cron-debt-reminders';
+    const cronUrl = process.env.CRON_DEBT_URL || 'https://camera-inventory-1qfh.vercel.app/api/cron-debt-reminders';
     const res = await fetch(cronUrl);
     const data = await res.json().catch(() => ({}));
-    console.log(`⏰ [AWS 24/7 Cron] تم فحص وتحديث التذكيرات المستحقة في السحابة:`, data?.status || 'OK');
+    if (data?.status === 'success' || data?.sentCount > 0) {
+      console.log(`⏰ [AWS 24/7 Cron] تم إرسال التذكيرات المستحقة في الخلفية بنجاح:`, data);
+    }
   } catch (e) {
     // Ignore network timeouts
   }
-}, 30 * 60 * 1000);
+}, 60 * 1000);
 
 // Get scheduled queue
 app.get('/scheduled', (req, res) => {
