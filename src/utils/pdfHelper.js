@@ -307,9 +307,19 @@ export async function generateInvoicePdfBlob(sale, settings) {
                   </td>
                   <td style="padding: 10px 12px; text-align: center; font-weight: 900; color: #1e293b; font-family: monospace;">
                     ${item.quantity || 1}
+                    ${!item.isService && item.sellMode && item.sellMode !== 'unit' ? `
+                      <span style="font-size: 10px; color: #64748b; margin-right: 4px; font-weight: normal;">
+                        (${item.sellMode === 'meter' ? 'متر' : 'لفة'})
+                      </span>
+                    ` : ''}
                   </td>
                   <td style="padding: 10px 12px; text-align: right; color: #1e293b; font-family: monospace; font-weight: bold;">
-                    ${Number(item.unitPrice || 0).toLocaleString()}
+                    ${item.originalPrice && item.originalPrice > item.unitPrice ? `
+                      <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                        <span style="font-size: 10px; color: #94a3b8; text-decoration: line-through; line-height: 1;">${Number(item.originalPrice).toLocaleString()}</span>
+                        <span style="color: #dc2626; font-weight: bold; line-height: 1; margin-top: 2px;">${Number(item.unitPrice || 0).toLocaleString()}</span>
+                      </div>
+                    ` : Number(item.unitPrice || 0).toLocaleString()}
                   </td>
                   <td style="padding: 10px 12px; text-align: left; font-weight: 900; color: #1e293b; font-family: monospace;">
                     ${lineTotal.toLocaleString()}
