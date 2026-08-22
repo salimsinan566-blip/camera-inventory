@@ -3,9 +3,20 @@ import { useAuth } from './hooks/useAuth';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import CustomerPortal from './components/CustomerPortal';
+import TelegramMiniApp from './components/TelegramMiniApp';
 
 export default function App() {
   const { user, loading } = useAuth();
+  const [isTelegramPortal, setIsTelegramPortal] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get('portal') === 'telegram' ||
+      params.get('portal') === 'pos' ||
+      params.get('portal') === 'miniapp' ||
+      params.get('portal') === 'offer' ||
+      window.location.hash.includes('telegram')
+    );
+  });
   const [isCustomerPortal, setIsCustomerPortal] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return (
@@ -21,6 +32,15 @@ export default function App() {
     function checkUrl() {
       const params = new URLSearchParams(window.location.search);
       if (
+        params.get('portal') === 'telegram' ||
+        params.get('portal') === 'pos' ||
+        params.get('portal') === 'miniapp' ||
+        params.get('portal') === 'offer' ||
+        window.location.hash.includes('telegram')
+      ) {
+        setIsTelegramPortal(true);
+      }
+      if (
         params.get('portal') === 'customer' ||
         params.get('portal') === 'client' ||
         params.has('customer') ||
@@ -35,6 +55,7 @@ export default function App() {
 
   function handleSwitchToStaff() {
     setIsCustomerPortal(false);
+    setIsTelegramPortal(false);
     const url = new URL(window.location);
     url.searchParams.delete('portal');
     url.searchParams.delete('customer');
@@ -45,9 +66,15 @@ export default function App() {
 
   function handleSwitchToCustomerPortal() {
     setIsCustomerPortal(true);
+    setIsTelegramPortal(false);
     const url = new URL(window.location);
     url.searchParams.set('portal', 'customer');
     window.history.pushState({}, '', url.toString());
+  }
+
+  // If Telegram Mini App is active, display it immediately
+  if (isTelegramPortal) {
+    return <TelegramMiniApp onSwitchToStaffLogin={handleSwitchToStaff} />;
   }
 
   // If customer portal is active, display it immediately

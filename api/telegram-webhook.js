@@ -487,6 +487,53 @@ export default async function handler(req, res) {
       return res.status(200).send('OK');
     }
 
+    // 1.1 أوامر نقطة البيع وعروض الأسعار (Telegram Mini App)
+    if (
+      text === '/pos' ||
+      text === '/sell' ||
+      cleanText === 'نقطة بيع' ||
+      cleanText === 'نقطه بيع' ||
+      cleanText === 'بيع' ||
+      cleanText === 'كاشير'
+    ) {
+      await sendInlineKeyboard(
+        chatId,
+        `🛒 <b>نقطة البيع السريعة (POS)</b>\n\nاضغط على الزر أدناه لفتح واجهة نقطة البيع المصغرة مباشرة داخل التليجرام:`,
+        [
+          [
+            {
+              text: '🛒 فتح نقطة البيع (POS)',
+              web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=pos&chat_id=${chatId}` }
+            }
+          ]
+        ]
+      );
+      return res.status(200).send('OK');
+    }
+
+    if (
+      text === '/offer' ||
+      text === '/quote' ||
+      cleanText === 'عرض سعر' ||
+      cleanText === 'عرض' ||
+      cleanText === 'عروض اسعار' ||
+      cleanText === 'عروض الأسعار'
+    ) {
+      await sendInlineKeyboard(
+        chatId,
+        `📑 <b>منشئ عروض الأسعار (Quotations)</b>\n\nاضغط على الزر أدناه لاختيار المنتجات وتحديد الأسعار وتوليد عرض سعر رسمي PDF:`,
+        [
+          [
+            {
+              text: '📑 فتح منشئ عروض الأسعار',
+              web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&mode=offer&chat_id=${chatId}` }
+            }
+          ]
+        ]
+      );
+      return res.status(200).send('OK');
+    }
+
     // 2. أمر الدائنون (شكد يطلبوني / ديون الموردين)
     if (
       cleanText === 'الدائنون' ||
@@ -616,6 +663,10 @@ async function sendWelcomeMenu(chatId) {
 
   const buttons = [
     [
+      { text: '🛒 نقطة البيع (POS)', web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=pos&chat_id=${chatId}` } },
+      { text: '📑 إنشاء عرض سعر', web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&mode=offer&chat_id=${chatId}` } }
+    ],
+    [
       { text: '💰 الدخل والصندوق اليوم', callback_data: 'cmd_income' },
       { text: '🏢 الدائنون (الموردين)', callback_data: 'cmd_creditors' }
     ],
@@ -627,6 +678,25 @@ async function sendWelcomeMenu(chatId) {
       { text: '📁 تصفح الأقسام', callback_data: 'allcat:0' }
     ]
   ];
+
+  // Set Telegram Chat Menu Button in background
+  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  if (token) {
+    fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        menu_button: {
+          type: 'web_app',
+          text: '🛒 نقطة البيع وعروض الأسعار',
+          web_app: {
+            url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&chat_id=${chatId}`
+          }
+        }
+      })
+    }).catch(() => {});
+  }
 
   await sendInlineKeyboard(chatId, msg, buttons);
 }
