@@ -233,21 +233,29 @@ export default function ProductForm({ product, products = [], onClose }) {
             </Field>
 
             <Field label="رقم SKU *">
-              <input
-                type="text"
-                value={form.sku}
-                onChange={(e) => handleChange('sku', e.target.value)}
-                className="input font-mono text-left"
-                disabled={isEditing}
-                placeholder="مثال: CAM-001"
-                dir="ltr"
-              />
-              {isEditing && (
-                <p className="text-xs text-ink-500 mt-1.5 font-medium flex items-center gap-1">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                  لا يمكن تعديل SKU بعد الإنشاء لضمان تسلسل المخزون
-                </p>
-              )}
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={form.sku}
+                  onChange={(e) => handleChange('sku', e.target.value)}
+                  className="input font-mono text-left flex-1"
+                  placeholder="مثال: SKU-641912"
+                  dir="ltr"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => handleChange('sku', `SKU-${Date.now().toString().slice(-6)}`)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0"
+                  title="توليد رقم SKU جديد فريد تلقائياً"
+                >
+                  <span>🔄</span>
+                  <span>توليد SKU فريد</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                يجب أن يكون رقم الـ SKU فريداً لكل منتج. يمكنك تعديله يدوياً أو الضغط على «توليد SKU فريد» لتجاوز أي تكرار.
+              </p>
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
