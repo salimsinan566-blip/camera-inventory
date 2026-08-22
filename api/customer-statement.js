@@ -155,13 +155,23 @@ export default async function handler(req, res) {
           sku: item.sku || '',
           quantity: Number(item.quantity) || 1,
           unitPrice: Number(item.unitPrice) || 0,
-          total: Number(item.total) || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0))
+          total: Number(item.total) || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0)),
+          isService: Boolean(item.isService),
+          category: item.category || ''
         }));
 
         customerSales.push({
           id: doc.id,
           invoiceNumber: s.invoiceNumber || s.invoiceId || doc.id.slice(0, 6),
           invoiceType: s.invoiceType || 'cash',
+          customerName: s.customerName || matchedCustomer.name,
+          customerPhone: s.customerPhone || sPhone || matchedCustomer.phone1 || matchedCustomer.phone2 || '',
+          customerId: s.customerId || matchedCustomer.id || '',
+          cashierEmail: s.cashierEmail || '',
+          notes: s.notes || '',
+          discount: Number(s.discount) || 0,
+          taxRate: Number(s.taxRate) || 0,
+          subtotal: Number(s.subtotal) || ((Number(s.total) || 0) + (Number(s.discount) || 0)),
           createdAt: s.createdAt?.toDate ? s.createdAt.toDate().toISOString() : s.createdAt || null,
           total: Number(s.total) || 0,
           paidAmount: Number(s.paidAmount) || 0,

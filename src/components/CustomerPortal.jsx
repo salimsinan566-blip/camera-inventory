@@ -656,7 +656,12 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
       {/* Official Invoice Receipt Modal for Customer */}
       {selectedInvoice && (
         <InvoiceReceipt
-          sale={selectedInvoice}
+          sale={{
+            ...selectedInvoice,
+            customerName: selectedInvoice.customerName || session?.customer?.name || session?.identifier || 'العميل',
+            customerPhone: selectedInvoice.customerPhone || session?.customer?.phone1 || session?.customer?.phone2 || session?.customer?.phone || '',
+            customerId: selectedInvoice.customerId || session?.customer?.id || ''
+          }}
           isCustomerPortalView={true}
           onClose={() => setSelectedInvoice(null)}
         />
