@@ -364,5 +364,45 @@ export async function processAutomatedDebtReminders({
     }
   }
 
+  // 24/7 Autonomous Background Sync to AWS Gateway:
+  if (debtorPayload.length > 0) {
+    try {
+      const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
+      let apiUrl = settings.whatsappApiUrl || `${defaultBase}/messages/chat`;
+      let baseUrl = defaultBase;
+      if (apiUrl.startsWith('http') && !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1')) {
+        baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
+      }
+
+      const syncItems = debtorPayload.map(d => ({
+        customerId: d.id,
+        customerName: d.name,
+        phone: d.phone1,
+        totalDebt: d.totalDebt,
+        schedule: d.reminderSchedule,
+        targetTimestamp: calculateNextCustomerReminderTimestamp({ id: d.id, reminderSchedule: d.reminderSchedule, lastDebtReminderSent: d.lastDebtReminderSent }, settings, now),
+        message: d.renderedMessage
+      }));
+
+      fetch(`${baseUrl}/scheduled/sync-debtors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: settings.whatsappToken || 'SafeZone2026',
+          debtors: syncItems
+        })
+      }).catch(() => {});
+    } catch (e) {
+      // Ignore background sync errors
+    }
+  }
+
   return dispatched;
+}
+
+/**
+ * Explicitly synchronize scheduled debtors directly to AWS Gateway queue
+ */
+export async function syncScheduledDebtorsToGateway({ customers = [], sales = [], incomes = [], settings = {} }) {
+  return processAutomatedDebtReminders({ customers, sales, incomes, settings });
 }

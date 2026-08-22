@@ -357,8 +357,17 @@ setInterval(async () => {
           console.log(`⏰ [Scheduler] تم إرسال الرسالة المجدولة بنجاح إلى: +${job.cleanPhone}`);
         }
 
-        job.status = 'completed';
-        job.sentAt = new Date().toISOString();
+        if (job.isRecurring && job.schedule) {
+          const nextTarget = calculateNextScheduledTimestamp(job.schedule, job.timeStr || '20:00', new Date());
+          job.targetTimestamp = nextTarget;
+          job.targetTimeFormatted = new Date(nextTarget).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
+          job.status = 'pending';
+          job.lastSentAt = new Date().toISOString();
+          console.log(`🔁 [Scheduler] تم تجديد التذكير الدوري تلقائياً للموعد القادم: ${job.targetTimeFormatted}`);
+        } else {
+          job.status = 'completed';
+          job.sentAt = new Date().toISOString();
+        }
       } catch (err) {
         console.error(`❌ [Scheduler] فشل إرسال المهمة المجدولة (${job.id}):`, err);
         job.status = 'failed';
@@ -367,12 +376,62 @@ setInterval(async () => {
     }
   }
 
-  // Cleanup old records
-  const filtered = jobs.filter(j => j.status === 'pending' || (Date.now() - new Date(j.createdAt).getTime()) < 3600 * 1000);
+  // Cleanup old records (keep pending & recurring jobs indefinitely)
+  const filtered = jobs.filter(j => j.status === 'pending' || j.isRecurring || (Date.now() - new Date(j.createdAt).getTime()) < 3600 * 1000);
   if (filtered.length !== jobs.length || changed) {
     saveScheduledJobs(filtered);
   }
 }, 3000);
+
+// Synchronize all active debtor schedules directly to AWS Gateway queue (24/7 autonomous background engine)
+app.post('/scheduled/sync-debtors', (req, res) => {
+  const { debtors = [] } = req.body;
+  const jobs = loadScheduledJobs();
+  let updatedCount = 0;
+
+  debtors.forEach(debtor => {
+    if (!debtor.phone || !debtor.schedule || debtor.schedule === 'disabled') return;
+    const cleanPhone = formatInternationalPhone(debtor.phone);
+    if (!cleanPhone) return;
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+    const jobId = `debtor_${debtor.customerId || debtor.id || cleanPhone}`;
+
+    const existingIndex = jobs.findIndex(j => j.id === jobId || (j.jid === jid && j.isDebtReminder));
+    const targetTimestamp = debtor.targetTimestamp || calculateNextScheduledTimestamp(debtor.schedule, debtor.timeStr || '20:00', new Date());
+
+    const newJob = {
+      id: jobId,
+      type: 'chat',
+      isDebtReminder: true,
+      isRecurring: true,
+      customerId: debtor.customerId || debtor.id,
+      customerName: debtor.customerName || debtor.name,
+      schedule: debtor.schedule,
+      timeStr: debtor.timeStr || '20:00',
+      jid,
+      cleanPhone,
+      body: debtor.message,
+      targetTimestamp,
+      targetTimeFormatted: new Date(targetTimestamp).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' }),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      token: req.body.token || 'SafeZone2026'
+    };
+
+    if (existingIndex >= 0) {
+      if (jobs[existingIndex].status === 'pending') {
+        jobs[existingIndex] = { ...jobs[existingIndex], ...newJob };
+      }
+    } else {
+      jobs.push(newJob);
+    }
+    updatedCount++;
+  });
+
+  saveScheduledJobs(jobs);
+  console.log(`📋 [Scheduler] تم مزامنة ${updatedCount} تذكير عميل في طابور السيرفر السحابي 24/7 بنجاح!`);
+  res.json({ success: true, count: jobs.length, syncedDebtors: updatedCount });
+});
 
 // Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 1 minute)
 setInterval(async () => {

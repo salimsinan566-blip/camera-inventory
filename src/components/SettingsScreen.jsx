@@ -117,14 +117,6 @@ export default function SettingsScreen() {
   });
   const [savingStore, setSavingStore] = useState(false);
 
-  // Labor info state
-  const { laborCharges, loading: laborLoading } = useLaborCharges();
-  const [newLabor, setNewLabor] = useState({ name: '', price: '' });
-  const [editingLaborId, setEditingLaborId] = useState(null);
-  const [editLabor, setEditLabor] = useState({ name: '', price: '' });
-  const [testPhone, setTestPhone] = useState('');
-  const [testingWhatsApp, setTestingWhatsApp] = useState(false);
-
   // Categories management state
   const { products = [] } = useProducts();
   const [editingCategory, setEditingCategory] = useState({ oldName: '', newName: '' });
