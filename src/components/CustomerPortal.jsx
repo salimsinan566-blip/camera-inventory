@@ -169,8 +169,8 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
         {/* Center Login Card */}
         <div className="max-w-md mx-auto w-full my-auto py-6">
           <div className="text-center mb-6">
-            <div className="inline-block p-3 bg-white rounded-2xl shadow-xl mb-3 border border-white/20">
-              <img src={activeLogo} alt={storeName} className="h-14 sm:h-18 max-h-24 w-auto max-w-[200px] object-contain mx-auto" />
+            <div className="inline-block p-4 bg-white rounded-3xl shadow-xl mb-3 border border-white/20">
+              <img src={activeLogo} alt={storeName} className="h-20 sm:h-24 max-h-32 w-auto max-w-[260px] object-contain mx-auto" />
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">بوابة كشف حساب العملاء</h1>
             <p className="text-xs text-slate-300 mt-1">
@@ -300,8 +300,8 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Logo & Client Greeting */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <img src={activeLogo} alt={storeName} className="h-9 sm:h-10 w-auto max-w-[140px] object-contain shrink-0" />
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={activeLogo} alt={storeName} className="h-12 sm:h-14 w-auto max-w-[190px] object-contain shrink-0" />
             <div className="min-w-0">
               <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">بوابة العميل</span>
               <h2 className="text-sm sm:text-base font-black text-slate-900 leading-tight truncate">
@@ -515,7 +515,7 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
 
           {/* Printable Header for A4 Print */}
           <div className="hidden print:block p-6 border-b border-slate-300 text-center">
-            <img src={activeLogo} alt={storeName} className="h-12 w-auto max-w-[180px] object-contain mx-auto mb-2" />
+            <img src={activeLogo} alt={storeName} className="h-20 w-auto max-w-[260px] object-contain mx-auto mb-2.5" />
             <h1 className="text-xl font-black">كشف حساب عميل رسمي</h1>
             <p className="text-xs text-slate-600 mt-1">
               العميل: <strong>{cust.name}</strong> • رقم الهاتف: <strong>{cust.phone1 || session.identifier}</strong>
