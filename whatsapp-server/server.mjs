@@ -358,7 +358,7 @@ setInterval(async () => {
         }
 
         if (job.isRecurring && job.schedule) {
-          const nextTarget = calculateNextScheduledTimestamp(job.schedule, job.timeStr || '20:00', new Date());
+          const nextTarget = calculateNextScheduledTimestamp(job.schedule, job.timeStr || '20:00', new Date(), true);
           job.targetTimestamp = nextTarget;
           job.targetTimeFormatted = new Date(nextTarget).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
           job.status = 'pending';
@@ -518,7 +518,7 @@ app.post('/scheduled/:id/send-now', async (req, res) => {
 });
 
 // Calculate next scheduled occurrence
-function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new Date()) {
+function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new Date(), isRenewal = false) {
   // 0. Minute Schedules (e.g. minutely_15, minutely_30)
   if (schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')))) {
     const intervalMinutes = parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
@@ -538,14 +538,14 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
   const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetH, targetM, 0, 0);
   const diffFromCandidate = now.getTime() - candidate.getTime();
 
-  // If inside the active window (current minute up to 59 minutes past), fire right now!
-  if (diffFromCandidate >= 0 && diffFromCandidate <= 59 * 60 * 1000) {
+  // If NOT a renewal, and inside active window (current minute up to 10 minutes past), fire right now!
+  if (!isRenewal && diffFromCandidate >= 0 && diffFromCandidate <= 10 * 60 * 1000) {
     return now.getTime();
   }
 
   // 1. Daily / Custom 1 Days
   if (schedCode === 'custom_1_days' || schedCode === 'daily' || schedCode.startsWith('custom_1_')) {
-    if (candidate.getTime() > now.getTime()) {
+    if (!isRenewal && candidate.getTime() > now.getTime()) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + 1);
@@ -557,7 +557,7 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
   if (DAYS.includes(schedCode) || schedCode === 'default') {
     const targetDayIndex = DAYS.indexOf(schedCode === 'default' ? 'thursday' : schedCode);
     let daysAhead = (targetDayIndex - now.getDay() + 7) % 7;
-    if (daysAhead === 0 && candidate.getTime() <= now.getTime()) {
+    if (daysAhead === 0 && (isRenewal || candidate.getTime() <= now.getTime())) {
       daysAhead = 7;
     }
     candidate.setDate(now.getDate() + daysAhead);
@@ -568,7 +568,7 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
   if (schedCode.startsWith('monthly_')) {
     const targetDay = parseInt(schedCode.replace('monthly_', ''), 10) || 1;
     candidate.setDate(targetDay);
-    if (candidate.getTime() <= now.getTime()) {
+    if (isRenewal || candidate.getTime() <= now.getTime()) {
       candidate.setMonth(candidate.getMonth() + 1);
     }
     return candidate.getTime();
@@ -577,7 +577,7 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
   // 4. Custom N days
   if (schedCode.startsWith('custom_')) {
     const n = parseInt(schedCode.replace('custom_', '').replace('_days', ''), 10) || 7;
-    if (candidate.getTime() > now.getTime()) {
+    if (!isRenewal && candidate.getTime() > now.getTime()) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + n);
