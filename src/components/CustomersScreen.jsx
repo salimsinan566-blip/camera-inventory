@@ -380,11 +380,12 @@ export default function CustomersScreen() {
     }
 
     setSendingIndividualId(cust.id);
-    const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}`;
-    const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
     const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
     const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
     const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+    const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
+    const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}${pinParam}`;
+    const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
     const message = renderWhatsAppTemplate(template, {
       customerName: cust.name,
@@ -477,11 +478,12 @@ export default function CustomersScreen() {
       setCampaignLogs(prev => prev.map((l, idx) => idx === i ? { ...l, status: 'sending' } : l));
 
       try {
-        const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}`;
-        const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
         const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
         const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
         const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
+        const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(cust.name)}${pinParam}`;
+        const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
         const message = renderWhatsAppTemplate(template, {
           customerName: cust.name,

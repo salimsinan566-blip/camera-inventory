@@ -28,12 +28,40 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
-  // Auto-fill from URL params if present (e.g. ?name=علي_الحسيني or ?customer=علي)
+  // Auto-fill from URL params and auto-login if both name and pin are present
   useEffect(() => {
+    // Ensure anonymous session is initiated silently in background on portal load
+    import('../firebase/auth').then(({ auth }) => {
+      if (!auth.currentUser) {
+        import('firebase/auth').then(({ signInAnonymously }) => {
+          signInAnonymously(auth).catch(() => {});
+        });
+      }
+    });
+
     const urlParams = new URLSearchParams(window.location.search);
     const prefillName = urlParams.get('name') || urlParams.get('customer') || urlParams.get('phone') || '';
-    if (prefillName && !identifier) {
+    const prefillPin = urlParams.get('pin') || urlParams.get('pass') || urlParams.get('token') || '';
+
+    if (prefillName) {
       setIdentifier(prefillName.trim());
+    }
+    if (prefillPin) {
+      setPin(prefillPin.trim());
+    }
+
+    if (prefillName && prefillPin && !session) {
+      setLoading(true);
+      authenticateCustomer(prefillName.trim(), prefillPin.trim(), true)
+        .then((newSession) => {
+          setSession(newSession);
+        })
+        .catch((err) => {
+          setError(err.message || 'بيانات الدخول غير صحيحة، يرجى المحاولة مرة أخرى.');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
     }
   }, []);
 

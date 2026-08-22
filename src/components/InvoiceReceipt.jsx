@@ -584,7 +584,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         }
       }
 
-      const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(sale.customerName || '')}`;
+      const rawTargetPhone = String(targetPhone || sale.customerPhone || '').replace(/[^\d]/g, '');
+      const last4 = rawTargetPhone.length >= 4 ? rawTargetPhone.slice(-4) : rawTargetPhone;
+      const customerPin = matchedCustomer?.pinCode || matchedCustomer?.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+      const pinParam = (customerPin && customerPin !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(customerPin)}` : '';
+      const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(sale.customerName || '')}${pinParam}`;
+      
       let debtSection = '';
       if (sale.invoiceType === 'debt') {
         const paid = Number(sale.paidAmount || 0);
@@ -593,10 +598,6 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           : Math.max(0, Number(sale.total) - paid);
         debtSection = `⏳ المتبقي (الدين): ${rem.toLocaleString()} د.ع\n`;
       }
-
-      const rawTargetPhone = String(targetPhone || sale.customerPhone || '').replace(/[^\d]/g, '');
-      const last4 = rawTargetPhone.length >= 4 ? rawTargetPhone.slice(-4) : rawTargetPhone;
-      const customerPin = matchedCustomer?.pinCode || matchedCustomer?.passcode || last4 || 'آخر 4 أرقام من هاتفك';
 
       const template = settings?.whatsappInvoiceTemplate || DEFAULT_WHATSAPP_TEMPLATES.invoice;
       const text = renderWhatsAppTemplate(template, {

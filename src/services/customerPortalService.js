@@ -193,10 +193,10 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
       const sNameNorm = normalizeArabic(s.customerName);
       const sPhone = normalizePhone(s.customerPhone || s.phone);
 
+      const matchesId = s.customerId && matchedCustomer.id && String(s.customerId) === String(matchedCustomer.id);
       const isNameMatch = Boolean(sNameNorm && targetNameNorm && sNameNorm === targetNameNorm);
-      const isPhoneMatch = Boolean(p1 && p1.length >= 7 && sPhone && sPhone.length >= 7 && (p1.endsWith(sPhone) || sPhone.endsWith(p1)));
 
-      if (isNameMatch || isPhoneMatch) {
+      if (matchesId || isNameMatch) {
         customerSales.push({
           id: doc.id,
           invoiceNumber: s.invoiceNumber || s.invoiceId || doc.id.slice(0, 6),
@@ -249,6 +249,22 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
       }
     });
 
+    // Fetch store settings for logo and store name
+    let storeSettings = { storeName: 'SAFE ZONE', logoUrl: null };
+    try {
+      const { doc: fDoc, getDoc: fGetDoc } = await import('firebase/firestore');
+      const setDoc = await fGetDoc(fDoc(db, 'settings', 'store_info'));
+      if (setDoc.exists()) {
+        const sData = setDoc.data();
+        storeSettings = {
+          storeName: sData.storeName || 'SAFE ZONE',
+          logoUrl: sData.logoUrl || null
+        };
+      }
+    } catch (e) {
+      console.warn('Store settings lookup notice:', e.message);
+    }
+
     let totalPurchases = 0;
     let cashPaid = 0;
     let totalDebt = 0;
@@ -282,6 +298,7 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
         phone1: matchedCustomer.phone1 || p1,
         phone2: matchedCustomer.phone2 || ''
       },
+      storeSettings,
       summary: { totalPurchases, cashPaid, oldInvoicesAmount, totalDebt },
       sales: customerSales.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)),
       incomes: customerIncomes,

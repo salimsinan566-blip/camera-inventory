@@ -303,11 +303,12 @@ export async function processAutomatedDebtReminders({
 
     if (totalDebt > 0 && cust.phone1) {
       const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
-      const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}`;
-      const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
       const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
       const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
       const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+      const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
+      const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}${pinParam}`;
+      const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
       const message = renderWhatsAppTemplate(template, {
         customerName: cust.name,
@@ -337,11 +338,12 @@ export async function processAutomatedDebtReminders({
       sessionSentDebtors.set(cust.id, Date.now());
       try {
         const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
-        const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}`;
-        const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
         const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
         const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
         const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
+        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${encodeURIComponent(password)}` : '';
+        const portalUrl = `${portalBaseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}${pinParam}`;
+        const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
 
         const message = renderWhatsAppTemplate(template, {
           customerName: cust.name,
