@@ -480,17 +480,19 @@ export default async function handler(req, res) {
     const chatId = message.chat.id;
     const text = message.text.trim();
     const cleanText = normalizeArabic(text);
+    const cmdClean = text.toLowerCase().split('@')[0].trim();
 
     // 1. أمر البداية والمساعدة
-    if (text === '/start' || cleanText === 'مساعده' || cleanText === 'اوامر' || text === '/help') {
+    if (cmdClean === '/start' || cleanText === 'مساعده' || cleanText === 'اوامر' || cmdClean === '/help') {
       await sendWelcomeMenu(chatId);
       return res.status(200).send('OK');
     }
 
     // 1.1 أوامر نقطة البيع وعروض الأسعار (Telegram Mini App)
     if (
-      text === '/pos' ||
-      text === '/sell' ||
+      cmdClean === '/pos' ||
+      cmdClean === '/sell' ||
+      cmdClean === 'pos' ||
       cleanText === 'نقطة بيع' ||
       cleanText === 'نقطه بيع' ||
       cleanText === 'بيع' ||
@@ -512,8 +514,10 @@ export default async function handler(req, res) {
     }
 
     if (
-      text === '/offer' ||
-      text === '/quote' ||
+      cmdClean === '/offer' ||
+      cmdClean === '/quote' ||
+      cmdClean === '/quotation' ||
+      cmdClean === 'offer' ||
       cleanText === 'عرض سعر' ||
       cleanText === 'عرض' ||
       cleanText === 'عروض اسعار' ||
@@ -694,6 +698,23 @@ async function sendWelcomeMenu(chatId) {
             url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&chat_id=${chatId}`
           }
         }
+      })
+    }).catch(() => {});
+
+    // Register Official Telegram Command Menu in dropdown
+    fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'pos', description: '🛒 فتح نقطة البيع المصغرة (Mini App)' },
+          { command: 'offer', description: '📑 إنشاء وتصدير عرض سعر رسمي' },
+          { command: 'income', description: '💰 تقرير الدخل والصندوق وحساب اليوم' },
+          { command: 'debtors', description: '👥 قائمة ديون العملاء (المدينون)' },
+          { command: 'creditors', description: '🏢 ديون الموردين (الدائنون)' },
+          { command: 'shortages', description: '📊 تقرير النواقص في المخزون' },
+          { command: 'start', description: '🌟 القائمة الرئيسية والمساعدة' }
+        ]
       })
     }).catch(() => {});
   }
