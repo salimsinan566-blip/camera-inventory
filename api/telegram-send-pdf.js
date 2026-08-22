@@ -13,6 +13,12 @@ function parseDateSafe(val) {
   return new Date();
 }
 
+// Fallback ASCII cleaner so pdf-lib Helvetica never throws WinAnsi encode error
+function safeText(str, fallback = '---') {
+  if (!str) return fallback;
+  return String(str).replace(/[^\x00-\x7F]/g, '?');
+}
+
 async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595.28, 841.89]); // A4 Size
@@ -28,10 +34,10 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
     y: height - 105,
     width: width - 60,
     height: 75,
-    color: isOffer ? rgb(0.78, 0.45, 0.1) : rgb(0.12, 0.23, 0.54), // Amber for Offer, Navy for Sale
+    color: isOffer ? rgb(0.78, 0.45, 0.1) : rgb(0.12, 0.23, 0.54),
   });
 
-  const storeName = storeInfo.storeName || 'SAFE ZONE';
+  const storeName = safeText(storeInfo.storeName || 'SAFE ZONE');
   page.drawText(storeName.toUpperCase(), {
     x: 45,
     y: height - 60,
@@ -41,7 +47,7 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
   });
 
   const titlePrefix = isOffer ? 'PRICE QUOTATION' : 'INVOICE';
-  const docNumber = docObj.invoiceNumber || docObj.offerNumber || docObj.id || '1001';
+  const docNumber = safeText(docObj.invoiceNumber || docObj.offerNumber || docObj.id || '1001');
   page.drawText(`${titlePrefix} #${docNumber}`, {
     x: 45,
     y: height - 85,
@@ -85,7 +91,7 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
     borderWidth: 1,
   });
 
-  page.drawText(`Client / Customer: ${docObj.customerName || 'General Customer'}`, {
+  page.drawText(`Client / Customer: ${safeText(docObj.customerName, 'General Customer')}`, {
     x: 45,
     y: height - 138,
     size: 11,
@@ -93,7 +99,7 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
     color: rgb(0.1, 0.1, 0.15),
   });
 
-  const custPhone = docObj.customerPhone || docObj.phone1 || docObj.phone || '';
+  const custPhone = safeText(docObj.customerPhone || docObj.phone1 || docObj.phone || '');
   if (custPhone) {
     page.drawText(`Phone: ${custPhone}`, {
       x: 45,
@@ -101,16 +107,6 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
       size: 9.5,
       font: fontRegular,
       color: rgb(0.3, 0.35, 0.45),
-    });
-  }
-
-  if (docObj.offerName) {
-    page.drawText(`Subject: ${docObj.offerName}`, {
-      x: width / 2,
-      y: height - 138,
-      size: 10,
-      font: fontBold,
-      color: rgb(0.2, 0.3, 0.4),
     });
   }
 
@@ -136,7 +132,7 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
 
   items.slice(0, 22).forEach((item, index) => {
     const lineTotal = Number(item.lineTotal || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0)));
-    const itemName = (item.name || item.productName || 'Product Item').substring(0, 42);
+    const itemName = safeText((item.name || item.productName || 'Product Item')).substring(0, 42);
 
     page.drawText(`${index + 1}`, { x: 40, y: currentY, size: 8.5, font: fontRegular, color: rgb(0.3, 0.3, 0.3) });
     page.drawText(itemName, { x: 70, y: currentY, size: 8.5, font: fontRegular, color: rgb(0.1, 0.1, 0.1) });
@@ -199,50 +195,76 @@ async function generateDocumentPdfBuffer(docObj, storeInfo = {}) {
     page.drawText(`${remaining.toLocaleString()} IQD`, { x: boxX + 120, y: sY, size: 9.5, font: fontBold, color: remaining > 0 ? rgb(0.8, 0.1, 0.1) : rgb(0.2, 0.6, 0.2) });
   }
 
-  // Footer notes
-  page.drawText(`Generated via Safe Zone POS & Quotations System — Official Document`, {
-    x: 45,
-    y: 35,
-    size: 8,
-    font: fontRegular,
-    color: rgb(0.5, 0.55, 0.6),
-  });
-
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
 }
 
 export default async function handler(req, res) {
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { chatId, doc: docObj, storeInfo = {} } = req.body || {};
+  const { chatId, doc: docObj, pdfBase64, filename: customFilename, storeInfo = {} } = req.body || {};
 
-  if (!chatId || !docObj) {
-    return res.status(400).json({ error: 'يرجى تزويد chatId وبيانات المستند doc' });
+  // Retrieve Bot Token & Target Chat ID from payload or environment
+  const token = (storeInfo.telegramBotToken || '').trim() ||
+                process.env.VITE_TELEGRAM_BOT_TOKEN ||
+                process.env.TELEGRAM_BOT_TOKEN;
+
+  const targetChatId = chatId ||
+                       (storeInfo.telegramChatId || '').trim() ||
+                       process.env.VITE_TELEGRAM_CHAT_ID ||
+                       process.env.TELEGRAM_CHAT_ID;
+
+  if (!token) {
+    return res.status(400).json({ error: 'توكن البوت (Bot Token) غير متوفر في الإعدادات' });
   }
 
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    return res.status(500).json({ error: 'لم يتم ضبط TELEGRAM_BOT_TOKEN في المتغيرات البيئية' });
+  if (!targetChatId) {
+    return res.status(400).json({ error: 'معرف المحادثة (Chat ID) غير متوفر. تأكد من فتح التطبيق عبر التليجرام أو تعيينه في الإعدادات.' });
   }
 
   try {
-    const pdfBuffer = await generateDocumentPdfBuffer(docObj, storeInfo);
+    let pdfBuffer;
+    let filename = customFilename;
+    const isOffer = Boolean(docObj?.isOffer);
+    const docNumber = docObj?.invoiceNumber || docObj?.offerNumber || docObj?.id || '1001';
 
-    const isOffer = Boolean(docObj.isOffer);
-    const docNumber = docObj.invoiceNumber || docObj.offerNumber || '1001';
-    const filename = isOffer ? `Quotation_${docNumber}.pdf` : `Invoice_${docNumber}.pdf`;
+    if (pdfBase64) {
+      // 1. High Quality Arabic PDF sent from Client
+      const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+      pdfBuffer = Buffer.from(base64Data, 'base64');
+      if (!filename) {
+        filename = isOffer ? `Quotation_${docNumber}.pdf` : `Invoice_${docNumber}.pdf`;
+      }
+    } else if (docObj) {
+      // 2. Server-side generated PDF
+      pdfBuffer = await generateDocumentPdfBuffer(docObj, storeInfo);
+      if (!filename) {
+        filename = isOffer ? `Quotation_${docNumber}.pdf` : `Invoice_${docNumber}.pdf`;
+      }
+    } else {
+      return res.status(400).json({ error: 'يرجى تزويد بيانات المستند doc أو ملف pdfBase64' });
+    }
 
     const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
     const formData = new FormData();
-    formData.append('chat_id', String(chatId));
+    formData.append('chat_id', String(targetChatId));
     formData.append('document', blob, filename);
 
-    const caption = isOffer 
+    const caption = docObj ? (isOffer 
       ? `📑 <b>عرض سعر رسمي #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>`
-      : `🧾 <b>فاتورة بيع رسمية #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>\n💳 الدفع: <b>${docObj.invoiceType === 'debt' ? 'آجل / دين 🔴' : 'نقداً 💵'}</b>`;
+      : `🧾 <b>فاتورة بيع رسمية #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>\n💳 الدفع: <b>${docObj.invoiceType === 'debt' ? 'آجل / دين 🔴' : 'نقداً 💵'}</b>`
+    ) : `📄 مستند رسمي من Safe Zone`;
 
     formData.append('caption', caption);
     formData.append('parse_mode', 'HTML');
@@ -261,7 +283,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ success: true, messageId: tgData.result?.message_id });
   } catch (error) {
-    console.error('Error generating/sending Telegram PDF:', error);
+    console.error('Error sending Telegram PDF:', error);
     return res.status(500).json({ error: error.message || 'حدث خطأ أثناء معالجة الطلب' });
   }
 }

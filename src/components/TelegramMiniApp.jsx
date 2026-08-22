@@ -8,6 +8,7 @@ import { checkoutSale } from '../services/salesService';
 import { createOffer } from '../services/offersService';
 import { login, logout } from '../firebase/auth';
 import { searchProducts } from '../utils/search';
+import { generateInvoicePdfBlob } from '../utils/pdfHelper';
 import InvoiceReceipt from './InvoiceReceipt';
 
 export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
@@ -393,35 +394,58 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     }
   };
 
+  const [sendingTelegram, setSendingTelegram] = useState(false);
+
   // Send PDF directly to Telegram Chat via backend
   const handleSendToTelegram = async (docObj) => {
-    const targetChat = chatId || (window.Telegram?.WebApp?.initDataUnsafe?.user?.id);
+    const targetChat = chatId || (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) || settings?.telegramChatId;
     if (!targetChat) {
-      toast('لم يتم التعرف على محادثة التليجرام. يرجى استخدام زر "معاينة وتحميل PDF" لتنزيل الملف.', 'warning');
+      toast('لم يتم التعرف على محادثة التليجرام. تأكد من فتح التطبيق من البوت مباشرة.', 'warning');
       return;
     }
 
-    toast('جارٍ إرسال ملف الـ PDF لمحادثة التليجرام... ⏳', 'info');
+    setSendingTelegram(true);
+    toast('جارٍ إنشاء ملف الـ PDF وإرساله لمحادثتك بالتليجرام... ⏳', 'info');
+
     try {
+      let pdfBase64 = null;
+      try {
+        // High quality Arabic PDF generator
+        const pdfBlob = await generateInvoicePdfBlob(docObj, settings);
+        if (pdfBlob) {
+          pdfBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(pdfBlob);
+          });
+        }
+      } catch (err) {
+        console.warn('Fallback to server PDF generation:', err);
+      }
+
       const res = await fetch('/api/telegram-send-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chatId: targetChat,
           doc: docObj,
+          pdfBase64,
           storeInfo: settings
         })
       });
 
       const data = await res.json().catch(() => ({}));
       if (data.success || res.ok) {
-        toast('تم إرسال مستند الـ PDF إلى محادثتك بالتليجرام بنجاح! ✈️📄', 'success');
+        toast('تم إرسال ملف الـ PDF إلى محادثتك بالتليجرام بنجاح! ✈️📄', 'success');
       } else {
         throw new Error(data.error || 'فشل الإرسال عبر البوت');
       }
     } catch (e) {
       console.error('Telegram send error:', e);
       toast(`تعذر الإرسال للبوت: ${e.message}`, 'error');
+    } finally {
+      setSendingTelegram(false);
     }
   };
 
@@ -1181,22 +1205,26 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
             <div className="space-y-2 pt-2">
               <button
+                type="button"
+                disabled={sendingTelegram}
                 onClick={() => handleSendToTelegram(completedDoc)}
-                className="w-full py-3 rounded-xl bg-[#229ED9] hover:bg-[#1E88C7] text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-2xl bg-[#229ED9] hover:bg-[#1E88C7] text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
               >
-                <span>✈️</span>
-                <span>إرسال ملف PDF للمحادثة بالتليجرام</span>
+                <span>{sendingTelegram ? '⏳' : '✈️'}</span>
+                <span>{sendingTelegram ? 'جارٍ إنشاء وإرسال الـ PDF... ⏳' : 'إرسال ملف PDF للمحادثة بالتليجرام ✈️'}</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setShowFullReceipt(true)}
                 className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all flex items-center justify-center gap-1.5 border border-slate-200"
               >
-                <span>🖨️</span>
-                <span>معاينة وتحميل PDF رسمي</span>
+                <span>📥</span>
+                <span>تحميل / معاينة PDF على الهاتف</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setCompletedDoc(null);
                   setShowFullReceipt(false);
