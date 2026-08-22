@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import logo from '../assets/logo.png';
 import { useSettings } from '../hooks/useSettings';
+import InvoiceReceipt from './InvoiceReceipt';
 import { 
   getSavedCustomerSession, 
   authenticateCustomer, 
@@ -652,104 +653,13 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
         </div>
       </footer>
 
-      {/* Invoice Details Modal for Customer */}
+      {/* Official Invoice Receipt Modal for Customer */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs" dir="rtl">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="font-bold text-sm">تفاصيل الفاتورة #{selectedInvoice.invoiceNumber}</h3>
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-              <div className="flex items-center justify-between text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <span>التاريخ: {selectedInvoice.createdAt ? new Date(selectedInvoice.createdAt).toLocaleDateString('ar-IQ') : '—'}</span>
-                <span className="font-bold text-slate-900">
-                  نوع الفاتورة: {selectedInvoice.invoiceType === 'debt' ? 'آجل (دين)' : 'نقدي'}
-                </span>
-              </div>
-
-              {/* Items List */}
-              <div>
-                <h4 className="text-xs font-bold text-slate-700 mb-2">الأصناف والمواد المشتراة:</h4>
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs">
-                  {(selectedInvoice.items || []).map((item, idx) => (
-                    <div key={idx} className="p-2.5 flex items-center justify-between bg-white">
-                      <div>
-                        <span className="font-bold text-slate-900 block">{item.name}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {item.quantity} × {formatIQD(item.unitPrice)} د.ع
-                        </span>
-                      </div>
-                      <span className="font-bold font-mono text-slate-900">
-                        {formatIQD(item.total || (item.quantity * item.unitPrice))} د.ع
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Total & Remaining Breakdown */}
-              {(() => {
-                const isDebt = selectedInvoice.invoiceType === 'debt';
-                const totalAmt = Number(selectedInvoice.total) || 0;
-                const paidAmt = Number(selectedInvoice.paidAmount) || 0;
-                const discountAmt = Number(selectedInvoice.discount) || 0;
-                const subtotalAmt = Number(selectedInvoice.subtotal) || (totalAmt + discountAmt);
-                const remainingDebt = isDebt
-                  ? (selectedInvoice.remainingDebt !== undefined
-                      ? Math.min(Number(selectedInvoice.remainingDebt), Math.max(0, totalAmt - paidAmt))
-                      : Math.max(0, totalAmt - paidAmt))
-                  : 0;
-
-                return (
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
-                    {discountAmt > 0 && (
-                      <>
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span>المجموع قبل الخصم:</span>
-                          <span className="font-bold font-mono">{formatIQD(subtotalAmt)} د.ع</span>
-                        </div>
-                        <div className="flex items-center justify-between text-amber-700 font-bold">
-                          <span>قيمة الخصم الممنوح:</span>
-                          <span className="font-mono">- {formatIQD(discountAmt)} د.ع</span>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-700 font-bold">إجمالي الفاتورة:</span>
-                      <span className="font-black font-mono text-slate-900 text-sm">{formatIQD(totalAmt)} د.ع</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-emerald-700 font-bold">المسدد نقداً:</span>
-                      <span className="font-bold font-mono text-emerald-700">{formatIQD(paidAmt)} د.ع</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                      <span className="text-rose-700 font-bold">المتبقي كدين:</span>
-                      <span className="font-black font-mono text-rose-700 text-sm">
-                        {formatIQD(remainingDebt)} د.ع
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-800"
-              >
-                إغلاق
-              </button>
-            </div>
-          </div>
-        </div>
+        <InvoiceReceipt
+          sale={selectedInvoice}
+          isCustomerPortalView={true}
+          onClose={() => setSelectedInvoice(null)}
+        />
       )}
 
       {/* Print Styles */}
