@@ -7,6 +7,7 @@ import { useUI } from '../contexts/UIContext';
 import { checkoutSale } from '../services/salesService';
 import { createOffer } from '../services/offersService';
 import { login, logout } from '../firebase/auth';
+import { searchProducts } from '../utils/search';
 import InvoiceReceipt from './InvoiceReceipt';
 
 export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
@@ -118,66 +119,58 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     }
   };
 
-  // Categories list
+  // Categories list extracted dynamically from cameraType / category
   const categories = useMemo(() => {
     const set = new Set();
-    products.forEach(p => {
-      if (p.category && p.category.trim()) set.add(p.category.trim());
+    (products || []).forEach(p => {
+      const cat = (p.cameraType || p.category || p.type || '').trim();
+      if (cat) set.add(cat);
     });
     return ['all', ...Array.from(set)];
   }, [products]);
 
-  // Filtered and Sorted Products (Always returns matching products)
+  // Filtered and Sorted Products
   const filteredProducts = useMemo(() => {
-    let list = [...products];
+    let list = searchProducts(products || [], searchTerm);
 
     // 1. Category Filter
     if (selectedCategory !== 'all') {
-      list = list.filter(p => p.category === selectedCategory);
+      list = list.filter(p => (p.cameraType || p.category || p.type || '').trim() === selectedCategory);
     }
 
     // 2. Stock Filter
     if (stockFilter === 'in_stock') {
-      list = list.filter(p => ((Number(p.storeQty) || 0) + (Number(p.quantity) || 0)) > 0);
+      list = list.filter(p => (Number(p.storeQty) || 0) > 0 || (Number(p.warehouseQty) || 0) > 0 || (Number(p.quantity) || 0) > 0);
     } else if (stockFilter === 'low_stock') {
       list = list.filter(p => {
-        const total = (Number(p.storeQty) || 0) + (Number(p.quantity) || 0);
-        return total > 0 && total <= (Number(p.minThreshold) || 3);
+        const total = (Number(p.storeQty) || 0) + (Number(p.warehouseQty) || 0) + (Number(p.quantity) || 0);
+        return total > 0 && total <= (Number(p.storeMinThreshold || p.minThreshold) || 3);
       });
     }
 
-    // 3. Search Term (Fuzzy match)
-    if (searchTerm.trim()) {
-      const q = searchTerm.trim().toLowerCase();
-      list = list.filter(p => 
-        (p.name && p.name.toLowerCase().includes(q)) ||
-        (p.sku && p.sku.toLowerCase().includes(q)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-        (p.category && p.category.toLowerCase().includes(q))
-      );
-    }
-
-    // 4. Sorting
+    // 3. Sorting
     if (sortBy === 'price_asc') {
-      list.sort((a, b) => Number(a.price || a.sellingPrice || 0) - Number(b.price || b.sellingPrice || 0));
+      list.sort((a, b) => Number(a.retailPrice || a.price || 0) - Number(b.retailPrice || b.price || 0));
     } else if (sortBy === 'price_desc') {
-      list.sort((a, b) => Number(b.price || b.sellingPrice || 0) - Number(a.price || a.sellingPrice || 0));
+      list.sort((a, b) => Number(b.retailPrice || b.price || 0) - Number(a.retailPrice || a.price || 0));
     } else if (sortBy === 'name') {
       list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
     }
 
     return list;
-  }, [products, selectedCategory, stockFilter, searchTerm, sortBy]);
+  }, [products, searchTerm, selectedCategory, stockFilter, sortBy]);
 
   // Cart operations
   const addToCart = (product) => {
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
-      const availableQty = (Number(product.storeQty) || 0) + (Number(product.quantity) || 0);
+      const storeQty = Number(product.storeQty !== undefined ? product.storeQty : product.quantity || 0);
+      const totalQty = storeQty + Number(product.warehouseQty || 0);
+      const unitPrice = Number(product.retailPrice || product.price || product.sellingPrice || 0);
 
       if (existing) {
-        if (activeTab === 'pos' && existing.quantity >= availableQty) {
-          toast(`الكمية المتوفرة بالمخزن (${availableQty}) فقط`, 'warning');
+        if (activeTab === 'pos' && existing.quantity >= (storeQty > 0 ? storeQty : totalQty)) {
+          toast(`الكمية المتاحة في المحل (${storeQty}) فقط`, 'warning');
           return prev;
         }
         return prev.map(item =>
@@ -186,11 +179,10 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             : item
         );
       } else {
-        if (activeTab === 'pos' && availableQty <= 0) {
-          toast('هذا المنتج غير متوفر بالمخزن حالياً', 'warning');
+        if (activeTab === 'pos' && totalQty <= 0) {
+          toast('هذا المنتج نافذ من المخزون حالياً', 'warning');
           return prev;
         }
-        const unitPrice = Number(product.price || product.sellingPrice || 0);
         return [
           ...prev,
           {
@@ -202,7 +194,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             quantity: 1,
             lineTotal: unitPrice,
             image: product.imageUrl || product.image || null,
-            maxStock: availableQty
+            maxStock: storeQty > 0 ? storeQty : totalQty
           }
         ];
       }
@@ -529,7 +521,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="🔍 ابحث بالاسم، الباركود، أو الرمز (SKU)..."
+                placeholder="🔍 ابحث بالاسم، الموديل، الباركود، أو SKU..."
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium"
               />
               {searchTerm && (
@@ -588,8 +580,8 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="text-center py-16 px-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-3">
-            <div className="text-4xl">❌</div>
-            <h3 className="text-sm font-bold text-slate-900">لم يتم العثور على أي منتجات مطابقة</h3>
+            <div className="text-4xl">📦</div>
+            <h3 className="text-sm font-bold text-slate-900">لا توجد منتجات مطابقة للبحث أو القسم</h3>
             <p className="text-xs text-slate-500">جرب تعديل كلمات البحث أو تصفية الأقسام</p>
             <button
               onClick={() => {
@@ -606,10 +598,12 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {filteredProducts.map(p => {
               const inCart = cart.find(x => x.productId === p.id);
-              const availableQty = (Number(p.storeQty) || 0) + (Number(p.quantity) || 0);
-              const priceIQD = Number(p.price || p.sellingPrice || 0);
+              const storeQty = Number(p.storeQty !== undefined ? p.storeQty : p.quantity || 0);
+              const warehouseQty = Number(p.warehouseQty || 0);
+              const totalStock = storeQty + warehouseQty;
+              const priceIQD = Number(p.retailPrice || p.price || p.sellingPrice || 0);
               const priceUSD = exchangeRate > 0 ? (priceIQD / exchangeRate).toFixed(1) : 0;
-              const isOutOfStock = activeTab === 'pos' && availableQty <= 0;
+              const isOutOfStock = activeTab === 'pos' && totalStock <= 0;
 
               return (
                 <div
@@ -621,16 +615,16 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   {/* Top SKU & Stock Badge */}
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] text-slate-400 font-mono truncate max-w-[80px]">
-                      {p.sku || ''}
+                      {p.sku || p.model || ''}
                     </span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                      availableQty > 5 
+                      storeQty > 0 
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                        : availableQty > 0 
+                        : warehouseQty > 0 
                         ? 'bg-amber-50 text-amber-700 border border-amber-200' 
                         : 'bg-rose-50 text-rose-700 border border-rose-200'
                     }`}>
-                      {availableQty > 0 ? `${availableQty} متوفر` : 'نافذ'}
+                      {storeQty > 0 ? `المحل: ${storeQty}` : warehouseQty > 0 ? `المخزن: ${warehouseQty}` : 'نافذ'}
                     </span>
                   </div>
 
@@ -896,7 +890,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 ))}
               </div>
 
-              {/* Customer Info */}
+              {/* Customer Selection */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
                 <label className="text-xs font-bold text-slate-700 block">
                   👤 معلومات العميل:
