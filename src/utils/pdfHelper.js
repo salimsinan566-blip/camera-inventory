@@ -31,21 +31,6 @@ export async function generateAndSendShortagesPDF(products, toast) {
   overlay.style.overflow = 'hidden';
   overlay.dir = 'rtl';
 
-  // Add a nice loading message
-  const loadingMsg = document.createElement('div');
-  loadingMsg.innerHTML = `
-    <div style="text-align: center; margin-bottom: 20px;">
-      <svg class="animate-spin" style="width: 40px; height: 40px; color: #4f46e5; margin: 0 auto 10px auto;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
-      <h2 style="color: #4f46e5; font-size: 24px; font-weight: bold; font-family: sans-serif;">جاري تجهيز تقرير النواقص...</h2>
-      <p style="color: #6366f1; font-family: sans-serif;">يرجى الانتظار، سيتم الإرسال للتليجرام قريباً.</p>
-    </div>
-  `;
-  overlay.appendChild(loadingMsg);
-
-  // Create the actual PDF container
   const container = document.createElement('div');
   container.style.width = '800px';
   container.style.backgroundColor = '#ffffff';
@@ -102,92 +87,76 @@ export async function generateAndSendShortagesPDF(products, toast) {
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
-  // Scroll overlay to top to ensure html2canvas starts from the top
-  overlay.scrollTop = 0;
-
-  // Wait a short moment to ensure browser paints the DOM
-  await new Promise(resolve => setTimeout(resolve, 500));
-
   try {
     const opt = {
-      margin:       0,
-      filename:     'shortages.pdf',
-      image:        { type: 'jpeg', quality: 0.7 }, // تقليل الجودة لتقليل الحجم
-      html2canvas:  { scale: 1.5, useCORS: true, logging: true, scrollY: 0, windowWidth: 800 }, // تقليل الدقة قليلاً
-      jsPDF:        { unit: 'px', format: [800, 1131], orientation: 'portrait' }, // Match 800px width with A4 ratio
-      pagebreak:    { mode: ['css', 'legacy'] }
+      margin: 10,
+      filename: `تقرير_النواقص_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
-    
-    const reader = new FileReader();
-    reader.readAsDataURL(pdfBlob);
-    
-    await new Promise((resolve, reject) => {
-      reader.onloadend = async () => {
-        try {
-          const base64data = reader.result;
-          
-          loadingMsg.innerHTML = '<h2 style="color: #10b981; font-size: 24px; font-weight: bold; font-family: sans-serif; text-align: center;">جاري الإرسال للتليجرام...</h2>';
+    const pdfBlob = await html2pdf().set(opt).from(container).output('blob');
+    const formData = new FormData();
+    formData.append('document', pdfBlob, `تقرير_النواقص_${new Date().toISOString().split('T')[0]}.pdf`);
+    formData.append('caption', `📦 تقرير النواقص بتاريخ ${new Date().toLocaleDateString('ar-IQ')}`);
 
-          const response = await fetch('/api/send-pdf', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              pdfBase64: base64data,
-              filename: 'تقرير_النواقص.pdf'
-            })
-          });
-
-          if (!response.ok) throw new Error('فشل في إرسال الملف إلى التليجرام');
-          
-          toast('تم إرسال ملف الـ PDF إلى التليجرام بنجاح! 🚀', 'success');
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
+    const response = await fetch('/api/send-pdf', {
+      method: 'POST',
+      body: formData,
     });
 
+    const result = await response.json();
+    if (result.success) {
+      toast('تم إرسال تقرير النواقص كملف PDF إلى تليجرام بنجاح! 🚀', 'success');
+    } else {
+      throw new Error(result.error || 'فشل الإرسال');
+    }
   } catch (error) {
-    console.error('PDF Generation Error:', error);
-    toast('حدث خطأ أثناء توليد أو إرسال الـ PDF', 'error');
+    console.error('Error generating/sending shortages PDF:', error);
+    toast(`حدث خطأ أثناء الإرسال: ${error.message}`, 'error');
   } finally {
     document.body.removeChild(overlay);
   }
 }
 
-/**
- * Format timestamp / Date cleanly for invoice
- */
 function formatInvoiceDate(dateVal) {
   if (!dateVal) return new Date().toLocaleDateString('ar-IQ');
-  if (dateVal.toDate && typeof dateVal.toDate === 'function') {
+  if (typeof dateVal?.toDate === 'function') {
     return dateVal.toDate().toLocaleDateString('ar-IQ');
   }
   return new Date(dateVal).toLocaleDateString('ar-IQ');
 }
 
 /**
- * Generate Ultra High-Quality Arabic Invoice PDF Blob
+ * Generate 100% Identical Official System Invoice / Quotation PDF Blob
+ * Matches src/components/InvoiceReceipt.jsx pixel-perfect
  */
 export async function generateInvoicePdfBlob(sale, settings) {
   const storeName = (!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName;
   const address = settings?.address || 'العراق - بغداد';
   const logoUrl = settings?.logoUrl;
-  const invoiceNumber = sale.invoiceNumber || sale.offerNumber || sale.id;
+  const qrCodeUrl = settings?.qrCodeUrl;
+  const invoiceNumber = sale.invoiceNumber || sale.offerNumber || sale.id || '1001';
   const customerName = sale.customerName || 'زبون عام';
   const dateLabel = formatInvoiceDate(sale.createdAt || new Date());
   const isOffer = Boolean(sale.isOffer);
   const isDebt = sale.invoiceType === 'debt';
+  const isCard = sale.invoiceType === 'card';
+  const cashier = sale.cashierEmail || sale.cashier || 'المدير';
+  const cashierDisplayName = cashier.split('@')[0];
+
   const totalAmount = Number(sale.total || 0);
+  const discountAmount = Number(sale.discount || 0);
+  const subtotalAmount = Number(sale.subtotal || (totalAmount + discountAmount));
   const paidAmount = Number(sale.paidAmount || (isDebt ? 0 : totalAmount));
   const remainingDebt = sale.remainingDebt !== undefined
     ? Math.min(Number(sale.remainingDebt), Math.max(0, totalAmount - paidAmount))
     : Math.max(0, totalAmount - paidAmount);
+
+  const paymentLabel = isOffer 
+    ? 'عرض سعر' 
+    : (isDebt ? 'آجل (دين)' : (isCard ? 'ماستر كارد / إلكتروني' : 'نقداً'));
 
   const items = sale.items || [];
 
@@ -195,7 +164,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
   overlay.style.position = 'fixed';
   overlay.style.top = '0';
   overlay.style.left = '0';
-  overlay.style.width = '800px';
+  overlay.style.width = '794px';
   overlay.style.height = 'auto';
   overlay.style.opacity = '0.005';
   overlay.style.pointerEvents = 'none';
@@ -204,17 +173,18 @@ export async function generateInvoicePdfBlob(sale, settings) {
   overlay.dir = 'rtl';
 
   const container = document.createElement('div');
-  container.style.width = '800px';
+  container.style.width = '794px';
   container.style.backgroundColor = '#ffffff';
   container.style.padding = '35px 30px';
   container.style.boxSizing = 'border-box';
+  container.style.position = 'relative';
   container.dir = 'rtl';
 
   container.innerHTML = `
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700;900&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
       * {
-        box-sizing: border-box;
+        box-sizing: border-box !important;
         margin: 0;
         padding: 0;
         letter-spacing: 0px !important;
@@ -236,137 +206,203 @@ export async function generateInvoicePdfBlob(sale, settings) {
       }
     </style>
 
-    <!-- Header Section -->
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #C89B3C; padding-bottom: 15px; margin-bottom: 20px;">
-      <div style="text-align: right;">
-        <h1 style="font-size: 26px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">${storeName}</h1>
-        ${address ? `<p style="font-size: 13px; color: #64748b; font-weight: bold;">📍 ${address}</p>` : ''}
-      </div>
+    <!-- Watermark Logo in Background -->
+    ${logoUrl ? `
+      <img 
+        src="${logoUrl}" 
+        alt="" 
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; max-width: 500px; opacity: 0.05; filter: grayscale(100%); pointer-events: none; z-index: 0;" 
+        crossOrigin="anonymous" 
+      />
+    ` : ''}
 
-      <div style="text-align: left; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-        ${logoUrl ? `
-          <img src="${logoUrl}" alt="Logo" style="height: 60px; max-width: 180px; object-fit: contain;" crossOrigin="anonymous" />
-        ` : `
-          <div style="font-size: 20px; font-weight: 900; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
-        `}
-        <span style="background: #fdf8ed; color: #92400e; border: 1px solid #fde68a; padding: 4px 14px; border-radius: 9999px; font-size: 12px; font-weight: 900;">
-          ${isOffer ? 'عرض سعر (Quotation)' : 'فاتورة مبيعات رسمية'}
-        </span>
-      </div>
-    </div>
+    <div style="position: relative; z-index: 1; min-height: 1000px; display: flex; flex-direction: column; justify-content: space-between;">
+      
+      <!-- Top Section -->
+      <div>
+        <!-- Official Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #C89B3C; padding-bottom: 12px; margin-bottom: 16px;">
+          <!-- Store Info (Right) -->
+          <div style="text-align: right;">
+            <h1 style="font-size: 28px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">${storeName}</h1>
+            ${address ? `
+              <p style="font-size: 13px; color: #64748b; font-weight: bold; display: flex; align-items: center; gap: 4px;">
+                <span style="color: #C89B3C;">📍</span> ${address}
+              </p>
+            ` : ''}
+          </div>
 
-    <!-- Customer & Invoice Info Grid -->
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px 18px; margin-bottom: 20px;">
-      <div style="text-align: right;">
-        <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">فاتورة إلى:</span>
-        <h2 style="font-size: 18px; font-weight: 900; color: #0f172a;">${customerName}</h2>
-      </div>
+          <!-- Logo & Badge (Left) -->
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+            ${logoUrl ? `
+              <img src="${logoUrl}" alt="الشعار" style="height: 70px; max-width: 220px; object-fit: contain;" crossOrigin="anonymous" />
+            ` : `
+              <div style="height: 60px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+            `}
+            ${isOffer ? `
+              <span style="font-size: 13px; font-weight: 900; color: #78350f; background: #fef3c7; border: 1px solid #fde68a; padding: 4px 16px; border-radius: 9999px; text-transform: uppercase;">
+                عرض سعر (Quotation)
+              </span>
+            ` : `
+              <span style="font-size: 12px; font-weight: 900; color: #1e3a8a; background: #eff6ff; border: 1px solid #bfdbfe; padding: 3px 14px; border-radius: 9999px;">
+                فاتورة مبيعات رسمية
+              </span>
+            `}
+          </div>
+        </div>
 
-      <div style="text-align: left;">
-        <table style="font-size: 12px; text-align: right; width: auto;">
+        <!-- Customer & Invoice Info Grid -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px;">
+          <!-- Customer (Right) -->
+          <div style="text-align: right;">
+            <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">فاتورة إلى</span>
+            <h2 style="font-size: 20px; font-weight: 900; color: #1e293b;">${customerName}</h2>
+          </div>
+
+          <!-- Invoice Details Table (Left) -->
+          <div style="text-align: right;">
+            <table style="font-size: 12px; width: auto;">
+              <tbody>
+                <tr>
+                  <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">${isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'}</td>
+                  <td style="padding: 2px 4px; font-weight: 900; color: #0f172a; font-family: monospace;">#${invoiceNumber}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">تاريخ الإصدار:</td>
+                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${dateLabel}</td>
+                </tr>
+                ${!isOffer ? `
+                  <tr>
+                    <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">نوع الدفع:</td>
+                    <td style="padding: 2px 4px; font-weight: 900; color: ${isDebt ? '#dc2626' : (isCard ? '#2563eb' : '#16a34a')};">${paymentLabel}</td>
+                  </tr>
+                ` : ''}
+                <tr>
+                  <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">البائع:</td>
+                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${cashierDisplayName}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <table style="width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 20px;">
+          <thead>
+            <tr style="background: #f2f2f2; color: #334155; font-size: 13px; font-weight: 900; text-transform: uppercase;">
+              <th style="padding: 10px 12px; text-align: right; width: 50%;">الوصف</th>
+              <th style="padding: 10px 12px; text-align: center; width: 14%;">الكمية</th>
+              <th style="padding: 10px 12px; text-align: right; width: 18%;">السعر</th>
+              <th style="padding: 10px 12px; text-align: left; width: 18%;">المبلغ</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr>
-              <td style="padding: 2px 8px; color: #64748b; font-weight: bold;">${isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'}</td>
-              <td style="padding: 2px 8px; font-weight: 900; color: #0f172a; font-family: monospace;">${invoiceNumber}</td>
-            </tr>
-            <tr>
-              <td style="padding: 2px 8px; color: #64748b; font-weight: bold;">تاريخ الإصدار:</td>
-              <td style="padding: 2px 8px; font-weight: bold; color: #0f172a;">${dateLabel}</td>
-            </tr>
-            ${isDebt && !isOffer ? `
-            <tr>
-              <td style="padding: 2px 8px; color: #64748b; font-weight: bold;">نوع الدفع:</td>
-              <td style="padding: 2px 8px; font-weight: 900; color: #d97706;">آجل (دين)</td>
-            </tr>` : ''}
+            ${items.map((item, idx) => {
+              const lineTotal = Number(item.lineTotal || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0)));
+              return `
+                <tr style="border-bottom: 2px solid #e2e8f0; font-size: 13px;">
+                  <td style="padding: 10px 12px; font-weight: bold; color: #1e293b; text-align: right;">
+                    ${item.isService ? '<span style="font-size: 10px; background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
+                    ${item.name || 'منتج'}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center; font-weight: 900; color: #1e293b; font-family: monospace;">
+                    ${item.quantity || 1}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: right; color: #1e293b; font-family: monospace; font-weight: bold;">
+                    ${Number(item.unitPrice || 0).toLocaleString()}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: left; font-weight: 900; color: #1e293b; font-family: monospace;">
+                    ${lineTotal.toLocaleString()}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- Items Table -->
-    <table style="border: 1px solid #e2e8f0; margin-bottom: 20px; border-radius: 8px; overflow: hidden;">
-      <thead>
-        <tr style="background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 900; text-align: right; border-bottom: 2px solid #cbd5e1;">
-          <th style="padding: 10px 12px; width: 48%;">الوصف / المنتج</th>
-          <th style="padding: 10px 12px; text-align: center; width: 14%;">الكمية</th>
-          <th style="padding: 10px 12px; text-align: right; width: 18%;">السعر المفرد</th>
-          <th style="padding: 10px 12px; text-align: left; width: 20%;">المجموع</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${items.map((item, idx) => `
-          <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #e2e8f0; font-size: 13px;">
-            <td style="padding: 10px 12px; font-weight: bold; color: #1e293b;">
-              ${item.isService ? '<span style="font-size: 10px; background: #e2e8f0; color: #475569; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">خدمة</span>' : ''}
-              ${item.name || 'منتج'}
-            </td>
-            <td style="padding: 10px 12px; text-align: center; font-weight: 900; color: #0f172a; font-family: monospace;">
-              ${item.quantity || 1}
-            </td>
-            <td style="padding: 10px 12px; text-align: right; font-weight: bold; color: #334155; font-family: monospace;">
-              ${Number(item.unitPrice || 0).toLocaleString()}
-            </td>
-            <td style="padding: 10px 12px; text-align: left; font-weight: 900; color: #0f172a; font-family: monospace;">
-              ${(Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()} د.ع
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
+      <!-- Bottom Section: Totals & Footer -->
+      <div style="margin-top: auto; width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; padding-top: 8px;">
+          <!-- QR Code (Right) -->
+          <div style="width: 100px; height: 100px; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #ffffff; padding: 4px;">
+            ${qrCodeUrl ? `
+              <img src="${qrCodeUrl}" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" crossOrigin="anonymous" />
+            ` : `
+              <span style="font-size: 11px; color: #94a3b8; font-weight: bold;">QR CODE</span>
+            `}
+          </div>
 
-    <!-- Totals Summary & Debt Box -->
-    <div style="display: flex; justify-content: flex-end; margin-bottom: 25px;">
-      <div style="width: 320px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
-        <div style="padding: 12px 16px; font-size: 13px;">
-          ${sale.discount > 0 ? `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #64748b; font-weight: bold;">
-              <span>المجموع قبل الخصم:</span>
-              <span style="font-family: monospace;">${Number((sale.subtotal || totalAmount + Number(sale.discount))).toLocaleString()}</span>
+          <!-- Totals Box (Left) -->
+          <div style="width: 55%; background: #ffffff;">
+            <div style="border: 1px solid #e2e8f0; padding: 8px 12px; margin-bottom: 6px;">
+              <table style="width: 100%; font-size: 13px; font-weight: bold; color: #475569;">
+                <tbody>
+                  ${discountAmount > 0 ? `
+                    <tr>
+                      <td style="text-align: right; padding: 2px 4px;">المجموع الفرعي:</td>
+                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${subtotalAmount.toLocaleString()}</td>
+                    </tr>
+                    <tr style="color: #ef4444;">
+                      <td style="text-align: right; padding: 2px 4px;">الخصم:</td>
+                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">-${discountAmount.toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                      <td style="text-align: right; padding: 2px 4px;">الإجمالي بعد الخصم:</td>
+                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
+                    </tr>
+                  ` : `
+                    <tr>
+                      <td style="text-align: right; padding: 2px 4px;">المجموع:</td>
+                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
+                    </tr>
+                  `}
+
+                  ${isDebt ? `
+                    <tr style="color: #16a34a; border-top: 1px solid #e2e8f0;">
+                      <td style="text-align: right; padding: 4px 4px 2px 4px;">المدفوع:</td>
+                      <td style="text-align: left; padding: 4px 4px 2px 4px; font-family: monospace;">${paidAmount.toLocaleString()} د.ع</td>
+                    </tr>
+                    <tr style="color: #dc2626; font-weight: 900;">
+                      <td style="text-align: right; padding: 2px 4px;">المتبقي (الدين):</td>
+                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${remainingDebt.toLocaleString()} د.ع</td>
+                    </tr>
+                  ` : ''}
+                </tbody>
+              </table>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #ef4444; font-weight: 900;">
-              <span>الخصم:</span>
-              <span style="font-family: monospace;">-${Number(sale.discount).toLocaleString()}</span>
+
+            <!-- Gold Total Ribbon -->
+            <table style="width: 100%; background: #C89B3C; color: #ffffff; padding: 8px 12px;">
+              <tbody>
+                <tr>
+                  <td style="text-align: right; padding: 8px 12px; font-weight: 900; font-size: 14px;">
+                    ${isDebt ? 'إجمالي الفاتورة' : 'المبلغ المستحق'}
+                  </td>
+                  <td style="text-align: left; padding: 8px 12px; font-weight: 900; font-size: 18px; font-family: monospace;">
+                    ${totalAmount.toLocaleString()} د.ع
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Footer Notes & Info -->
+        <div style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
+          ${settings?.description ? `
+            <div style="font-size: 10px; color: #64748b; margin-bottom: 8px; font-weight: 500;">
+              <strong style="color: #334155; display: block; margin-bottom: 2px;">ملاحظات هامة:</strong>
+              ${settings.description}
             </div>
           ` : ''}
 
-          ${isDebt ? `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #15803d; font-weight: 900;">
-              <span>المبلغ المدفوع:</span>
-              <span style="font-family: monospace;">${paidAmount.toLocaleString()} د.ع</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #b91c1c; font-weight: 900;">
-              <span>المتبقي (الدين):</span>
-              <span style="font-family: monospace;">${remainingDebt.toLocaleString()} د.ع</span>
-            </div>
-          ` : ''}
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8; font-weight: bold;">
+            <span>${storeName} ${address ? `| ${address}` : ''}</span>
+            <span>نظام Safe Zone الذكي لإدارة المخزون والمبيعات</span>
+          </div>
         </div>
 
-        <div style="background: #C89B3C; color: #ffffff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 14px; font-weight: 900;">${isDebt ? 'إجمالي الفاتورة' : 'المبلغ المستحق'}</span>
-          <span style="font-size: 18px; font-weight: 900; font-family: monospace;">${totalAmount.toLocaleString()} د.ع</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Notes & Terms -->
-    ${settings?.description ? `
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #64748b; margin-bottom: 20px;">
-        <strong style="color: #334155; display: block; margin-bottom: 2px;">ملاحظات هامة:</strong>
-        ${settings.description}
-      </div>
-    ` : ''}
-
-    <!-- Footer -->
-    <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8;">
-      <div style="text-align: right;">
-        <span style="font-weight: bold; color: #64748b;">${storeName}</span> | تم استخراج الفاتورة إلكترونياً
-      </div>
-      <div>
-        ${settings?.qrCodeUrl ? `
-          <img src="${settings.qrCodeUrl}" alt="QR" style="width: 40px; height: 40px; border: 1px solid #e2e8f0; border-radius: 4px;" crossOrigin="anonymous" />
-        ` : `
-          <span style="font-family: monospace; font-weight: bold; color: #C89B3C;">SAFE ZONE</span>
-        `}
       </div>
     </div>
   `;
@@ -391,11 +427,11 @@ export async function generateInvoicePdfBlob(sale, settings) {
         useCORS: true, 
         logging: false, 
         scrollY: 0, 
-        windowWidth: 800,
+        windowWidth: 794,
         letterRendering: false,
         allowTaint: true
       },
-      jsPDF: { unit: 'px', format: [800, 1131], orientation: 'portrait' },
+      jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
 
