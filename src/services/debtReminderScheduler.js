@@ -374,22 +374,23 @@ export async function processAutomatedDebtReminders({
         baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
       }
 
-      const syncItems = debtorPayload.map(d => ({
-        customerId: d.id,
-        customerName: d.name,
-        phone: d.phone1,
+      const syncCustomers = debtorPayload.map(d => ({
+        id: d.id,
+        name: d.name,
+        phone1: d.phone1,
         totalDebt: d.totalDebt,
-        schedule: d.reminderSchedule,
-        targetTimestamp: calculateNextCustomerReminderTimestamp({ id: d.id, reminderSchedule: d.reminderSchedule, lastDebtReminderSent: d.lastDebtReminderSent }, settings, now),
-        message: d.renderedMessage
+        reminderSchedule: d.reminderSchedule,
+        lastDebtReminderSent: d.lastDebtReminderSent,
+        renderedMessage: d.renderedMessage
       }));
 
-      fetch(`${baseUrl}/scheduled/sync-debtors`, {
+      fetch(`${baseUrl}/reminders/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: settings.whatsappToken || 'SafeZone2026',
-          debtors: syncItems
+          customers: syncCustomers,
+          settings
         })
       }).catch(() => {});
     } catch (e) {

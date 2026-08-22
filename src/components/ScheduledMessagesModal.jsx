@@ -53,6 +53,30 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     return () => clearInterval(interval);
   }, [isOpen, baseUrl]);
 
+  // Sync scheduled debtors with AWS server when modal is open
+  useEffect(() => {
+    if (!isOpen || upcomingDebtorReminders.length === 0) return;
+    const syncCustomers = upcomingDebtorReminders.map(d => ({
+      id: d.customerId,
+      name: d.customerName,
+      phone1: d.cleanPhone,
+      totalDebt: d.totalDebt,
+      reminderSchedule: d.customer?.reminderSchedule || 'default',
+      lastDebtReminderSent: d.customer?.lastDebtReminderSent || null,
+      renderedMessage: d.renderedMessage || undefined
+    }));
+
+    fetch(`${baseUrl}/reminders/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: settings?.whatsappToken || 'SafeZone2026',
+        customers: syncCustomers,
+        settings
+      })
+    }).then(() => fetchQueue()).catch(() => {});
+  }, [isOpen, upcomingDebtorReminders.length]);
+
   // Calculate upcoming customer debt reminders from settings & customer profiles
   const upcomingDebtorReminders = useMemo(() => {
     if (settings?.whatsappAutoReminders === false) return [];

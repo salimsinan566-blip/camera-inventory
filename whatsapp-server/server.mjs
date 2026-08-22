@@ -645,6 +645,10 @@ app.post('/reminders/sync', async (req, res) => {
       const newJob = {
         id: jobId,
         type: 'chat',
+        isDebtReminder: true,
+        isRecurring: true,
+        schedule: schedCode,
+        timeStr,
         customerId: cust.id,
         customerName: cust.name,
         cleanPhone,

@@ -67,7 +67,14 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
             statementLink: portalUrl
           });
 
-          await fetch('http://localhost:3005/reminders/sync', {
+          const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
+          let apiUrl = settings?.whatsappApiUrl || `${defaultBase}/messages/chat`;
+          let baseUrl = defaultBase;
+          if (apiUrl.startsWith('http') && !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1')) {
+            baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
+          }
+
+          await fetch(`${baseUrl}/reminders/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
