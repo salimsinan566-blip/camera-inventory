@@ -1,4 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { db } from './firebase-admin.js';
 
 function parseDateSafe(val) {
   if (!val) return new Date();
@@ -221,22 +222,40 @@ export default async function handler(req, res) {
 
   const { chatId, doc: docObj, pdfBase64, filename: customFilename, storeInfo = {} } = req.body || {};
 
-  // Retrieve Bot Token & Target Chat ID from payload or environment
-  const token = (storeInfo.telegramBotToken || '').trim() ||
-                process.env.VITE_TELEGRAM_BOT_TOKEN ||
-                process.env.TELEGRAM_BOT_TOKEN;
+  // 1. Retrieve Bot Token & Target Chat ID from payload or environment
+  let token = (storeInfo?.telegramBotToken || '').trim() ||
+              process.env.VITE_TELEGRAM_BOT_TOKEN ||
+              process.env.TELEGRAM_BOT_TOKEN;
 
-  const targetChatId = chatId ||
-                       (storeInfo.telegramChatId || '').trim() ||
-                       process.env.VITE_TELEGRAM_CHAT_ID ||
-                       process.env.TELEGRAM_CHAT_ID;
+  let targetChatId = chatId ||
+                     (storeInfo?.telegramChatId || '').trim() ||
+                     process.env.VITE_TELEGRAM_CHAT_ID ||
+                     process.env.TELEGRAM_CHAT_ID;
+
+  // 2. If token or chatId is still missing, query Firestore settings/store_info doc directly!
+  if (!token || !targetChatId) {
+    try {
+      const storeDoc = await db.collection('settings').doc('store_info').get();
+      if (storeDoc && storeDoc.exists) {
+        const sData = storeDoc.data();
+        if (!token && sData?.telegramBotToken) {
+          token = sData.telegramBotToken.trim();
+        }
+        if (!targetChatId && sData?.telegramChatId) {
+          targetChatId = sData.telegramChatId.trim();
+        }
+      }
+    } catch (dbErr) {
+      console.warn('Could not read settings from Firestore:', dbErr?.message);
+    }
+  }
 
   if (!token) {
-    return res.status(400).json({ error: 'توكن البوت (Bot Token) غير متوفر في الإعدادات' });
+    return res.status(400).json({ error: 'توكن البوت (Bot Token) غير متوفر. يرجى إدخال توكن البوت في صفحة الإعدادات أو المتغيرات البيئية.' });
   }
 
   if (!targetChatId) {
-    return res.status(400).json({ error: 'معرف المحادثة (Chat ID) غير متوفر. تأكد من فتح التطبيق عبر التليجرام أو تعيينه في الإعدادات.' });
+    return res.status(400).json({ error: 'معرف المحادثة (Chat ID) غير متوفر. تأكد من فتح التطبيق عبر التليجرام أو إدخال معرف الجروب في الإعدادات.' });
   }
 
   try {
@@ -246,14 +265,14 @@ export default async function handler(req, res) {
     const docNumber = docObj?.invoiceNumber || docObj?.offerNumber || docObj?.id || '1001';
 
     if (pdfBase64) {
-      // 1. High Quality Arabic PDF sent from Client
+      // High Quality Arabic PDF sent from Client
       const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
       pdfBuffer = Buffer.from(base64Data, 'base64');
       if (!filename) {
         filename = isOffer ? `Quotation_${docNumber}.pdf` : `Invoice_${docNumber}.pdf`;
       }
     } else if (docObj) {
-      // 2. Server-side generated PDF
+      // Server-side generated PDF
       pdfBuffer = await generateDocumentPdfBuffer(docObj, storeInfo);
       if (!filename) {
         filename = isOffer ? `Quotation_${docNumber}.pdf` : `Invoice_${docNumber}.pdf`;
@@ -267,9 +286,11 @@ export default async function handler(req, res) {
     formData.append('chat_id', String(targetChatId));
     formData.append('document', blob, filename);
 
-    const paymentArabic = docObj.invoiceType === 'debt' 
-      ? 'آجل / دين 🔴' 
-      : (docObj.invoiceType === 'card' ? 'ماستر كارد / دفع إلكتروني 💳' : 'نقداً 💵');
+    const paymentArabic = docObj ? (
+      docObj.invoiceType === 'debt' 
+        ? 'آجل / دين 🔴' 
+        : (docObj.invoiceType === 'card' ? 'ماستر كارد / دفع إلكتروني 💳' : 'نقداً 💵')
+    ) : 'نقداً 💵';
 
     const caption = docObj ? (isOffer 
       ? `📑 <b>عرض سعر رسمي #${docNumber}</b>\n👤 العميل: <b>${docObj.customerName || 'عام'}</b>\n💰 الإجمالي: <b>${Number(docObj.total || 0).toLocaleString()} د.ع</b>`

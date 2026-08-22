@@ -79,12 +79,20 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     }
   };
 
-  function handlePrint() {
-    const originalTitle = document.title;
-    document.title = `فاتورة_${sale.invoiceNumber}_عميل_${sale.customerName || 'عام'}`;
-    window.print();
-    setTimeout(() => { document.title = originalTitle; }, 500);
-  }
+  const handlePrint = async () => {
+    const isMobileOrTelegram = /Mobi|Android|iPhone|iPad|Telegram/i.test(navigator.userAgent) || window.Telegram?.WebApp;
+    
+    if (!isMobileOrTelegram) {
+      const originalTitle = document.title;
+      document.title = `فاتورة_${sale.invoiceNumber || 'safe_zone'}_عميل_${sale.customerName || 'عام'}`;
+      window.print();
+      setTimeout(() => { document.title = originalTitle; }, 500);
+      return;
+    }
+
+    // Mobile / Telegram fallback to high quality PDF download
+    await handleDownloadPdf();
+  };
 
   const dateLabel = formatDate(sale.createdAt);
   const products = sale.items?.filter(item => !item.isService) || [];

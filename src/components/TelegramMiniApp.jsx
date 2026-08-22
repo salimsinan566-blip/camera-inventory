@@ -9,6 +9,7 @@ import { createOffer } from '../services/offersService';
 import { login, logout } from '../firebase/auth';
 import { searchProducts } from '../utils/search';
 import { generateInvoicePdfBlob } from '../utils/pdfHelper';
+import { updateStoreSettings } from '../services/settingsService';
 import InvoiceReceipt from './InvoiceReceipt';
 
 export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
@@ -395,14 +396,40 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   };
 
   const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [showTokenPromptModal, setShowTokenPromptModal] = useState(false);
+  const [pendingDocToSend, setPendingDocToSend] = useState(null);
+  const [customBotToken, setCustomBotToken] = useState(() => {
+    return localStorage.getItem('sz_telegram_bot_token') || settings?.telegramBotToken || '';
+  });
+
+  const handleSaveCustomToken = async () => {
+    const cleanTok = (customBotToken || '').trim();
+    if (!cleanTok) {
+      toast('يرجى كتابة توكن البوت للمتابعة', 'warning');
+      return;
+    }
+    localStorage.setItem('sz_telegram_bot_token', cleanTok);
+    try {
+      await updateStoreSettings({ telegramBotToken: cleanTok });
+    } catch (e) {
+      console.warn('Could not save token to store settings:', e);
+    }
+    setShowTokenPromptModal(false);
+    toast('تم حفظ توكن البوت بنجاح! جارٍ إرسال المستند... 🚀', 'success');
+    if (pendingDocToSend) {
+      handleSendToTelegram(pendingDocToSend, cleanTok);
+    }
+  };
 
   // Send PDF directly to Telegram Chat via backend
-  const handleSendToTelegram = async (docObj) => {
+  const handleSendToTelegram = async (docObj, overrideToken = null) => {
     const targetChat = chatId || (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) || settings?.telegramChatId;
     if (!targetChat) {
       toast('لم يتم التعرف على محادثة التليجرام. تأكد من فتح التطبيق من البوت مباشرة.', 'warning');
       return;
     }
+
+    const tokenToUse = overrideToken || (customBotToken || '').trim() || (settings?.telegramBotToken || '').trim() || localStorage.getItem('sz_telegram_bot_token') || '';
 
     setSendingTelegram(true);
     toast('جارٍ إنشاء ملف الـ PDF وإرساله لمحادثتك بالتليجرام... ⏳', 'info');
@@ -431,7 +458,10 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
           chatId: targetChat,
           doc: docObj,
           pdfBase64,
-          storeInfo: settings
+          storeInfo: {
+            ...settings,
+            telegramBotToken: tokenToUse || settings?.telegramBotToken
+          }
         })
       });
 
@@ -439,6 +469,11 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       if (data.success || res.ok) {
         toast('تم إرسال ملف الـ PDF إلى محادثتك بالتليجرام بنجاح! ✈️📄', 'success');
       } else {
+        if (data.error && (data.error.includes('توكن') || data.error.includes('Token') || data.error.includes('401') || data.error.includes('Not Found'))) {
+          setPendingDocToSend(docObj);
+          setShowTokenPromptModal(true);
+          throw new Error('يرجى التحقق من توكن البوت (Bot Token)');
+        }
         throw new Error(data.error || 'فشل الإرسال عبر البوت');
       }
     } catch (e) {
@@ -1300,6 +1335,53 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               onClose={() => setShowFullReceipt(false)}
             />
           )}
+        </div>
+      )}
+
+      {/* Token Prompt Modal (if Bot Token is missing) */}
+      {showTokenPromptModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🤖</span>
+                <h3 className="font-black text-sm text-slate-900">توكن بوت التليجرام</h3>
+              </div>
+              <button onClick={() => setShowTokenPromptModal(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              يرجى لصق توكن البوت الخاص بك (Bot Token) من @BotFather ليتمكن النظام من إرسال ملفات الـ PDF إليك:
+            </p>
+
+            <div>
+              <input
+                type="text"
+                value={customBotToken}
+                onChange={(e) => setCustomBotToken(e.target.value)}
+                placeholder="123456789:ABCdefGhIJKlmNoPQ..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-mono text-left focus:outline-none focus:ring-2 focus:ring-[#229ED9]"
+                dir="ltr"
+              />
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowTokenPromptModal(false)}
+                className="w-1/3 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomToken}
+                className="w-2/3 py-2.5 rounded-xl bg-[#229ED9] hover:bg-[#1E88C7] text-white text-xs font-bold shadow-xs"
+              >
+                حفظ وإرسال الـ PDF ✈️
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
