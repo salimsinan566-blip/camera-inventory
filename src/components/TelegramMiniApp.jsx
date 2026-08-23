@@ -7,7 +7,7 @@ import { useDraftSales } from '../hooks/useDraftSales';
 import { useUI } from '../contexts/UIContext';
 import { checkoutSale, createDraftSale, deleteDraftSale, updateDraftSale } from '../services/salesService';
 import { createOffer } from '../services/offersService';
-import { login, loginWithGoogle, logout } from '../firebase/auth';
+import { login, loginWithGoogle, loginWithGoogleRedirect, checkRedirectResult, logout } from '../firebase/auth';
 import { searchProducts } from '../utils/search';
 import { generateInvoicePdfBlob } from '../utils/pdfHelper';
 import { updateStoreSettings } from '../services/settingsService';
@@ -147,6 +147,13 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     }
   };
 
+  // Check for redirect result on mount
+  useEffect(() => {
+    checkRedirectResult().catch(err => {
+      if (err) console.warn('Redirect auth result warning:', err?.message);
+    });
+  }, []);
+
   // Handle Google Login
   const handleGoogleLogin = async () => {
     setLoginError('');
@@ -158,9 +165,14 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     } catch (err) {
       console.error('Google login error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
-        setLoginError('تم إغلاق نافذة تسجيل الدخول بجوجل.');
-      } else if (err.code === 'auth/popup-blocked') {
-        setLoginError('تم حظر النافذة المنبثقة من قبل المتصفح. يرجى السماح بالنوافذ أو الدخول بكلمة المرور.');
+        setLoginError('تم إغلاق نافذة تسجيل الدخول.');
+      } else if (err.code === 'auth/popup-blocked' || err.message?.includes('popup')) {
+        toast('النافذة محظورة بالمتصفح، جارٍ التحويل المباشر لـ Google... ⏳', 'info');
+        try {
+          await loginWithGoogleRedirect();
+        } catch (rErr) {
+          setLoginError(`فشل التحويل لـ Google: ${rErr.message}`);
+        }
       } else {
         setLoginError(`فشل الدخول بجوجل: ${err.message}`);
       }

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { login, loginWithGoogle, resetPassword } from '../firebase/auth';
+import React, { useState, useEffect } from 'react';
+import { login, loginWithGoogle, loginWithGoogleRedirect, checkRedirectResult, resetPassword } from '../firebase/auth';
 import logo from '../assets/logo.png';
 import { useSettings } from '../hooks/useSettings';
 
@@ -15,6 +15,12 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+
+  useEffect(() => {
+    checkRedirectResult().catch(err => {
+      if (err) console.warn('Redirect auth result warning:', err?.message);
+    });
+  }, []);
 
   // Clear unauthorized state on input
   function handleInputFocus() {
@@ -52,7 +58,15 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
       await loginWithGoogle();
     } catch (err) {
       console.error('Google Sign In Error:', err);
-      setError(`فشل تسجيل الدخول بجوجل: ${err.message}`);
+      if (err.code === 'auth/popup-blocked' || err.message?.includes('popup')) {
+        try {
+          await loginWithGoogleRedirect();
+        } catch (rErr) {
+          setError(`فشل التحويل لجوجل: ${rErr.message}`);
+        }
+      } else {
+        setError(`فشل تسجيل الدخول بجوجل: ${err.message}`);
+      }
     } finally {
       setGoogleLoading(false);
     }
