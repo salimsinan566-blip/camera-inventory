@@ -362,9 +362,16 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       toast('يرجى إضافة منتجات إلى السلة أولاً لتعليق الفاتورة', 'warning');
       return;
     }
-    if (paymentType === 'debt' && !customerPhone.trim()) {
-      toast('⚠️ رقم الهاتف إجباري في حال البيع بالآجل (الدين)', 'warning');
-      return;
+    if (paymentType === 'debt') {
+      const cName = customerName.trim();
+      if (!cName || cName === 'زبون عام' || cName === 'عام' || cName === 'عميل عام') {
+        toast('⚠️ لا يمكن تعليق فاتورة دين لـ "زبون عام". يرجى كتابة اسم العميل.', 'warning');
+        return;
+      }
+      if (!customerPhone.trim()) {
+        toast('⚠️ رقم الهاتف إجباري في حال البيع بالآجل (الدين)', 'warning');
+        return;
+      }
     }
 
     setSavingDraft(true);
@@ -468,6 +475,18 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     if (cart.length === 0) {
       toast('يرجى إضافة منتجات إلى السلة أولاً', 'warning');
       return;
+    }
+    if (activeTab === 'pos' && paymentType === 'debt') {
+      const cName = customerName.trim();
+      const cPhone = customerPhone.trim();
+      if (!cName || cName === 'زبون عام' || cName === 'عام' || cName === 'عميل عام') {
+        toast('⚠️ خطأ إلزامي: لا يمكن البيع بالآجل (الدين) لـ "زبون عام". يرجى كتابة أو اختيار اسم العميل الفعلي.', 'error');
+        return;
+      }
+      if (!cPhone) {
+        toast('⚠️ تنبيه إلزامي: يرجى إدخال رقم هاتف العميل لتوثيق فاتورة الآجل / الدين.', 'warning');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -1076,7 +1095,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="space-y-2 pb-24">
             {filteredProducts.map(p => {
               const inCart = cart.find(x => x.productId === p.id);
               const storeQty = Number(p.storeQty !== undefined ? p.storeQty : p.quantity || 0);
@@ -1088,96 +1107,83 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               return (
                 <div
                   key={p.id}
-                  className={`bg-white border rounded-2xl p-3 flex flex-col justify-between transition-all shadow-xs relative ${
-                    inCart ? 'border-brand-500 ring-2 ring-brand-500/20' : 'border-slate-200 hover:border-slate-300'
+                  className={`bg-white border rounded-2xl p-3 flex items-center justify-between gap-3 transition-all shadow-2xs ${
+                    inCart ? 'border-brand-500 ring-2 ring-brand-500/20 bg-brand-50/10' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  {/* Top SKU & Stock Badge */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[80px]">
-                      {p.sku || p.model || ''}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                      storeQty > 0 
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                        : warehouseQty > 0 
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
-                    }`}>
-                      {storeQty > 0 ? `المحل: ${storeQty}` : warehouseQty > 0 ? `المخزن: ${warehouseQty}` : 'نافذ'}
-                    </span>
-                  </div>
+                  {/* Left/Right Product info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      {p.sku || p.model ? (
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">
+                          {p.sku || p.model}
+                        </span>
+                      ) : null}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        storeQty > 0 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                          : warehouseQty > 0 
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}>
+                        {storeQty > 0 ? `المحل: ${storeQty}` : warehouseQty > 0 ? `المخزن: ${warehouseQty}` : 'نافذ'}
+                      </span>
+                    </div>
 
-                  {/* Thumbnail */}
-                  <div className="h-24 w-full bg-slate-50 rounded-xl mb-2.5 flex items-center justify-center overflow-hidden border border-slate-100">
-                    {p.imageUrl || p.image ? (
-                      <img src={p.imageUrl || p.image} alt={p.name} className="h-full w-full object-contain p-1.5" />
-                    ) : (
-                      <span className="text-3xl opacity-30">📷</span>
-                    )}
-                  </div>
-
-                  {/* Name & Pricing */}
-                  <div className="mb-3">
-                    <h3 className="font-bold text-xs text-slate-900 line-clamp-2 leading-tight min-h-[32px]">
+                    <h3 className="font-bold text-xs text-slate-900 leading-snug break-words">
                       {p.name}
                     </h3>
-                    <div className="mt-1.5 flex items-baseline justify-between">
-                      <span className="text-sm font-black text-brand-600 font-mono">
-                        {priceObj.iqd > 0 ? (
-                          <>
-                            {priceObj.iqd.toLocaleString()}{' '}
-                            <span className="text-[10px] font-normal text-slate-500">د.ع</span>
-                          </>
-                        ) : priceObj.usd > 0 ? (
-                          <span className="text-emerald-600">${priceObj.usd}</span>
-                        ) : (
-                          <span className="text-slate-400 text-xs">غير محدد</span>
-                        )}
+
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-xs font-black text-brand-600 font-mono">
+                        {priceObj.iqd > 0 ? `${priceObj.iqd.toLocaleString()} د.ع` : priceObj.usd > 0 ? `$${priceObj.usd}` : 'غير محدد'}
                       </span>
                       {priceObj.usd > 0 && priceObj.iqd > 0 && (
-                        <span className="text-[10px] text-slate-400 font-mono font-medium">
-                          ${priceObj.usd}
-                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">(${priceObj.usd})</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Add / Stepper */}
-                  {inCart ? (
-                    <div className="flex items-center justify-between bg-slate-50 border border-brand-300 rounded-xl p-1">
+                  {/* Action Controls */}
+                  <div className="shrink-0">
+                    {inCart ? (
+                      <div className="flex items-center bg-slate-100 border border-brand-300 rounded-xl p-0.5 shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(p.id, inCart.quantity - 1)}
+                          className="w-8 h-8 rounded-lg bg-white hover:bg-slate-200 text-slate-800 font-black text-base flex items-center justify-center shadow-xs cursor-pointer active:scale-90"
+                        >
+                          -
+                        </button>
+                        <span className="w-8 text-center font-black text-xs text-brand-600 font-mono">
+                          {inCart.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(p.id, inCart.quantity + 1)}
+                          className="w-8 h-8 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-black text-base flex items-center justify-center shadow-xs cursor-pointer active:scale-90"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
                       <button
-                        onClick={() => updateQuantity(p.id, inCart.quantity - 1)}
-                        className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center shadow-xs border border-slate-200"
+                        type="button"
+                        disabled={isOutOfStock}
+                        onClick={() => addToCart(p)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-xs ${
+                          isOutOfStock
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                            : activeTab === 'offer'
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : 'bg-brand-600 hover:bg-brand-700 text-white'
+                        }`}
                       >
-                        -
+                        <span>+</span>
+                        <span>إضافة</span>
                       </button>
-                      <span className="font-bold text-xs text-brand-600 font-mono">
-                        {inCart.quantity}
-                      </span>
-                      <button
-                        onClick={() => updateQuantity(p.id, inCart.quantity + 1)}
-                        className="w-7 h-7 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-black text-sm flex items-center justify-center shadow-xs"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      disabled={isOutOfStock}
-                      onClick={() => addToCart(p)}
-                      className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                        isOutOfStock
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                          : activeTab === 'offer'
-                          ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
-                          : 'bg-brand-600 hover:bg-brand-700 text-white shadow-xs'
-                      }`}
-                    >
-                      <span>+</span>
-                      <span>إضافة للسلة</span>
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1186,16 +1192,16 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       </main>
       )}
 
-      {/* Floating Bottom Cart Bar */}
+      {/* Floating Sticky Bottom Cart Bar */}
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-3 bg-white/95 backdrop-blur-lg border-t border-slate-200 z-40 shadow-xl">
-          <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+          <div className="max-w-md mx-auto flex items-center justify-between gap-2.5">
             <div 
               onClick={() => setIsCartOpen(true)}
-              className="flex items-center gap-3 cursor-pointer flex-1"
+              className="flex items-center gap-2.5 cursor-pointer flex-1"
             >
               <div className="relative">
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg ${
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-base ${
                   activeTab === 'offer' ? 'bg-amber-600 text-white' : 'bg-brand-600 text-white'
                 }`}>
                   {activeTab === 'offer' ? '📑' : '🛒'}
@@ -1205,15 +1211,15 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 </span>
               </div>
               <div>
-                <p className="text-xs text-slate-500 font-medium">
-                  {activeTab === 'offer' ? 'إجمالي عرض السعر' : 'إجمالي الفاتورة'}
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {activeTab === 'offer' ? 'إجمالي العرض' : 'إجمالي الفاتورة'}
                 </p>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-base font-black text-slate-900 font-mono">
-                    {cartTotal.toLocaleString()} <span className="text-xs font-normal text-slate-500">د.ع</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-sm font-black text-slate-900 font-mono">
+                    {cartTotal.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">د.ع</span>
                   </span>
                   {cartTotalUSD > 0 && (
-                    <span className="text-xs text-brand-600 font-mono font-bold">
+                    <span className="text-[11px] text-brand-600 font-mono font-bold">
                       (${cartTotalUSD})
                     </span>
                   )}
@@ -1221,17 +1227,32 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               </div>
             </div>
 
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className={`px-5 py-2.5 rounded-xl font-bold text-xs text-white shadow-sm transition-all flex items-center gap-2 ${
-                activeTab === 'offer' 
-                  ? 'bg-amber-600 hover:bg-amber-700' 
-                  : 'bg-brand-600 hover:bg-brand-700'
-              }`}
-            >
-              <span>متابعة الطلب</span>
-              <span>⬅️</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              {activeTab === 'pos' && (
+                <button
+                  type="button"
+                  disabled={savingDraft}
+                  onClick={handleSuspendSale}
+                  className="px-2.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs border border-amber-200 transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+                  title="تعليق الفاتورة كمسودة"
+                >
+                  <span>{savingDraft ? '⏳' : '⏸️'}</span>
+                  <span>تعليق</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsCartOpen(true)}
+                className={`px-4 py-2.5 rounded-xl font-black text-xs text-white shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                  activeTab === 'offer' 
+                    ? 'bg-amber-600 hover:bg-amber-700' 
+                    : 'bg-brand-600 hover:bg-brand-700'
+                }`}
+              >
+                <span>إتمام الفاتورة ⚡</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
