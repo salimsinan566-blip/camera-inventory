@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useProducts } from '../hooks/useProducts';
 import { useCustomers } from '../hooks/useCustomers';
 import { useSettings } from '../hooks/useSettings';
+import { useDraftSales } from '../hooks/useDraftSales';
 import { useUI } from '../contexts/UIContext';
-import { checkoutSale } from '../services/salesService';
+import { checkoutSale, createDraftSale, deleteDraftSale, updateDraftSale } from '../services/salesService';
 import { createOffer } from '../services/offersService';
 import { login, logout } from '../firebase/auth';
 import { searchProducts } from '../utils/search';
@@ -17,6 +18,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const { products = [], loading: productsLoading, error: productsError } = useProducts();
   const { customers = [] } = useCustomers();
   const { settings = {} } = useSettings();
+  const { drafts = [], loading: draftsLoading } = useDraftSales();
   const { toast } = useUI();
 
   // Exchange Rate (IQD / USD)
@@ -66,8 +68,9 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  // Mode: 'pos' (بيع حقيقي) or 'offer' (عرض سعر)
-  const [activeTab, setActiveTab] = useState('pos'); // 'pos' | 'offer'
+  // Mode: 'pos' (بيع حقيقي) or 'offer' (عرض سعر) or 'drafts' (فواتير معلقة)
+  const [activeTab, setActiveTab] = useState('pos'); // 'pos' | 'offer' | 'drafts'
+  const [activeDraftId, setActiveDraftId] = useState(null);
 
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,13 +85,16 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerSearchSuggestions, setCustomerSearchSuggestions] = useState([]);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [discount, setDiscount] = useState(0);
   const [taxRate, setTaxRate] = useState(0);
-  const [paymentType, setPaymentType] = useState('cash'); // 'cash' | 'debt'
+  const [paymentType, setPaymentType] = useState('cash'); // 'cash' | 'card' | 'debt'
   const [paidAmount, setPaidAmount] = useState('');
   const [offerTitle, setOfferTitle] = useState('');
   const [offerNotes, setOfferNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [completedDoc, setCompletedDoc] = useState(null);
   const [showFullReceipt, setShowFullReceipt] = useState(false);
   const [telegramUser, setTelegramUser] = useState(null);
@@ -147,19 +153,32 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     return 'البائع / الكاشير';
   }, [user, telegramUser]);
 
-  // Sync customer phone if selected from list
-  const handleSelectCustomer = (cId) => {
-    setSelectedCustomerId(cId);
-    if (!cId) {
-      setCustomerName('');
-      setCustomerPhone('');
+  // Sync customer phone if selected from suggestions
+  const handleCustomerNameChange = (val) => {
+    setCustomerName(val);
+    if (!val || val.trim().length === 0) {
+      setCustomerSearchSuggestions([]);
+      setShowCustomerSuggestions(false);
+      setSelectedCustomerId('');
       return;
     }
-    const c = customers.find(x => x.id === cId);
-    if (c) {
-      setCustomerName(c.name || '');
-      setCustomerPhone(c.phone1 || c.phone || '');
-    }
+
+    const clean = val.trim().toLowerCase();
+    const matches = (customers || []).filter(c => 
+      (c.name && c.name.toLowerCase().includes(clean)) ||
+      (c.phone1 && c.phone1.includes(clean)) ||
+      (c.phone && c.phone.includes(clean))
+    ).slice(0, 6);
+
+    setCustomerSearchSuggestions(matches);
+    setShowCustomerSuggestions(matches.length > 0);
+  };
+
+  const handleSelectSuggestedCustomer = (c) => {
+    setCustomerName(c.name || '');
+    setCustomerPhone(c.phone1 || c.phone || '');
+    setSelectedCustomerId(c.id);
+    setShowCustomerSuggestions(false);
   };
 
   // Categories list extracted dynamically from cameraType / category
@@ -211,6 +230,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       const totalQty = storeQty + Number(product.warehouseQty || 0);
       const priceObj = getProductPrice(product);
       const unitPrice = priceObj.iqd;
+      const wholesalePrice = Number(product.wholesalePrice || product.costPrice || 0);
 
       if (existing) {
         if (activeTab === 'pos' && existing.quantity >= (storeQty > 0 ? storeQty : totalQty)) {
@@ -235,15 +255,16 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             sku: product.sku || '',
             barcode: product.barcode || '',
             unitPrice,
+            wholesalePrice,
             quantity: 1,
             lineTotal: unitPrice,
             image: product.imageUrl || product.image || null,
-            maxStock: storeQty > 0 ? storeQty : totalQty
+            maxStock: storeQty > 0 ? storeQty : (totalQty > 0 ? totalQty : 999)
           }
         ];
       }
     });
-    toast(`تمت إضافة «${product.name.slice(0, 20)}» للسلة 🛒`, 'success');
+    // Silent add (No popup toast spam on adding product)
   };
 
   const updateQuantity = (productId, newQty) => {
@@ -268,13 +289,21 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   };
 
   const updateCartUnitPrice = (productId, newPrice) => {
-    const p = Math.max(0, Number(newPrice) || 0);
+    const rawVal = Number(newPrice);
+    if (isNaN(rawVal)) return;
+
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
+        const minWholesale = Number(item.wholesalePrice || 0);
+        let finalPrice = Math.max(0, rawVal);
+        if (minWholesale > 0 && finalPrice < minWholesale) {
+          toast(`⚠️ لا يمكن البيع بأقل من سعر الجملة (${minWholesale.toLocaleString()} د.ع)`, 'warning');
+          finalPrice = minWholesale;
+        }
         return {
           ...item,
-          unitPrice: p,
-          lineTotal: item.quantity * p
+          unitPrice: finalPrice,
+          lineTotal: item.quantity * finalPrice
         };
       }
       return item;
@@ -297,6 +326,112 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const cartTotalUSD = exchangeRate > 0 ? (cartTotal / exchangeRate).toFixed(2) : 0;
+
+  // Handle Suspend Sale (Save Draft)
+  const handleSuspendSale = async () => {
+    if (cart.length === 0) {
+      toast('يرجى إضافة منتجات إلى السلة أولاً لتعليق الفاتورة', 'warning');
+      return;
+    }
+    if (paymentType === 'debt' && !customerPhone.trim()) {
+      toast('⚠️ رقم الهاتف إجباري في حال البيع بالآجل (الدين)', 'warning');
+      return;
+    }
+
+    setSavingDraft(true);
+    try {
+      const activeSeller = user?.email || (user?.displayName ? `${user.displayName}@safezone.local` : 'pos-seller@safezone.local');
+      const orderOptions = {
+        customerName: customerName.trim() || 'زبون عام',
+        phone1: customerPhone.trim() || '',
+        customerPhone: customerPhone.trim() || '',
+        discount: totalDiscount,
+        taxRate: Number(taxRate) || 0,
+        invoiceType: paymentType,
+        paidAmount: paymentType === 'debt' ? (Number(paidAmount) || 0) : cartTotal,
+        status: 'suspended',
+        notes: offerNotes || ''
+      };
+
+      if (activeDraftId) {
+        await updateDraftSale(activeDraftId, cart, orderOptions);
+        toast('تم تحديث الفاتورة المعلقة بنجاح! ⏸️', 'success');
+      } else {
+        await createDraftSale(cart, activeSeller, orderOptions);
+        toast('تم تعليق الفاتورة وحفظها في الفواتير المعلقة! ⏸️', 'success');
+      }
+
+      setCart([]);
+      setActiveDraftId(null);
+      setCustomerName('');
+      setCustomerPhone('');
+      setSelectedCustomerId('');
+      setDiscount(0);
+      setPaidAmount('');
+      setOfferNotes('');
+      setIsCartOpen(false);
+    } catch (err) {
+      console.error('Failed to suspend sale:', err);
+      toast(`فشل تعليق الفاتورة: ${err.message}`, 'error');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Resume Draft to Cart
+  const handleResumeDraft = (draft) => {
+    if (!draft || !draft.items) return;
+
+    const loadedCart = (draft.items || []).map(item => {
+      const prod = (products || []).find(p => p.id === (item.productId || item.id));
+      const storeQty = Number(prod?.storeQty !== undefined ? prod.storeQty : prod?.quantity || 0);
+      const totalQty = storeQty + Number(prod?.warehouseQty || 0);
+      const wholesalePrice = Number(prod?.wholesalePrice || prod?.costPrice || item.wholesalePrice || 0);
+      const unitPrice = Number(item.unitPrice || item.price || 0);
+      const quantity = Number(item.quantity || 1);
+
+      return {
+        productId: item.productId || item.id,
+        name: item.name || prod?.name || 'منتج',
+        sku: item.sku || prod?.sku || '',
+        barcode: item.barcode || prod?.barcode || '',
+        unitPrice,
+        wholesalePrice,
+        quantity,
+        lineTotal: quantity * unitPrice,
+        image: item.image || item.imageUrl || prod?.imageUrl || prod?.image || null,
+        maxStock: storeQty > 0 ? storeQty : (totalQty > 0 ? totalQty : 999)
+      };
+    });
+
+    setCart(loadedCart);
+    setActiveDraftId(draft.id);
+    setCustomerName(draft.customerName || '');
+    setCustomerPhone(draft.customerPhone || draft.phone1 || '');
+    setDiscount(Number(draft.discount || 0));
+    setPaymentType(draft.invoiceType || (draft.isDebt ? 'debt' : 'cash'));
+    if (draft.paidAmount !== undefined) setPaidAmount(String(draft.paidAmount));
+    if (draft.notes) setOfferNotes(draft.notes);
+
+    setActiveTab('pos');
+    setIsCartOpen(true);
+    toast(`تم استرجاع الفاتورة المعلقة (${draft.customerName || 'مسودة'}) بنجاح! 🛒`, 'success');
+  };
+
+  // Delete Draft
+  const handleDeleteDraft = async (draftId, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm('هل أنت متأكد من حذف هذه الفاتورة المعلقة نهائياً؟')) return;
+    try {
+      await deleteDraftSale(draftId);
+      if (activeDraftId === draftId) {
+        setActiveDraftId(null);
+      }
+      toast('تم حذف الفاتورة المعلقة بنجاح 🗑️', 'info');
+    } catch (err) {
+      toast(`فشل الحذف: ${err.message}`, 'error');
+    }
+  };
 
   // Submit Order (POS or Quotation)
   const handleSubmit = async (e) => {
@@ -369,6 +504,14 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             stockSource: 'store'
           }
         );
+
+        // If this sale was from a draft, remove the draft
+        if (activeDraftId) {
+          try {
+            await deleteDraftSale(activeDraftId);
+          } catch (e) {}
+          setActiveDraftId(null);
+        }
 
         setCompletedDoc({
           ...saleResult,
@@ -635,98 +778,266 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
           </div>
 
           {/* Mode Switcher */}
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
             <button
               onClick={() => setActiveTab('pos')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                 activeTab === 'pos'
                   ? 'bg-brand-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <span>🛒</span>
-              <span>فاتورة بيع</span>
+              <span>بيع</span>
             </button>
             <button
               onClick={() => setActiveTab('offer')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                 activeTab === 'offer'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <span>📑</span>
-              <span>عرض سعر</span>
+              <span>عروض</span>
             </button>
-          </div>
-        </div>
-
-        {/* Search & Filter Controls */}
-        <div className="mt-3 space-y-2.5">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="🔍 ابحث بالاسم، الموديل، الباركود، أو SKU..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium"
-              />
-              {searchTerm && (
-                <button 
-                  onClick={() => setSearchTerm('')}
-                  className="absolute left-3 top-2 text-slate-400 hover:text-slate-600 text-xs"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
             <button
-              onClick={() => setShowFiltersModal(true)}
-              className={`px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
-                stockFilter !== 'all' || sortBy !== 'default'
-                  ? 'bg-brand-50 text-brand-700 border-brand-300'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+              onClick={() => setActiveTab('drafts')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 relative ${
+                activeTab === 'drafts'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <span>⚙️</span>
-              <span>فلاتر</span>
+              <span>⏸️</span>
+              <span>معلقة</span>
+              {drafts.length > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  activeTab === 'drafts' ? 'bg-white text-indigo-700' : 'bg-rose-500 text-white'
+                }`}>
+                  {drafts.length}
+                </span>
+              )}
             </button>
           </div>
+        </div>
 
-          {/* Category Filter Pills */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-            {categories.map(cat => (
+        {/* Active Draft Alert Banner */}
+        {activeDraftId && activeTab === 'pos' && (
+          <div className="mt-2.5 bg-indigo-50 border border-indigo-200 rounded-xl p-2 flex items-center justify-between text-xs text-indigo-900 font-bold">
+            <div className="flex items-center gap-1.5">
+              <span>🔄</span>
+              <span>أنت تعمل على استكمال فاتورة معلقة ({customerName || 'عميل'})</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveDraftId(null);
+                setCart([]);
+                setCustomerName('');
+                setCustomerPhone('');
+                toast('تم إلغاء متابعة الفاتورة المعلقة والبدء بسلة جديدة', 'info');
+              }}
+              className="text-[11px] text-rose-600 hover:text-rose-800 underline mr-2 font-normal"
+            >
+              إلغاء والبدء من جديد
+            </button>
+          </div>
+        )}
+
+        {/* Search & Filter Controls (Only in POS & Offer modes) */}
+        {activeTab !== 'drafts' && (
+          <div className="mt-3 space-y-2.5">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="🔍 ابحث بالاسم، الموديل، الباركود، أو SKU..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium"
+                />
+                {searchTerm && (
+                  <button 
+                    onClick={() => setSearchTerm('')}
+                    className="absolute left-3 top-2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
               <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition-all ${
-                  selectedCategory === cat
-                    ? 'bg-brand-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                onClick={() => setShowFiltersModal(true)}
+                className={`px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  stockFilter !== 'all' || sortBy !== 'default'
+                    ? 'bg-brand-50 text-brand-700 border-brand-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                {cat === 'all' ? '📦 كافة الأقسام' : cat}
+                <span>⚙️</span>
+                <span>فلاتر</span>
               </button>
-            ))}
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition-all ${
+                    selectedCategory === cat
+                      ? 'bg-brand-600 text-white shadow-xs'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {cat === 'all' ? '📦 كافة الأقسام' : cat}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
-      {/* Product List / Grid */}
-      <main className="p-3.5 max-w-2xl mx-auto">
-        {productsLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-xs">
-            <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p>جارٍ تحميل قائمة المنتجات والأسعار...</p>
+      {/* Main Content: Either Drafts View or Products Grid */}
+      {activeTab === 'drafts' ? (
+        <main className="p-3.5 max-w-2xl mx-auto space-y-3">
+          <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 text-indigo-900 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="text-2xl">⏸️</span>
+              <div>
+                <h3 className="text-xs font-black">الفواتير المعلقة والمسودات</h3>
+                <p className="text-[11px] text-indigo-700 mt-0.5">
+                  يمكنك استرجاع أي فاتورة معلقة إلى السلة لإكمالها أو حذفها
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-bold bg-white text-indigo-700 px-2.5 py-1 rounded-full font-mono border border-indigo-200 shadow-2xs">
+              {drafts.length} معلقة
+            </span>
           </div>
-        ) : productsError ? (
-          <div className="text-center py-16 px-6 bg-white rounded-3xl border border-rose-200 text-rose-600 shadow-xs space-y-2">
-            <p className="font-bold text-sm">حدث خطأ أثناء جلب المنتجات</p>
-            <p className="text-xs text-slate-500">{productsError}</p>
-          </div>
-        ) : filteredProducts.length === 0 ? (
+
+          {draftsLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-xs">
+              <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+              <p>جارٍ جلب الفواتير المعلقة...</p>
+            </div>
+          ) : drafts.length === 0 ? (
+            <div className="text-center py-16 px-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-3">
+              <div className="text-4xl">📂</div>
+              <h3 className="text-sm font-bold text-slate-900">لا توجد فواتير معلقة حالياً</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                عند الضغط على «تعليق الفاتورة» من السلة، ستُحفظ هنا مباشرة لتسترجعها في أي وقت
+              </p>
+              <button
+                onClick={() => setActiveTab('pos')}
+                className="px-5 py-2.5 rounded-xl bg-brand-600 text-white text-xs font-bold shadow-xs hover:bg-brand-700 transition-all inline-flex items-center gap-1.5"
+              >
+                <span>🛒</span>
+                <span>فتح نقطة البيع</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {drafts.map((draft) => {
+                const isCurrentActive = activeDraftId === draft.id;
+                const itemsCount = draft.items?.reduce((s, i) => s + (Number(i.quantity) || 1), 0) || 0;
+                const dateStr = draft.createdAt?.seconds 
+                  ? new Date(draft.createdAt.seconds * 1000).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })
+                  : 'الآن';
+
+                return (
+                  <div
+                    key={draft.id}
+                    className={`bg-white border rounded-2xl p-4 shadow-xs space-y-3 transition-all ${
+                      isCurrentActive ? 'border-brand-500 ring-2 ring-brand-500/20 bg-brand-50/20' : 'border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-black text-slate-900">
+                            👤 {draft.customerName || 'زبون عام'}
+                          </h4>
+                          {draft.status === 'suspended' ? (
+                            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
+                              ⏸️ معلقة
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                              📝 مسودة
+                            </span>
+                          )}
+                          {isCurrentActive && (
+                            <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                              🔄 قيد التعديل
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 font-mono flex-wrap">
+                          <span>🕒 {dateStr}</span>
+                          {draft.phone1 || draft.customerPhone ? (
+                            <span>📞 {draft.phone1 || draft.customerPhone}</span>
+                          ) : null}
+                          <span>📦 {itemsCount} مواد</span>
+                        </div>
+                      </div>
+
+                      <div className="text-left">
+                        <span className="text-[10px] text-slate-400 block">الإجمالي:</span>
+                        <span className="text-sm font-black text-brand-600 font-mono">
+                          {Number(draft.total || 0).toLocaleString()} د.ع
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Items preview */}
+                    {draft.items && draft.items.length > 0 && (
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs text-slate-700">
+                        <p className="line-clamp-2 leading-relaxed text-[11px]">
+                          {draft.items.map(i => `${i.name} (×${i.quantity || 1})`).join(' ، ')}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => handleResumeDraft(draft)}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-black text-xs shadow-xs transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <span>🛒</span>
+                        <span>استرجاع ومتابعة السلة</span>
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteDraft(draft.id, e)}
+                        className="px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs border border-rose-200 transition-all flex items-center justify-center gap-1"
+                      >
+                        <span>🗑️</span>
+                        <span>حذف</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </main>
+      ) : (
+        /* Product List / Grid */
+        <main className="p-3.5 max-w-2xl mx-auto">
+          {productsLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-xs">
+              <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+              <p>جارٍ تحميل قائمة المنتجات والأسعار...</p>
+            </div>
+          ) : productsError ? (
+            <div className="text-center py-16 px-6 bg-white rounded-3xl border border-rose-200 text-rose-600 shadow-xs space-y-2">
+              <p className="font-bold text-sm">حدث خطأ أثناء جلب المنتجات</p>
+              <p className="text-xs text-slate-500">{productsError}</p>
+            </div>
+          ) : filteredProducts.length === 0 ? (
           <div className="text-center py-16 px-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-3">
             <div className="text-4xl">📦</div>
             <h3 className="text-sm font-bold text-slate-900">لا توجد منتجات مطابقة للبحث أو القسم</h3>
@@ -851,6 +1162,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
           </div>
         )}
       </main>
+      )}
 
       {/* Floating Bottom Cart Bar */}
       {cart.length > 0 && (
@@ -1006,17 +1318,33 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 {cart.map(item => (
                   <div 
                     key={item.productId}
-                    className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 gap-2"
+                    className="flex items-start justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 gap-2"
                   >
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-1">
-                        <input
-                          type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateCartUnitPrice(item.productId, e.target.value)}
-                          className="w-20 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs text-brand-600 font-bold font-mono focus:ring-1 focus:ring-brand-500"
-                        />
+                    <div className="flex-1 min-w-0 pr-1">
+                      <h4 className="text-xs font-bold text-slate-900 break-words leading-relaxed">{item.name}</h4>
+                      {item.wholesalePrice > 0 && (
+                        <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
+                          سعر الجملة: {Number(item.wholesalePrice).toLocaleString()} د.ع
+                        </span>
+                      )}
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-1 flex-wrap">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-slate-400">السعر:</span>
+                          <input
+                            type="number"
+                            min={item.wholesalePrice || 0}
+                            value={item.unitPrice}
+                            onChange={(e) => updateCartUnitPrice(item.productId, e.target.value)}
+                            onBlur={(e) => {
+                              const p = Number(e.target.value) || 0;
+                              const minW = Number(item.wholesalePrice || 0);
+                              if (minW > 0 && p < minW) {
+                                updateCartUnitPrice(item.productId, minW);
+                              }
+                            }}
+                            className="w-24 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs text-brand-600 font-bold font-mono focus:ring-1 focus:ring-brand-500"
+                          />
+                        </div>
                         <span>د.ع ×</span>
                         <span className="text-brand-600 font-bold">{item.quantity}</span>
                         <span>=</span>
@@ -1024,7 +1352,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                       <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
                         <button
                           onClick={() => updateQuantity(item.productId, item.quantity - 1)}
@@ -1051,41 +1379,70 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 ))}
               </div>
 
-              {/* Customer Selection */}
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
+              {/* Customer Selection & Auto-complete */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2 relative">
                 <label className="text-xs font-bold text-slate-700 block">
                   👤 معلومات العميل:
                 </label>
-                
-                {customers.length > 0 && (
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => handleSelectCustomer(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                  >
-                    <option value="">-- اختر من دليل العملاء المسجلين (اختياري) --</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.phone1 ? `(${c.phone1})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                )}
 
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="اسم العميل (مثال: علي محمد)"
-                    className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
+                <div className="grid grid-cols-2 gap-2 relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => handleCustomerNameChange(e.target.value)}
+                      onFocus={() => {
+                        if (customerName.trim().length > 0 && customerSearchSuggestions.length > 0) {
+                          setShowCustomerSuggestions(true);
+                        }
+                      }}
+                      placeholder="اكتب اسم العميل..."
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-bold"
+                    />
+
+                    {/* Suggestions Dropdown */}
+                    {showCustomerSuggestions && customerSearchSuggestions.length > 0 && (
+                      <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="p-1.5 bg-slate-50 text-[10px] font-bold text-slate-400 flex justify-between items-center">
+                          <span>العملاء المقترحون:</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowCustomerSuggestions(false)}
+                            className="text-slate-400 hover:text-slate-600 text-xs px-1"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {customerSearchSuggestions.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleSelectSuggestedCustomer(c)}
+                            className="w-full text-right p-2 hover:bg-brand-50 flex items-center justify-between text-xs transition-colors"
+                          >
+                            <div>
+                              <span className="font-bold text-slate-900 block">{c.name}</span>
+                              {c.phone1 || c.phone ? (
+                                <span className="text-[10px] text-slate-500 font-mono">{c.phone1 || c.phone}</span>
+                              ) : null}
+                            </div>
+                            {Number(c.totalDebt || 0) > 0 && (
+                              <span className="text-[10px] bg-rose-50 text-rose-600 font-bold px-1.5 py-0.5 rounded-md">
+                                دين: {Number(c.totalDebt).toLocaleString()}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <input
                     type="tel"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     placeholder="رقم الهاتف (078...)"
-                    className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"
                   />
                 </div>
               </div>
@@ -1222,6 +1579,19 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
             {/* Footer Submit & Direct PDF Actions */}
             <div className="p-4 border-t border-slate-100 bg-slate-50 space-y-2">
+              {/* Suspend Sale (Save Draft) Button - POS Only */}
+              {activeTab === 'pos' && (
+                <button
+                  type="button"
+                  disabled={savingDraft || cart.length === 0}
+                  onClick={handleSuspendSale}
+                  className="w-full py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-200 transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                >
+                  <span>{savingDraft ? '⏳' : '⏸️'}</span>
+                  <span>{savingDraft ? 'جارٍ تعليق الفاتورة...' : 'تعليق الفاتورة (حفظ في الفواتير المعلقة)'}</span>
+                </button>
+              )}
+
               {/* Direct PDF send BEFORE confirmation */}
               <button
                 type="button"
