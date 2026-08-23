@@ -71,6 +71,70 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  // Mastercard / Electronic Income calculations
+  const todaysMastercardSales = useMemo(() => {
+    return todaysSales
+      .filter((s) => s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard')
+      .reduce((sum, s) => sum + Number(s.total || 0), 0);
+  }, [todaysSales]);
+
+  const todaysDirectCashSales = useMemo(() => {
+    return todaysSales
+      .filter((s) => (s.invoiceType === 'cash' || !s.invoiceType) && s.paymentMethod !== 'mastercard')
+      .reduce((sum, s) => sum + Number(s.total || 0), 0);
+  }, [todaysSales]);
+
+  const todaysDebtSales = useMemo(() => {
+    return todaysSales
+      .filter((s) => s.invoiceType === 'debt')
+      .reduce((sum, s) => sum + Number(s.total || 0), 0);
+  }, [todaysSales]);
+
+  const todaysMastercardIncomes = useMemo(() => {
+    return (incomes || [])
+      .filter((inc) => (inc.date || inc.createdAt || '').slice(0, 10) === todayStr && (inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card'))
+      .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+  }, [incomes, todayStr]);
+
+  const todaysDebtMastercardRepayments = useMemo(() => {
+    let sum = 0;
+    sales.forEach((s) => {
+      if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+        s.payments.forEach((p) => {
+          const pDate = (p.date || '').slice(0, 10);
+          const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+          if (pDate === todayStr && isCard) {
+            sum += Number(p.amount || 0);
+          }
+        });
+      }
+    });
+    return sum;
+  }, [sales, todayStr]);
+
+  const todaysMastercardTotal = todaysMastercardSales + todaysMastercardIncomes + todaysDebtMastercardRepayments;
+
+  const todaysMastercardCount = useMemo(() => {
+    const sCount = todaysSales.filter((s) => s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard').length;
+    const incCount = (incomes || [])
+      .filter((inc) => (inc.date || inc.createdAt || '').slice(0, 10) === todayStr && (inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card')).length;
+    return sCount + incCount;
+  }, [todaysSales, incomes, todayStr]);
+
+  const allMastercardSales = useMemo(() => {
+    return sales
+      .filter((s) => s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard')
+      .reduce((sum, s) => sum + Number(s.total || 0), 0);
+  }, [sales]);
+
+  const allMastercardIncomes = useMemo(() => {
+    return (incomes || [])
+      .filter((inc) => inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card')
+      .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+  }, [incomes]);
+
+  const allMastercardTotal = allMastercardSales + allMastercardIncomes;
+
   const todaysManualIncome = useMemo(() => {
     return (incomes || [])
       .filter((inc) => (inc.date || inc.createdAt || '').slice(0, 10) === todayStr)
@@ -343,7 +407,8 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       </div>
 
       {/* إحصائيات سريعة - بطاقات بنمط SaaS تشمل النقد الفعلي بالمكتب */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 sm:gap-4">
+      {/* إحصائيات سريعة - بطاقات بنمط SaaS تشمل النقد الفعلي بالمكتب ودخل الماستر كارد */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3.5 sm:gap-4">
         
         {/* Card 1: Live Actual Cash in Office (الصندوق والقاصة) */}
         <div 
@@ -391,7 +456,53 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           </div>
         </div>
 
-        {/* Card 2: Today's Expenses (المصاريف اليومية) */}
+        {/* Card 2: Live Mastercard / Electronic Income (دخل الماستر كارد والدفع الإلكتروني) */}
+        <div 
+          onClick={() => setShowIncomeExpensesModal(true)}
+          className="card p-4 sm:p-5 flex flex-col justify-between gap-2.5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-400 transition-all duration-200 cursor-pointer group border border-indigo-800/60 relative overflow-hidden"
+          title="انقر لفتح تفاصيل وحركات الدفع الإلكتروني والماستر كارد"
+        >
+          <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-amber-400 via-rose-500 to-indigo-500"></div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">الدفع الإلكتروني</span>
+              <h3 className="text-xs font-bold text-white mt-0.5 flex items-center gap-1.5">
+                <span className="inline-flex items-center">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 opacity-90 inline-block -mr-1"></span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 opacity-90 inline-block"></span>
+                </span>
+                <span>دخل الماستر (اليوم)</span>
+              </h3>
+            </div>
+            <div className="w-8 h-8 rounded-xl bg-indigo-900/80 border border-indigo-700/60 flex items-center justify-center text-amber-300 group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0 shadow-2xs">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-amber-300">
+                {salesLoading || incomesLoading ? '...' : todaysMastercardTotal.toLocaleString()}
+              </span>
+              <span className="text-[11px] font-bold text-slate-300">د.ع</span>
+            </div>
+            <span className="text-[10px] text-slate-300 block mt-0.5 font-medium truncate">
+              {todaysMastercardCount > 0 
+                ? `${todaysMastercardCount} حركة إلكترونية اليوم`
+                : 'لا توجد حركات ماستر اليوم'}
+            </span>
+          </div>
+
+          <div className="text-[10px] font-bold text-amber-300 group-hover:text-white flex items-center justify-between pt-1.5 border-t border-dashed border-indigo-800/80">
+            <span className="truncate">إجمالي الماستر: {allMastercardTotal.toLocaleString()} د.ع</span>
+            <span className="text-amber-400 group-hover:translate-x-[-2px] transition-transform">←</span>
+          </div>
+        </div>
+
+        {/* Card 3: Today's Expenses (المصاريف اليومية) */}
         <div 
           onClick={() => setShowIncomeExpensesModal(true)}
           className="card p-4 sm:p-5 flex flex-col justify-between gap-2.5 bg-white border border-slate-200/90 rounded-2xl shadow-xs hover:shadow-md hover:border-rose-300 transition-all duration-200 cursor-pointer group"
@@ -430,7 +541,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           </div>
         </div>
 
-        {/* Card 3: Today's Revenue */}
+        {/* Card 4: Today's Revenue */}
         <div className="card p-4 sm:p-5 flex flex-col justify-between gap-2.5">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium text-ink-500">إجمالي المبيعات (اليوم)</h3>
@@ -441,8 +552,10 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           <div>
             <p className="text-xl sm:text-2xl font-bold text-ink-900 font-mono">{salesLoading ? '...' : todaysRevenue.toLocaleString()} <span className="text-[11px] font-normal text-slate-500">د.ع</span></p>
           </div>
-          <div className="text-[10px] text-slate-400 truncate">
-            إجمالي فواتير بيع اليوم
+          <div className="text-[10px] text-slate-400 truncate flex items-center gap-1 flex-wrap">
+            <span>نقدي: {todaysDirectCashSales.toLocaleString()}</span>
+            <span>•</span>
+            <span className="text-indigo-600 font-bold">ماستر: {todaysMastercardSales.toLocaleString()}</span>
           </div>
         </div>
 
