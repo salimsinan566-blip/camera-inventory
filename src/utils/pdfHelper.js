@@ -211,7 +211,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
       <img 
         src="${logoUrl}" 
         alt="" 
-        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; max-width: 500px; opacity: 0.05; filter: grayscale(100%); pointer-events: none; z-index: 0;" 
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75%; max-width: 550px; opacity: 0.18; filter: grayscale(100%); pointer-events: none; z-index: 0;" 
         crossOrigin="anonymous" 
       />
     ` : ''}
@@ -224,7 +224,9 @@ export async function generateInvoicePdfBlob(sale, settings) {
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #C89B3C; padding-bottom: 12px; margin-bottom: 16px;">
           <!-- Store Info (Right) -->
           <div style="text-align: right;">
-            <h1 style="font-size: 28px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">${storeName}</h1>
+            <h1 style="font-size: 28px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">
+              ${(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
+            </h1>
             ${address ? `
               <p style="font-size: 13px; color: #64748b; font-weight: bold; display: flex; align-items: center; gap: 4px;">
                 <span style="color: #C89B3C;">📍</span> ${address}
@@ -235,19 +237,19 @@ export async function generateInvoicePdfBlob(sale, settings) {
           <!-- Logo & Badge (Left) -->
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
             ${logoUrl ? `
-              <img src="${logoUrl}" alt="الشعار" style="height: 70px; max-width: 220px; object-fit: contain;" crossOrigin="anonymous" />
+              <img src="${logoUrl}" alt="الشعار" style="height: 85px; max-width: 260px; object-fit: contain;" crossOrigin="anonymous" />
             ` : `
               <div style="height: 60px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
             `}
             ${isOffer ? `
-              <span style="font-size: 13px; font-weight: 900; color: #78350f; background: #fef3c7; border: 1px solid #fde68a; padding: 4px 16px; border-radius: 9999px; text-transform: uppercase;">
+              <span style="font-size: 13px; font-weight: 900; color: #78350f; background: #fef3c7; border: 1px solid #fde68a; padding: 4px 18px; border-radius: 9999px; text-transform: uppercase;">
                 عرض سعر (Quotation)
               </span>
-            ` : `
-              <span style="font-size: 12px; font-weight: 900; color: #1e3a8a; background: #eff6ff; border: 1px solid #bfdbfe; padding: 3px 14px; border-radius: 9999px;">
-                فاتورة مبيعات رسمية
+            ` : isDraft ? `
+              <span style="font-size: 11px; font-weight: 900; color: #a16207; background: #fefce8; border: 1px solid #fef08a; padding: 3px 12px; border-radius: 9999px;">
+                فاتورة غير مؤكدة
               </span>
-            `}
+            ` : ''}
           </div>
         </div>
 
@@ -271,10 +273,10 @@ export async function generateInvoicePdfBlob(sale, settings) {
                   <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">تاريخ الإصدار:</td>
                   <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${dateLabel}</td>
                 </tr>
-                ${!isOffer ? `
+                ${isDebt && !isOffer ? `
                   <tr>
                     <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">نوع الدفع:</td>
-                    <td style="padding: 2px 4px; font-weight: 900; color: ${isDebt ? '#dc2626' : (isCard ? '#2563eb' : '#16a34a')};">${paymentLabel}</td>
+                    <td style="padding: 2px 4px; font-weight: 900; color: #dc2626;">آجل (دين)</td>
                   </tr>
                 ` : ''}
                 <tr>

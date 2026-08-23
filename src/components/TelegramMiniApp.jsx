@@ -95,6 +95,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const [offerNotes, setOfferNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [editingPriceItem, setEditingPriceItem] = useState(null);
   const [completedDoc, setCompletedDoc] = useState(null);
   const [showFullReceipt, setShowFullReceipt] = useState(false);
   const [telegramUser, setTelegramUser] = useState(null);
@@ -308,6 +309,34 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       }
       return item;
     }));
+  };
+
+  const handleSaveModalPrice = () => {
+    if (!editingPriceItem) return;
+    const { item, tempPrice } = editingPriceItem;
+    const numPrice = Number(tempPrice);
+    const minWholesale = Number(item.wholesalePrice || 0);
+
+    if (!item.isService && numPrice > 0 && minWholesale > 0 && numPrice < minWholesale) {
+      setEditingPriceItem(prev => ({
+        ...prev,
+        error: `لا يمكن بيع المادة بسعر أقل من التكلفة إلا إذا كانت هدية (0 د.ع). أقل سعر ممكن هو ${minWholesale.toLocaleString()} د.ع`
+      }));
+      return;
+    }
+
+    setCart(prev => prev.map(cartItem => {
+      if (cartItem.productId === item.productId) {
+        const finalP = Math.max(0, numPrice);
+        return {
+          ...cartItem,
+          unitPrice: finalP,
+          lineTotal: cartItem.quantity * finalP
+        };
+      }
+      return cartItem;
+    }));
+    setEditingPriceItem(null);
   };
 
   const removeFromCart = (productId) => {
@@ -803,7 +832,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             </button>
             <button
               onClick={() => setActiveTab('drafts')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 relative ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                 activeTab === 'drafts'
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -811,13 +840,6 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             >
               <span>⏸️</span>
               <span>معلقة</span>
-              {drafts.length > 0 && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                  activeTab === 'drafts' ? 'bg-white text-indigo-700' : 'bg-rose-500 text-white'
-                }`}>
-                  {drafts.length}
-                </span>
-              )}
             </button>
           </div>
         </div>
@@ -1322,30 +1344,17 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   >
                     <div className="flex-1 min-w-0 pr-1">
                       <h4 className="text-xs font-bold text-slate-900 break-words leading-relaxed">{item.name}</h4>
-                      {item.wholesalePrice > 0 && (
-                        <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
-                          سعر الجملة: {Number(item.wholesalePrice).toLocaleString()} د.ع
-                        </span>
-                      )}
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-1 flex-wrap">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-400">السعر:</span>
-                          <input
-                            type="number"
-                            min={item.wholesalePrice || 0}
-                            value={item.unitPrice}
-                            onChange={(e) => updateCartUnitPrice(item.productId, e.target.value)}
-                            onBlur={(e) => {
-                              const p = Number(e.target.value) || 0;
-                              const minW = Number(item.wholesalePrice || 0);
-                              if (minW > 0 && p < minW) {
-                                updateCartUnitPrice(item.productId, minW);
-                              }
-                            }}
-                            className="w-24 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs text-brand-600 font-bold font-mono focus:ring-1 focus:ring-brand-500"
-                          />
-                        </div>
-                        <span>د.ع ×</span>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setEditingPriceItem({ item, tempPrice: String(item.unitPrice), error: '' })}
+                          className="flex items-center gap-1 bg-white hover:bg-brand-50 border border-slate-200 hover:border-brand-400 rounded-lg px-2.5 py-1 text-xs text-brand-600 font-bold font-mono transition-all shadow-2xs cursor-pointer active:scale-95"
+                          title="اضغط لتعديل السعر"
+                        >
+                          <span>{Number(item.unitPrice || 0).toLocaleString()} د.ع</span>
+                          <span className="text-[10px] text-slate-400">✏️</span>
+                        </button>
+                        <span>×</span>
                         <span className="text-brand-600 font-bold">{item.quantity}</span>
                         <span>=</span>
                         <span className="text-slate-900 font-bold">{item.lineTotal.toLocaleString()} د.ع</span>
@@ -1749,6 +1758,87 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 className="w-2/3 py-2.5 rounded-xl bg-[#229ED9] hover:bg-[#1E88C7] text-white text-xs font-bold shadow-xs"
               >
                 حفظ وإرسال الـ PDF ✈️
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Price Edit Modal - Exact POSScreen style */}
+      {editingPriceItem && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-5 border border-slate-200 space-y-3 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                <span>🏷️</span>
+                <span>تعديل سعر البيع</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingPriceItem(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs font-bold text-slate-800 bg-slate-50 p-2.5 rounded-xl break-words leading-relaxed border border-slate-100">
+              {editingPriceItem.item.name}
+            </p>
+
+            {!editingPriceItem.item.isService && editingPriceItem.item.wholesalePrice > 0 && (
+              <div className="flex justify-between items-center bg-brand-50 border border-brand-100 p-2.5 rounded-xl text-xs font-bold text-brand-800">
+                <span>سعر التكلفة (الجملة):</span>
+                <span className="font-mono">{Number(editingPriceItem.item.wholesalePrice).toLocaleString()} د.ع</span>
+              </div>
+            )}
+
+            {/* Gift / Free button */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingPriceItem(prev => ({ ...prev, tempPrice: '0', error: '' }));
+              }}
+              className="w-full py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+            >
+              <span>🎁</span>
+              <span>جعل المادة هدية / مجاناً (0 د.ع)</span>
+            </button>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">السعر الجديد (د.ع):</label>
+              <input
+                type="number"
+                min="0"
+                value={editingPriceItem.tempPrice}
+                onChange={(e) => setEditingPriceItem(prev => ({ ...prev, tempPrice: e.target.value, error: '' }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveModalPrice();
+                }}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-base font-bold font-mono focus:ring-2 focus:ring-brand-500 text-slate-900 bg-slate-50 focus:bg-white"
+                autoFocus
+              />
+              {editingPriceItem.error && (
+                <p className="text-xs text-rose-600 font-bold mt-1.5 bg-rose-50 p-2 rounded-lg border border-rose-100">
+                  {editingPriceItem.error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleSaveModalPrice}
+                className="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-xs"
+              >
+                تأكيد السعر
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingPriceItem(null)}
+                className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs"
+              >
+                إلغاء
               </button>
             </div>
           </div>
