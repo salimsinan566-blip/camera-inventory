@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSettings } from '../hooks/useSettings';
+import { useAuth } from '../hooks/useAuth';
 import { getStoreSettings, updateStoreSettings } from '../services/settingsService';
 import { useLaborCharges } from '../hooks/useLaborCharges';
 import { addLaborCharge, updateLaborCharge, deleteLaborCharge } from '../services/laborChargesService';
@@ -18,11 +19,12 @@ import {
 } from '../services/whatsappService';
 
 export default function SettingsScreen() {
+  const { user } = useAuth();
   const { toast, confirm, backupTask, startBackgroundBackup } = useUI();
   const { settings, loading: settingsLoading } = useSettings();
   const { laborCharges, loading: laborLoading } = useLaborCharges();
 
-  const [activeTab, setActiveTab] = useState('store'); // 'store' | 'categories' | 'labor' | 'whatsapp' | 'backup'
+  const [activeTab, setActiveTab] = useState('store'); // 'store' | 'users' | 'categories' | 'labor' | 'whatsapp' | 'backup'
   
   // WhatsApp Settings state
   const [whatsappConfig, setWhatsappConfig] = useState({
@@ -577,16 +579,109 @@ export default function SettingsScreen() {
     });
   };
 
+  // Authorized Emails (Whitelist) state
+  const [newAllowedEmail, setNewAllowedEmail] = useState('');
+  const [savingAllowedEmail, setSavingAllowedEmail] = useState(false);
+  const allowedEmailsList = useMemo(() => {
+    return Array.isArray(settings?.allowedEmails) ? settings.allowedEmails : [];
+  }, [settings]);
+  const isWhitelistEnforced = settings?.enforceEmailWhitelist !== false;
+
+  const handleAddAllowedEmail = async (e) => {
+    if (e) e.preventDefault();
+    const clean = newAllowedEmail.trim().toLowerCase();
+    if (!clean) {
+      toast('يرجى كتابة البريد الإلكتروني', 'warning');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(clean)) {
+      toast('يرجى كتابة بريد إلكتروني صالح (مثال: staff@gmail.com)', 'warning');
+      return;
+    }
+    if (allowedEmailsList.map(em => em.toLowerCase()).includes(clean)) {
+      toast('هذا البريد مضاف بالفعل إلى قائمة الموظفين المصرح لهم', 'info');
+      return;
+    }
+
+    setSavingAllowedEmail(true);
+    try {
+      const updatedList = [...allowedEmailsList, clean];
+      await updateStoreSettings({ allowedEmails: updatedList });
+      setNewAllowedEmail('');
+      toast(`تمت إضافة (${clean}) إلى قائمة الموظفين المصرح لهم بنجاح! 👥✅`, 'success');
+    } catch (err) {
+      toast(`فشل الحفظ: ${err.message}`, 'error');
+    } finally {
+      setSavingAllowedEmail(false);
+    }
+  };
+
+  const handleAddCurrentAdminEmail = async () => {
+    if (!user?.email) {
+      toast('لم يتم التعرف على بريدك الحالي', 'warning');
+      return;
+    }
+    const clean = user.email.trim().toLowerCase();
+    if (allowedEmailsList.map(em => em.toLowerCase()).includes(clean)) {
+      toast('بريدك الحالي مضاف بالفعل في القائمة', 'info');
+      return;
+    }
+    setSavingAllowedEmail(true);
+    try {
+      const updatedList = [...allowedEmailsList, clean];
+      await updateStoreSettings({ allowedEmails: updatedList });
+      toast(`تمت إضافة بريدك (${clean}) إلى القائمة المعتمدة بنجاح! 👥✅`, 'success');
+    } catch (err) {
+      toast(`فشل الحفظ: ${err.message}`, 'error');
+    } finally {
+      setSavingAllowedEmail(false);
+    }
+  };
+
+  const handleRemoveAllowedEmail = async (emailToRemove) => {
+    const ok = await confirm({
+      title: 'حذف بريد مصرح له',
+      message: `هل أنت متأكد من إزالة البريد (${emailToRemove}) من قائمة المصرح لهم بالدخول؟ لن يتمكن من تسجيل الدخول بعد الآن.`
+    });
+    if (!ok) return;
+
+    try {
+      const updatedList = allowedEmailsList.filter(em => em.toLowerCase() !== emailToRemove.toLowerCase());
+      await updateStoreSettings({ allowedEmails: updatedList });
+      toast(`تم حذف (${emailToRemove}) من القائمة 🗑️`, 'info');
+    } catch (err) {
+      toast(`فشل الحذف: ${err.message}`, 'error');
+    }
+  };
+
+  const handleToggleWhitelistEnforce = async () => {
+    try {
+      const nextVal = !isWhitelistEnforced;
+      await updateStoreSettings({ enforceEmailWhitelist: nextVal });
+      toast(nextVal ? 'تم تفعيل تقييد الدخول بالإيميلات المصرح لها فقط 🔒' : 'تم تعطيل تقييد الدخول (مفتوح للجميع) 🔓', 'info');
+    } catch (err) {
+      toast(`فشل التعديل: ${err.message}`, 'error');
+    }
+  };
+
   if (settingsLoading || laborLoading) return <div className="p-8 text-center text-ink-500">جارٍ التحميل...</div>;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-brand-100 min-h-full" dir="rtl">
-      <div className="border-b border-brand-100 flex p-4 gap-4">
+      <div className="border-b border-brand-100 flex p-4 gap-4 flex-wrap">
         <button
           onClick={() => setActiveTab('store')}
           className={`px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'store' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-ink-50'}`}
         >
           معلومات المتجر
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`px-4 py-2 font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-xs' : 'text-ink-600 hover:bg-ink-50'}`}
+        >
+          <span>👥</span>
+          <span>الموظفين المصرح لهم (Whitelist)</span>
         </button>
         <button
           onClick={() => setActiveTab('categories')}
@@ -1660,6 +1755,173 @@ export default function SettingsScreen() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Users / Allowed Emails Whitelist Tab */}
+        {activeTab === 'users' && (
+          <div className="max-w-3xl space-y-6">
+            {/* Header Description */}
+            <div className="bg-gradient-to-l from-indigo-50/80 to-brand-50/50 border border-indigo-100 rounded-2xl p-5 space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl p-2 bg-white rounded-xl shadow-2xs border border-indigo-100">👥</span>
+                <div>
+                  <h2 className="text-base font-black text-ink-900">
+                    إدارة الموظفين والإيميلات المصرح لها بالدخول (Google & Email Whitelist)
+                  </h2>
+                  <p className="text-xs text-ink-600 mt-1 leading-relaxed">
+                    تحكم بالكامل في الحسابات المسموح لها بتسجيل الدخول للنظام (سواء من البوت في التليجرام أو من الموقع عبر حساب Google أو البريد الإلكتروني). لن يتمكن أي حساب آخر من الدخول.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Whitelist Enforcement Toggle */}
+            <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{isWhitelistEnforced ? '🔒' : '🔓'}</span>
+                  <h3 className="text-sm font-black text-ink-900">
+                    تقييد الدخول بالإيميلات المعتمدة فقط (نظام الأمان)
+                  </h3>
+                </div>
+                <p className="text-xs text-ink-500 mt-1 leading-relaxed">
+                  {isWhitelistEnforced 
+                    ? 'النظام محمي ومقيد: لن يتمكن أي موظف من الدخول إلا إذا كان بريده مسجلاً في هذه القائمة أدناه.'
+                    : 'التقييد معطل حالياً: يمكن لأي حساب مسجل في Firebase الدخول للنظام.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleToggleWhitelistEnforce}
+                className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs shrink-0 ${
+                  isWhitelistEnforced 
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                }`}
+              >
+                {isWhitelistEnforced ? 'مفعل (آمن ومقيد) ✅' : 'معطل (مفتوح للجميع) ⚠️'}
+              </button>
+            </div>
+
+            {/* Add New Email Form */}
+            <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-ink-100 pb-3">
+                <h3 className="text-sm font-black text-ink-900 flex items-center gap-2">
+                  <span>➕</span>
+                  <span>إضافة بريد موظف جديد للقائمة المصرح لها</span>
+                </h3>
+
+                {user?.email && !allowedEmailsList.map(e => e.toLowerCase()).includes(user.email.toLowerCase()) && (
+                  <button
+                    type="button"
+                    onClick={handleAddCurrentAdminEmail}
+                    disabled={savingAllowedEmail}
+                    className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>إضافة بريدي الحالي ({user.email})</span>
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handleAddAllowedEmail} className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <input
+                    type="email"
+                    required
+                    value={newAllowedEmail}
+                    onChange={(e) => setNewAllowedEmail(e.target.value)}
+                    placeholder="مثال: employee@gmail.com أو seller@safezone.com"
+                    className="w-full border border-brand-200 rounded-xl px-4 py-2.5 text-xs text-ink-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                    dir="ltr"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingAllowedEmail}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-6 py-2.5 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
+                >
+                  <span>{savingAllowedEmail ? 'جارٍ الإضافة...' : '➕ إضافة للمصرح لهم'}</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Allowed Emails List */}
+            <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between border-b border-ink-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📋</span>
+                  <h3 className="text-sm font-black text-ink-900">
+                    قائمة الإيميلات المعتمدة ({allowedEmailsList.length})
+                  </h3>
+                </div>
+                <span className="text-[11px] text-ink-400 font-bold">
+                  تدعم الدخول عبر Google أو كلمة المرور
+                </span>
+              </div>
+
+              {allowedEmailsList.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs space-y-2">
+                  <span className="text-3xl block">📭</span>
+                  <p className="font-bold text-slate-700">لم يتم إضافة أي إيميل مصرح به بعد.</p>
+                  <p className="text-[11px]">عند عدم إضافة أي إيميل، يكون تسجيل الدخول متاحاً للمستخدمين المسجلين في Firebase.</p>
+                  {user?.email && (
+                    <button
+                      type="button"
+                      onClick={handleAddCurrentAdminEmail}
+                      className="mt-2 inline-flex items-center gap-1.5 bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xs hover:bg-indigo-700 cursor-pointer"
+                    >
+                      <span>⚡</span>
+                      <span>إضافة بريدك الحالي ({user.email}) كمسؤول رئيسي</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {allowedEmailsList.map((emailItem, idx) => {
+                    const isCurrent = user?.email?.toLowerCase() === emailItem.toLowerCase();
+                    return (
+                      <div key={idx} className="py-3 px-2 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-xl transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-100 shrink-0">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-slate-900" dir="ltr">
+                                {emailItem}
+                              </span>
+                              {isCurrent && (
+                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                  أنت (الحساب الحالي)
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-slate-400">
+                                مصرح له بالدخول في البوت والموقع وبحساب Google
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAllowedEmail(emailItem)}
+                          className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 flex items-center justify-center text-xs transition-colors cursor-pointer border border-rose-200 shrink-0"
+                          title="إزالة من القائمة"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

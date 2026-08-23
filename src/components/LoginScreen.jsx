@@ -3,7 +3,7 @@ import { login, loginWithGoogle, resetPassword } from '../firebase/auth';
 import logo from '../assets/logo.png';
 import { useSettings } from '../hooks/useSettings';
 
-export default function LoginScreen({ onSwitchToCustomerPortal }) {
+export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmail, onClearUnauthorized }) {
   const { settings } = useSettings();
   const activeLogo = settings?.logoUrl || logo;
   const storeName = settings?.storeName || 'Safe Zone';
@@ -15,6 +15,13 @@ export default function LoginScreen({ onSwitchToCustomerPortal }) {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+
+  // Clear unauthorized state on input
+  function handleInputFocus() {
+    if (unauthorizedEmail && onClearUnauthorized) {
+      onClearUnauthorized();
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -84,6 +91,21 @@ export default function LoginScreen({ onSwitchToCustomerPortal }) {
           <p className="text-xs text-ink-500 mb-6 text-center">
             نظام إدارة مخزون ومبيعات كامرات المراقبة
           </p>
+
+          {unauthorizedEmail && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl p-3.5 mb-5 space-y-1 text-right shadow-2xs">
+              <div className="flex items-center gap-1.5 font-black text-rose-700 text-sm">
+                <span>⛔</span>
+                <span>الحساب غير مصرح له بالدخول</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                البريد الإلكتروني <strong className="font-mono text-rose-900">{unauthorizedEmail}</strong> غير موجود في قائمة الموظفين المعتمدين.
+              </p>
+              <p className="text-[10px] text-rose-600 font-medium">
+                يرجى التواصل مع مسؤول النظام لإضافة بريدك إلى القائمة المصرح لها.
+              </p>
+            </div>
+          )}
 
           {/* Google Sign In Button */}
           <button

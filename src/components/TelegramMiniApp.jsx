@@ -7,14 +7,14 @@ import { useDraftSales } from '../hooks/useDraftSales';
 import { useUI } from '../contexts/UIContext';
 import { checkoutSale, createDraftSale, deleteDraftSale, updateDraftSale } from '../services/salesService';
 import { createOffer } from '../services/offersService';
-import { login, logout } from '../firebase/auth';
+import { login, loginWithGoogle, logout } from '../firebase/auth';
 import { searchProducts } from '../utils/search';
 import { generateInvoicePdfBlob } from '../utils/pdfHelper';
 import { updateStoreSettings } from '../services/settingsService';
 import InvoiceReceipt from './InvoiceReceipt';
 
 export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unauthorizedEmail, setUnauthorizedEmail } = useAuth();
   const { products = [], loading: productsLoading, error: productsError } = useProducts();
   const { customers = [] } = useCustomers();
   const { settings = {} } = useSettings();
@@ -66,6 +66,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
   // Mode: 'pos' (بيع حقيقي) or 'offer' (عرض سعر) or 'drafts' (فواتير معلقة)
@@ -132,6 +133,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
+    if (setUnauthorizedEmail) setUnauthorizedEmail(null);
     setLoginLoading(true);
     try {
       await login(email.trim(), password);
@@ -142,6 +144,28 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       toast('فشل تسجيل الدخول: تأكد من البريد وكلمة المرور', 'error');
     } finally {
       setLoginLoading(false);
+    }
+  };
+
+  // Handle Google Login
+  const handleGoogleLogin = async () => {
+    setLoginError('');
+    if (setUnauthorizedEmail) setUnauthorizedEmail(null);
+    setGoogleLoading(true);
+    try {
+      await loginWithGoogle();
+      toast('تم تسجيل الدخول بنجاح بحساب Google! 🚀', 'success');
+    } catch (err) {
+      console.error('Google login error:', err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setLoginError('تم إغلاق نافذة تسجيل الدخول بجوجل.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setLoginError('تم حظر النافذة المنبثقة من قبل المتصفح. يرجى السماح بالنوافذ أو الدخول بكلمة المرور.');
+      } else {
+        setLoginError(`فشل الدخول بجوجل: ${err.message}`);
+      }
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -764,11 +788,48 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             </p>
           </div>
 
+          {unauthorizedEmail && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold text-right space-y-1 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-black text-rose-700 text-sm">
+                <span>⛔</span>
+                <span>الحساب غير مصرح له بالدخول</span>
+              </div>
+              <p className="text-[11px] font-normal leading-relaxed">
+                البريد الإلكتروني <strong className="font-mono text-rose-900">{unauthorizedEmail}</strong> غير مضاف إلى قائمة الموظفين المصرح لهم.
+              </p>
+              <p className="text-[10px] text-rose-600 font-medium">
+                يرجى مراجعة مسؤول النظام لإضافة بريدك من شاشة الإعدادات.
+              </p>
+            </div>
+          )}
+
           {loginError && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-bold text-right">
               {loginError}
             </div>
           )}
+
+          {/* Google 1-Click Login Button */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={googleLoading || loginLoading}
+            className="w-full bg-white hover:bg-slate-50 text-slate-700 font-black border border-slate-300 rounded-2xl py-3 px-4 flex items-center justify-center gap-2.5 shadow-xs hover:shadow-sm transition-all cursor-pointer disabled:opacity-60 text-xs active:scale-98"
+          >
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+            </svg>
+            <span>{googleLoading ? 'جارٍ الاتصال بحساب Google...' : 'الدخول السريع بحساب Google'}</span>
+          </button>
+
+          <div className="flex items-center gap-2 my-1">
+            <div className="flex-1 h-px bg-slate-200"></div>
+            <span className="text-[11px] text-slate-400 font-bold">أو بالبريد وكلمة المرور</span>
+            <div className="flex-1 h-px bg-slate-200"></div>
+          </div>
 
           <form onSubmit={handleLogin} className="space-y-3 text-right">
             <div>

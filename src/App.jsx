@@ -6,7 +6,7 @@ import CustomerPortal from './components/CustomerPortal';
 import TelegramMiniApp from './components/TelegramMiniApp';
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, unauthorizedEmail, setUnauthorizedEmail } = useAuth();
   const [isTelegramPortal, setIsTelegramPortal] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -100,7 +100,13 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen onSwitchToCustomerPortal={handleSwitchToCustomerPortal} />;
+    return (
+      <LoginScreen 
+        onSwitchToCustomerPortal={handleSwitchToCustomerPortal} 
+        unauthorizedEmail={unauthorizedEmail}
+        onClearUnauthorized={() => setUnauthorizedEmail?.(null)}
+      />
+    );
   }
 
   return <Dashboard user={user} />;
