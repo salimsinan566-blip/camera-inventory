@@ -530,6 +530,15 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         });
         toast('تم إنشاء وحفظ عرض السعر بنجاح! 📑🎉', 'success');
         setCart([]);
+        setCustomerName('');
+        setCustomerPhone('');
+        setSelectedCustomerId('');
+        setDiscount(0);
+        setTaxRate(0);
+        setPaidAmount('');
+        setOfferTitle('');
+        setOfferNotes('');
+        setPaymentType('cash');
         setIsCartOpen(false);
       } else {
         // إتمام عملية بيع حية (POS)
@@ -582,6 +591,15 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
         });
         toast(`تم تسجيل الفاتورة #${saleResult.invoiceNumber} بنجاح! 🛒🎉`, 'success');
         setCart([]);
+        setCustomerName('');
+        setCustomerPhone('');
+        setSelectedCustomerId('');
+        setDiscount(0);
+        setTaxRate(0);
+        setPaidAmount('');
+        setOfferTitle('');
+        setOfferNotes('');
+        setPaymentType('cash');
         setIsCartOpen(false);
       }
     } catch (err) {
@@ -1686,7 +1704,19 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       {/* Success Modal */}
       {completedDoc && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 relative">
+            <button
+              type="button"
+              onClick={() => {
+                setCompletedDoc(null);
+                setShowFullReceipt(false);
+              }}
+              className="absolute top-4 left-4 w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center text-xs font-bold transition-all cursor-pointer"
+              title="إغلاق والعودة لنقطة البيع"
+            >
+              ✕
+            </button>
+
             <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-3xl mx-auto border border-emerald-100 shadow-xs">
               {completedDoc.isOffer ? '📑' : '🎉'}
             </div>
@@ -1711,7 +1741,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                 type="button"
                 disabled={sendingTelegram}
                 onClick={() => handleSendToTelegram(completedDoc)}
-                className="w-full py-3.5 rounded-2xl bg-[#229ED9] hover:bg-[#1E88C7] text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                className="w-full py-3.5 rounded-2xl bg-[#229ED9] hover:bg-[#1E88C7] text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 <span>{sendingTelegram ? '⏳' : '✈️'}</span>
                 <span>{sendingTelegram ? 'جارٍ إنشاء وإرسال الـ PDF... ⏳' : 'إرسال ملف PDF للمحادثة بالتليجرام ✈️'}</span>
@@ -1720,7 +1750,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
               <button
                 type="button"
                 onClick={() => setShowFullReceipt(true)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all flex items-center justify-center gap-1.5 border border-slate-200"
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all flex items-center justify-center gap-1.5 border border-slate-200 cursor-pointer"
               >
                 <span>📥</span>
                 <span>تحميل / معاينة PDF على الهاتف</span>
@@ -1732,9 +1762,10 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   setCompletedDoc(null);
                   setShowFullReceipt(false);
                 }}
-                className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 font-medium"
+                className="w-full py-2.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 font-black text-xs border border-brand-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
               >
-                ➕ إجراء عملية جديدة
+                <span>➕</span>
+                <span>إجراء عملية بيع جديدة (تصفير)</span>
               </button>
             </div>
           </div>
