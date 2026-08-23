@@ -9,7 +9,9 @@ import {
   updateDoc, 
   deleteDoc, 
   serverTimestamp,
-  onSnapshot 
+  onSnapshot,
+  query,
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -101,22 +103,25 @@ export async function findOrCreateCustomer(name, phone1 = '', phone2 = '', custo
   const trimmedName = (name || '').trim();
   if (!trimmedName) return null;
 
-  const snapshot = await getDocs(collection(db, CUSTOMERS_COLLECTION));
-  const existing = snapshot.docs.find(
-    (d) => (d.data().name || '').trim().toLowerCase() === trimmedName.toLowerCase()
-  );
-  
-  if (existing) {
-    const data = existing.data();
-    const updates = {};
-    if (phone1 && phone1 !== data.phone1) updates.phone1 = phone1;
-    if (phone2 && phone2 !== data.phone2) updates.phone2 = phone2;
-    if (!data.customerType && customerType) updates.customerType = customerType;
+  try {
+    const q = query(collection(db, CUSTOMERS_COLLECTION), where('name', '==', trimmedName));
+    const snapshot = await getDocs(q);
     
-    if (Object.keys(updates).length > 0) {
-      await updateDoc(doc(db, CUSTOMERS_COLLECTION, existing.id), updates);
+    if (!snapshot.empty) {
+      const existing = snapshot.docs[0];
+      const data = existing.data();
+      const updates = {};
+      if (phone1 && phone1 !== data.phone1) updates.phone1 = phone1;
+      if (phone2 && phone2 !== data.phone2) updates.phone2 = phone2;
+      if (!data.customerType && customerType) updates.customerType = customerType;
+      
+      if (Object.keys(updates).length > 0) {
+        await updateDoc(doc(db, CUSTOMERS_COLLECTION, existing.id), updates);
+      }
+      return existing.id;
     }
-    return existing.id;
+  } catch (err) {
+    console.warn('Customer lookup query fallback:', err?.message);
   }
 
   const newDoc = await addDoc(collection(db, CUSTOMERS_COLLECTION), {
