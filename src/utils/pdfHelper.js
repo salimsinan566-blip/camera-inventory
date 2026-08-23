@@ -409,9 +409,9 @@ export async function generateInvoicePdfBlob(sale, settings) {
             </div>
           ` : ''}
 
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8; font-weight: bold;">
-            <span>${storeName} ${address ? `| ${address}` : ''}</span>
-            <span>نظام Safe Zone الذكي لإدارة المخزون والمبيعات</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 10px; color: #64748b; font-weight: bold;">
+            <span>${(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}</span>
+            ${address ? `<span>${address}</span>` : ''}
           </div>
         </div>
 
