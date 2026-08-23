@@ -103,23 +103,29 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
   // Read Telegram WebApp context
   useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      try {
-        tg.enableClosingConfirmation();
-      } catch (e) {}
-      const tgU = tg.initDataUnsafe?.user;
-      if (tgU) {
-        setTelegramUser(tgU);
-        setChatId(tgU.id);
+    try {
+      if (window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        if (typeof tg.ready === 'function') tg.ready();
+        if (typeof tg.expand === 'function') tg.expand();
+        try {
+          if (typeof tg.enableClosingConfirmation === 'function') tg.enableClosingConfirmation();
+        } catch (e) {}
+        const tgU = tg.initDataUnsafe?.user;
+        if (tgU) {
+          setTelegramUser(tgU);
+          setChatId(tgU.id);
+        }
       }
+    } catch (err) {
+      console.warn('Telegram WebApp init warning:', err);
     }
 
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('mode') === 'offer') setActiveTab('offer');
-    if (params.get('chat_id')) setChatId(params.get('chat_id'));
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('mode') === 'offer' || params.get('portal') === 'offer') setActiveTab('offer');
+      if (params.get('chat_id')) setChatId(params.get('chat_id'));
+    } catch (e) {}
   }, []);
 
   // Handle Firebase Login

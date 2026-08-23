@@ -8,14 +8,23 @@ import TelegramMiniApp from './components/TelegramMiniApp';
 export default function App() {
   const { user, loading } = useAuth();
   const [isTelegramPortal, setIsTelegramPortal] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return (
-      params.get('portal') === 'telegram' ||
-      params.get('portal') === 'pos' ||
-      params.get('portal') === 'miniapp' ||
-      params.get('portal') === 'offer' ||
-      window.location.hash.includes('telegram')
-    );
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return Boolean(
+        window.Telegram?.WebApp?.initData ||
+        window.Telegram?.WebApp?.initDataUnsafe?.user ||
+        params.get('portal') === 'telegram' ||
+        params.get('portal') === 'pos' ||
+        params.get('portal') === 'miniapp' ||
+        params.get('portal') === 'offer' ||
+        params.get('mode') === 'offer' ||
+        params.get('mode') === 'pos' ||
+        window.location.hash.includes('telegram') ||
+        window.location.hash.includes('pos')
+      );
+    } catch (e) {
+      return false;
+    }
   });
   const [isCustomerPortal, setIsCustomerPortal] = useState(() => {
     const params = new URLSearchParams(window.location.search);

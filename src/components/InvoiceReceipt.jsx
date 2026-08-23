@@ -18,6 +18,8 @@ import { createOffer } from '../services/offersService';
 import { useUI } from '../contexts/UIContext';
 
 export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false, isCustomerPortalView = false }) {
+  if (!sale) return null;
+
   const { toast } = useUI();
   const { settings } = useSettings();
   const { customers } = useCustomers();
