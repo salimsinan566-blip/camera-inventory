@@ -461,14 +461,27 @@ async function generateInvoicePdfBuffer(sale, storeInfo = {}) {
   return Buffer.from(pdfBytes);
 }
 
+function getAppBaseUrl(req) {
+  if (req?.headers) {
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const proto = req.headers['x-forwarded-proto'] || 'https';
+    if (host) return `${proto}://${host}`;
+  }
+  return process.env.VERCEL_PROJECT_PRODUCTION_URL 
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` 
+    : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://camera-inventory-1qfh.vercel.app');
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(200).send('Webhook active');
   }
 
+  const baseUrl = getAppBaseUrl(req);
+
   try {
     if (req.body?.callback_query) {
-      await handleCallbackQuery(req.body.callback_query);
+      await handleCallbackQuery(req.body.callback_query, baseUrl);
       return res.status(200).send('OK');
     }
 
@@ -484,7 +497,7 @@ export default async function handler(req, res) {
 
     // 1. أمر البداية والمساعدة
     if (cmdClean === '/start' || cleanText === 'مساعده' || cleanText === 'اوامر' || cmdClean === '/help') {
-      await sendWelcomeMenu(chatId);
+      await sendWelcomeMenu(chatId, baseUrl);
       return res.status(200).send('OK');
     }
 
@@ -505,7 +518,7 @@ export default async function handler(req, res) {
           [
             {
               text: '🛒 فتح نقطة البيع (POS)',
-              web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=pos&chat_id=${chatId}` }
+              web_app: { url: `${baseUrl}/?portal=pos&chat_id=${chatId}` }
             }
           ]
         ]
@@ -530,7 +543,7 @@ export default async function handler(req, res) {
           [
             {
               text: '📑 فتح منشئ عروض الأسعار',
-              web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&mode=offer&chat_id=${chatId}` }
+              web_app: { url: `${baseUrl}/?portal=telegram&mode=offer&chat_id=${chatId}` }
             }
           ]
         ]
@@ -648,7 +661,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function sendWelcomeMenu(chatId) {
+async function sendWelcomeMenu(chatId, baseUrl = 'https://camera-inventory-1qfh.vercel.app') {
   const msg = 
     `🌟 <b>مرحباً بك في المساعد الذكي لإدارة المخزون والحسابات</b> 🤖\n\n` +
     `يمكنك استخدام البوت لإنجاز ومتابعة كافة العمليات بسهولة:\n\n` +
@@ -667,8 +680,8 @@ async function sendWelcomeMenu(chatId) {
 
   const buttons = [
     [
-      { text: '🛒 نقطة البيع (POS)', web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=pos&chat_id=${chatId}` } },
-      { text: '📑 إنشاء عرض سعر', web_app: { url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&mode=offer&chat_id=${chatId}` } }
+      { text: '🛒 نقطة البيع (POS)', web_app: { url: `${baseUrl}/?portal=pos&chat_id=${chatId}` } },
+      { text: '📑 إنشاء عرض سعر', web_app: { url: `${baseUrl}/?portal=telegram&mode=offer&chat_id=${chatId}` } }
     ],
     [
       { text: '💰 الدخل والصندوق اليوم', callback_data: 'cmd_income' },
@@ -695,7 +708,7 @@ async function sendWelcomeMenu(chatId) {
           type: 'web_app',
           text: '🛒 نقطة البيع وعروض الأسعار',
           web_app: {
-            url: `https://camera-inventory-1qfh.vercel.app/?portal=telegram&chat_id=${chatId}`
+            url: `${baseUrl}/?portal=pos&chat_id=${chatId}`
           }
         }
       })

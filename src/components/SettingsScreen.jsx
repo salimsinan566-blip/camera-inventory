@@ -377,7 +377,27 @@ export default function SettingsScreen() {
         })
       }).catch(() => {});
 
-      toast('تم ربط وتفعيل بوت التليجرام مع هذا السيرفر بنجاح! 🤖🎉 جرب إرسال /start الآن في البوت.', 'success');
+      // Also set Chat Menu Button for bottom left button in Telegram
+      await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          menu_button: {
+            type: 'web_app',
+            text: '🛒 نقطة البيع (POS)',
+            web_app: {
+              url: `${window.location.origin}/?portal=pos`
+            }
+          }
+        })
+      }).catch(() => {});
+
+      // Save token to Firestore settings
+      try {
+        await updateStoreSettings({ telegramBotToken: token });
+      } catch (e) {}
+
+      toast('تم نقل وربط بوت التليجرام مع هذا المشروع بنجاح! 🤖🎉 جرب إرسال /start الآن في البوت.', 'success');
     } catch (err) {
       toast(`فشل تفعيل البوت: ${err.message}`, 'error');
     } finally {
