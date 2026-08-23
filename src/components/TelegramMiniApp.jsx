@@ -837,6 +837,25 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
             <span>{googleLoading ? 'جارٍ الاتصال بحساب Google...' : 'الدخول السريع بحساب Google'}</span>
           </button>
 
+          {/* Open in Safari/Chrome for Passkeys / FaceID support */}
+          {window.Telegram?.WebApp && (
+            <button
+              type="button"
+              onClick={() => {
+                const url = window.location.href;
+                if (window.Telegram?.WebApp?.openLink) {
+                  window.Telegram.WebApp.openLink(url, { try_instant_view: false });
+                } else {
+                  window.open(url, '_blank');
+                }
+              }}
+              className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
+            >
+              <span>🌐</span>
+              <span>الفتح في Safari / Chrome (لدعم الباسكي والبصمة)</span>
+            </button>
+          )}
+
           <div className="flex items-center gap-2 my-1">
             <div className="flex-1 h-px bg-slate-200"></div>
             <span className="text-[11px] text-slate-400 font-bold">أو بالبريد وكلمة المرور</span>
