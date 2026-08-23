@@ -3,6 +3,27 @@ import Fuse from 'fuse.js';
 import * as XLSX from 'xlsx';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
+let _cachedBotToken = null;
+async function getBotToken() {
+  if (process.env.VITE_TELEGRAM_BOT_TOKEN) return process.env.VITE_TELEGRAM_BOT_TOKEN.trim();
+  if (process.env.TELEGRAM_BOT_TOKEN) return process.env.TELEGRAM_BOT_TOKEN.trim();
+  if (_cachedBotToken) return _cachedBotToken;
+
+  try {
+    const docSnap = await db.collection('settings').doc('store_info').get();
+    if (docSnap && docSnap.exists) {
+      const tok = docSnap.data()?.telegramBotToken;
+      if (tok) {
+        _cachedBotToken = tok.trim();
+        return _cachedBotToken;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch bot token from Firestore:', e.message);
+  }
+  return null;
+}
+
 // Helper to safely parse dates from Firestore Timestamp, ISO string, milliseconds, etc.
 function parseDateSafe(val) {
   if (!val) return null;
@@ -697,7 +718,7 @@ async function sendWelcomeMenu(chatId, baseUrl = 'https://camera-inventory-1qfh.
   ];
 
   // Set Telegram Chat Menu Button in background
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const token = await getBotToken();
   if (token) {
     fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
       method: 'POST',
@@ -1045,7 +1066,7 @@ async function sendInvoiceSummaryAndPdf(chatId, sale) {
     } catch (e) {}
 
     const pdfBuffer = await generateInvoicePdfBuffer(sale, storeInfo);
-    const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+    const token = await getBotToken();
 
     if (token) {
       const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
@@ -1352,7 +1373,7 @@ async function sendCreditorsExcel(chatId) {
   XLSX.utils.book_append_sheet(wb, ws, 'ديون الموردين');
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const token = await getBotToken();
   if (!token) return;
 
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1387,7 +1408,7 @@ async function sendDebtorsExcel(chatId) {
   XLSX.utils.book_append_sheet(wb, ws, 'ديون العملاء');
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const token = await getBotToken();
   if (!token) return;
 
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1745,7 +1766,7 @@ async function sendExcelFile(chatId, products, isCron = false) {
   
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const token = await getBotToken();
   if (!token) return;
 
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1766,7 +1787,7 @@ async function sendExcelFile(chatId, products, isCron = false) {
 }
 
 async function sendMessage(chatId, text) {
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const token = await getBotToken();
   if (!token) return;
 
   const maxLength = 4000;
@@ -1785,7 +1806,7 @@ async function sendMessage(chatId, text) {
 }
 
 async function sendInlineKeyboard(chatId, text, inlineKeyboard) {
-  const token = process.env.VITE_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const token = await getBotToken();
   if (!token) return;
 
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
