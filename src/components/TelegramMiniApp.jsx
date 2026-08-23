@@ -1148,17 +1148,10 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                             {priceObj.iqd.toLocaleString()}{' '}
                             <span className="text-[10px] font-normal text-slate-500">د.ع</span>
                           </>
-                        ) : priceObj.usd > 0 ? (
-                          <span className="text-emerald-600">${priceObj.usd}</span>
                         ) : (
                           <span className="text-slate-400 text-xs">غير محدد</span>
                         )}
                       </span>
-                      {priceObj.usd > 0 && priceObj.iqd > 0 && (
-                        <span className="text-[10px] text-slate-400 font-mono font-medium">
-                          ${priceObj.usd}
-                        </span>
-                      )}
                     </div>
                   </div>
 
@@ -1234,11 +1227,6 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                   <span className="text-sm font-black text-slate-900 font-mono">
                     {cartTotal.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">د.ع</span>
                   </span>
-                  {cartTotalUSD > 0 && (
-                    <span className="text-[11px] text-brand-600 font-mono font-bold">
-                      (${cartTotalUSD})
-                    </span>
-                  )}
                 </div>
               </div>
             </div>

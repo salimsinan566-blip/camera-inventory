@@ -175,7 +175,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
   const container = document.createElement('div');
   container.style.width = '794px';
   container.style.backgroundColor = '#ffffff';
-  container.style.padding = '35px 30px';
+  container.style.padding = '24px 20px';
   container.style.boxSizing = 'border-box';
   container.style.position = 'relative';
   container.dir = 'rtl';
@@ -208,79 +208,84 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
     <!-- Watermark Logo in Background -->
     ${logoUrl ? `
-      <img 
-        src="${logoUrl}" 
-        alt="" 
-        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75%; max-width: 550px; opacity: 0.18; filter: grayscale(100%); pointer-events: none; z-index: 0;" 
-        crossOrigin="anonymous" 
-      />
+      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0.20; overflow: hidden; z-index: 0;">
+        <img 
+          src="${logoUrl}" 
+          alt="" 
+          style="width: 80%; max-width: 600px; height: auto; object-fit: contain; filter: grayscale(100%);" 
+          crossOrigin="anonymous" 
+        />
+      </div>
     ` : ''}
 
-    <div style="position: relative; z-index: 1; min-height: 1000px; display: flex; flex-direction: column; justify-content: space-between;">
+    <div style="position: relative; z-index: 10; min-height: 1020px; display: flex; flex-direction: column; justify-content: space-between;">
       
-      <!-- Top Section -->
+      <!-- Top Section: Header & Items -->
       <div>
         <!-- Official Header -->
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #C89B3C; padding-bottom: 12px; margin-bottom: 16px;">
           <!-- Store Info (Right) -->
           <div style="text-align: right;">
-            <h1 style="font-size: 28px; font-weight: 900; color: #0f172a; margin-bottom: 4px;">
-              ${(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
+            <h1 style="font-size: 30px; font-weight: 800; color: #0f172a; margin-bottom: 4px;">
+              ${storeName}
             </h1>
             ${address ? `
-              <p style="font-size: 13px; color: #64748b; font-weight: bold; display: flex; align-items: center; gap: 4px;">
-                <span style="color: #C89B3C;">📍</span> ${address}
+              <p style="font-size: 13px; color: #64748b; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                <svg style="width: 18px; height: 18px; color: #C89B3C; fill: none; stroke: currentColor;" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span>${address}</span>
               </p>
             ` : ''}
           </div>
 
           <!-- Logo & Badge (Left) -->
-          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-right: 16px;">
             ${logoUrl ? `
-              <img src="${logoUrl}" alt="الشعار" style="height: 85px; max-width: 260px; object-fit: contain;" crossOrigin="anonymous" />
+              <div style="height: 110px; display: flex; align-items: center; justify-content: flex-end;">
+                <img src="${logoUrl}" alt="الشعار" style="height: 105px; max-height: 115px; width: auto; max-width: 280px; object-fit: contain;" crossOrigin="anonymous" />
+              </div>
             ` : `
-              <div style="height: 60px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+              <div style="height: 100px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
             `}
             ${isOffer ? `
-              <span style="font-size: 13px; font-weight: 900; color: #78350f; background: #fef3c7; border: 1px solid #fde68a; padding: 4px 18px; border-radius: 9999px; text-transform: uppercase;">
+              <span style="font-size: 14px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 6px 24px; border-radius: 9999px; text-transform: uppercase;">
                 عرض سعر (Quotation)
               </span>
             ` : isDraft ? `
-              <span style="font-size: 11px; font-weight: 900; color: #a16207; background: #fefce8; border: 1px solid #fef08a; padding: 3px 12px; border-radius: 9999px;">
+              <span style="font-size: 11px; font-weight: bold; color: #a16207; background-color: #fefce8; border: 1px solid #fef08a; padding: 4px 16px; border-radius: 9999px;">
                 فاتورة غير مؤكدة
               </span>
             ` : ''}
           </div>
         </div>
 
-        <!-- Customer & Invoice Info Grid -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px;">
+        <!-- Customer & Invoice Info -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
           <!-- Customer (Right) -->
           <div style="text-align: right;">
-            <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">فاتورة إلى</span>
-            <h2 style="font-size: 20px; font-weight: 900; color: #1e293b;">${customerName}</h2>
+            <h3 style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">فاتورة إلى</h3>
+            <p style="font-size: 20px; font-weight: bold; color: #1e293b;">${customerName}</p>
           </div>
 
           <!-- Invoice Details Table (Left) -->
-          <div style="text-align: right;">
-            <table style="font-size: 12px; width: auto;">
+          <div style="text-align: right; padding-left: 16px;">
+            <table style="font-size: 13px; width: auto;">
               <tbody>
                 <tr>
-                  <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">${isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'}</td>
-                  <td style="padding: 2px 4px; font-weight: 900; color: #0f172a; font-family: monospace;">#${invoiceNumber}</td>
+                  <td style="padding: 2px 12px; color: #64748b;">${isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'}</td>
+                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${invoiceNumber}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">تاريخ الإصدار:</td>
+                  <td style="padding: 2px 12px; color: #64748b;">تاريخ الإصدار:</td>
                   <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${dateLabel}</td>
                 </tr>
                 ${isDebt && !isOffer ? `
                   <tr>
-                    <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">نوع الدفع:</td>
-                    <td style="padding: 2px 4px; font-weight: 900; color: #dc2626;">آجل (دين)</td>
+                    <td style="padding: 2px 12px; color: #64748b;">نوع الدفع:</td>
+                    <td style="padding: 2px 4px; font-weight: bold; color: #d97706;">آجل (دين)</td>
                   </tr>
                 ` : ''}
                 <tr>
-                  <td style="padding: 2px 10px; color: #64748b; font-weight: bold;">البائع:</td>
+                  <td style="padding: 2px 12px; color: #64748b;">البائع:</td>
                   <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${cashierDisplayName}</td>
                 </tr>
               </tbody>
@@ -289,13 +294,13 @@ export async function generateInvoicePdfBlob(sale, settings) {
         </div>
 
         <!-- Items Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 20px;">
+        <table style="width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 20px;">
           <thead>
-            <tr style="background: #f2f2f2; color: #334155; font-size: 13px; font-weight: 900; text-transform: uppercase;">
-              <th style="padding: 10px 12px; text-align: right; width: 50%;">الوصف</th>
-              <th style="padding: 10px 12px; text-align: center; width: 14%;">الكمية</th>
-              <th style="padding: 10px 12px; text-align: right; width: 18%;">السعر</th>
-              <th style="padding: 10px 12px; text-align: left; width: 18%;">المبلغ</th>
+            <tr style="background-color: #f2f2f2; color: #334155; font-size: 13px; font-weight: bold; text-transform: uppercase;">
+              <th style="padding: 12px 8px; text-align: right; width: 50%; font-weight: bold;">الوصف</th>
+              <th style="padding: 12px 8px; text-align: center; width: 14%; font-weight: bold;">الكمية</th>
+              <th style="padding: 12px 8px; text-align: right; width: 18%; font-weight: bold;">السعر</th>
+              <th style="padding: 12px 8px; text-align: left; width: 18%; font-weight: bold;">المبلغ</th>
             </tr>
           </thead>
           <tbody>
@@ -303,19 +308,19 @@ export async function generateInvoicePdfBlob(sale, settings) {
               const lineTotal = Number(item.lineTotal || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0)));
               return `
                 <tr style="border-bottom: 2px solid #e2e8f0; font-size: 13px;">
-                  <td style="padding: 10px 12px; font-weight: bold; color: #1e293b; text-align: right;">
-                    ${item.isService ? '<span style="font-size: 10px; background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
+                  <td style="padding: 8px 8px; font-weight: bold; color: #1e293b; text-align: right; max-width: 260px; word-break: break-word; line-height: 1.35;">
+                    ${item.isService ? '<span style="font-size: 9px; background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
                     ${item.name || 'منتج'}
                   </td>
-                  <td style="padding: 10px 12px; text-align: center; font-weight: 900; color: #1e293b; font-family: monospace;">
+                  <td style="padding: 8px 8px; text-align: center; font-weight: bold; color: #1e293b;">
                     ${item.quantity || 1}
                     ${!item.isService && item.sellMode && item.sellMode !== 'unit' ? `
-                      <span style="font-size: 10px; color: #64748b; margin-right: 4px; font-weight: normal;">
+                      <span style="font-size: 9px; color: #64748b; margin-right: 4px; font-weight: normal;">
                         (${item.sellMode === 'meter' ? 'متر' : 'لفة'})
                       </span>
                     ` : ''}
                   </td>
-                  <td style="padding: 10px 12px; text-align: right; color: #1e293b; font-family: monospace; font-weight: bold;">
+                  <td style="padding: 8px 8px; text-align: right; color: #1e293b; font-family: monospace;">
                     ${item.originalPrice && item.originalPrice > item.unitPrice ? `
                       <div style="display: flex; flex-direction: column; align-items: flex-end;">
                         <span style="font-size: 10px; color: #94a3b8; text-decoration: line-through; line-height: 1;">${Number(item.originalPrice).toLocaleString()}</span>
@@ -323,7 +328,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
                       </div>
                     ` : Number(item.unitPrice || 0).toLocaleString()}
                   </td>
-                  <td style="padding: 10px 12px; text-align: left; font-weight: 900; color: #1e293b; font-family: monospace;">
+                  <td style="padding: 8px 8px; text-align: left; font-weight: bold; color: #1e293b; font-family: monospace;">
                     ${lineTotal.toLocaleString()}
                   </td>
                 </tr>
@@ -337,47 +342,51 @@ export async function generateInvoicePdfBlob(sale, settings) {
       <div style="margin-top: auto; width: 100%;">
         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; padding-top: 8px;">
           <!-- QR Code (Right) -->
-          <div style="width: 100px; height: 100px; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #ffffff; padding: 4px;">
+          <div>
             ${qrCodeUrl ? `
-              <img src="${qrCodeUrl}" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" crossOrigin="anonymous" />
+              <div style="width: 96px; height: 96px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-left: 16px; background-color: #ffffff; border: 1px solid #e2e8f0; padding: 4px;">
+                <img src="${qrCodeUrl}" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" crossOrigin="anonymous" />
+              </div>
             ` : `
-              <span style="font-size: 11px; color: #94a3b8; font-weight: bold;">QR CODE</span>
+              <div style="width: 96px; height: 96px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; background-color: #f8fafc; margin-left: 16px;">
+                <span style="font-size: 12px; color: #94a3b8; font-weight: 500;">QR</span>
+              </div>
             `}
           </div>
 
           <!-- Totals Box (Left) -->
-          <div style="width: 55%; background: #ffffff;">
-            <div style="border: 1px solid #e2e8f0; padding: 8px 12px; margin-bottom: 6px;">
+          <div style="width: 55%; background-color: #ffffff;">
+            <div style="border: 1px solid #e2e8f0; background-color: #ffffff; padding: 8px; margin-bottom: 6px;">
               <table style="width: 100%; font-size: 13px; font-weight: bold; color: #475569;">
                 <tbody>
                   ${discountAmount > 0 ? `
                     <tr>
-                      <td style="text-align: right; padding: 2px 4px;">المجموع الفرعي:</td>
-                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${subtotalAmount.toLocaleString()}</td>
+                      <td style="text-align: right; padding: 2px 8px;">المجموع الفرعي:</td>
+                      <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${subtotalAmount.toLocaleString()}</td>
                     </tr>
                     <tr style="color: #ef4444;">
-                      <td style="text-align: right; padding: 2px 4px;">الخصم:</td>
-                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">-${discountAmount.toLocaleString()}</td>
+                      <td style="text-align: right; padding: 2px 8px;">الخصم:</td>
+                      <td style="text-align: left; padding: 2px 8px; font-family: monospace;">-${discountAmount.toLocaleString()}</td>
                     </tr>
                     <tr>
-                      <td style="text-align: right; padding: 2px 4px;">الإجمالي بعد الخصم:</td>
-                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
+                      <td style="text-align: right; padding: 2px 8px;">الإجمالي بعد الخصم:</td>
+                      <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
                     </tr>
                   ` : `
                     <tr>
-                      <td style="text-align: right; padding: 2px 4px;">المجموع:</td>
-                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
+                      <td style="text-align: right; padding: 2px 8px;">المجموع:</td>
+                      <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
                     </tr>
                   `}
 
                   ${isDebt ? `
-                    <tr style="color: #16a34a; border-top: 1px solid #e2e8f0;">
-                      <td style="text-align: right; padding: 4px 4px 2px 4px;">المدفوع:</td>
-                      <td style="text-align: left; padding: 4px 4px 2px 4px; font-family: monospace;">${paidAmount.toLocaleString()} د.ع</td>
+                    <tr style="color: #047857; border-top: 1px solid #e2e8f0;">
+                      <td style="text-align: right; padding: 4px 8px 2px 8px;">المدفوع:</td>
+                      <td style="text-align: left; padding: 4px 8px 2px 8px; font-family: monospace;">${paidAmount.toLocaleString()} د.ع</td>
                     </tr>
-                    <tr style="color: #dc2626; font-weight: 900;">
-                      <td style="text-align: right; padding: 2px 4px;">المتبقي (الدين):</td>
-                      <td style="text-align: left; padding: 2px 4px; font-family: monospace;">${remainingDebt.toLocaleString()} د.ع</td>
+                    <tr style="color: #be123c; font-weight: 900;">
+                      <td style="text-align: right; padding: 2px 8px;">المتبقي (الدين):</td>
+                      <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${remainingDebt.toLocaleString()} د.ع</td>
                     </tr>
                   ` : ''}
                 </tbody>
@@ -385,13 +394,13 @@ export async function generateInvoicePdfBlob(sale, settings) {
             </div>
 
             <!-- Gold Total Ribbon -->
-            <table style="width: 100%; background: #C89B3C; color: #ffffff; padding: 8px 12px;">
+            <table style="width: 100%; background-color: #C89B3C; color: #ffffff; padding: 8px 12px;">
               <tbody>
                 <tr>
-                  <td style="text-align: right; padding: 8px 12px; font-weight: 900; font-size: 14px;">
+                  <td style="text-align: right; padding: 8px 12px; font-weight: bold; font-size: 14px;">
                     ${isDebt ? 'إجمالي الفاتورة' : 'المبلغ المستحق'}
                   </td>
-                  <td style="text-align: left; padding: 8px 12px; font-weight: 900; font-size: 18px; font-family: monospace;">
+                  <td style="text-align: left; padding: 8px 12px; font-weight: bold; font-size: 18px; font-family: monospace;">
                     ${totalAmount.toLocaleString()} د.ع
                   </td>
                 </tr>
@@ -401,16 +410,16 @@ export async function generateInvoicePdfBlob(sale, settings) {
         </div>
 
         <!-- Footer Notes & Info -->
-        <div style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
+        <div style="padding-top: 12px; border-top: 1px solid #e2e8f0;">
           ${settings?.description ? `
-            <div style="font-size: 10px; color: #64748b; margin-bottom: 8px; font-weight: 500;">
+            <div style="font-size: 10px; color: #64748b; white-space: pre-wrap; margin-bottom: 8px; width: 66%; font-weight: 500;">
               <strong style="color: #334155; display: block; margin-bottom: 2px;">ملاحظات هامة:</strong>
               ${settings.description}
             </div>
           ` : ''}
 
-          <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 10px; color: #64748b; font-weight: bold;">
-            <span>${(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}</span>
+          <div style="display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 4px; font-size: 10px; color: #64748b; font-weight: bold;">
+            <span>${storeName}</span>
             ${address ? `<span>${address}</span>` : ''}
           </div>
         </div>
