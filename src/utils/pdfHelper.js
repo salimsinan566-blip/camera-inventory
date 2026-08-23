@@ -128,6 +128,24 @@ function formatInvoiceDate(dateVal) {
   return new Date(dateVal).toLocaleDateString('ar-IQ');
 }
 
+async function toSafeDataUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (url.startsWith('data:image/')) return url;
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Generate 100% Identical Official System Invoice / Quotation PDF Blob
  * Matches src/components/InvoiceReceipt.jsx pixel-perfect
@@ -137,10 +155,14 @@ export async function generateInvoicePdfBlob(sale, settings) {
   const address = settings?.address || 'العراق - بغداد';
   const logoUrl = settings?.logoUrl;
   const qrCodeUrl = settings?.qrCodeUrl;
+  const safeLogo = await toSafeDataUrl(logoUrl);
+  const safeQr = await toSafeDataUrl(qrCodeUrl);
+
   const invoiceNumber = sale.invoiceNumber || sale.offerNumber || sale.id || '1001';
   const customerName = sale.customerName || 'زبون عام';
   const dateLabel = formatInvoiceDate(sale.createdAt || new Date());
   const isOffer = Boolean(sale.isOffer);
+  const isDraft = Boolean(sale.isDraft || sale.invoiceNumber?.toString().includes('مسودة') || sale.id?.toString().includes('draft'));
   const isDebt = sale.invoiceType === 'debt';
   const isCard = sale.invoiceType === 'card';
   const cashier = sale.cashierEmail || sale.cashier || 'المدير';
@@ -207,13 +229,12 @@ export async function generateInvoicePdfBlob(sale, settings) {
     </style>
 
     <!-- Watermark Logo in Background -->
-    ${logoUrl ? `
+    ${safeLogo ? `
       <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0.20; overflow: hidden; z-index: 0;">
         <img 
-          src="${logoUrl}" 
+          src="${safeLogo}" 
           alt="" 
           style="width: 80%; max-width: 600px; height: auto; object-fit: contain; filter: grayscale(100%);" 
-          crossOrigin="anonymous" 
         />
       </div>
     ` : ''}
@@ -239,9 +260,9 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
           <!-- Logo & Badge (Left) -->
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-right: 16px;">
-            ${logoUrl ? `
+            ${safeLogo ? `
               <div style="height: 110px; display: flex; align-items: center; justify-content: flex-end;">
-                <img src="${logoUrl}" alt="الشعار" style="height: 105px; max-height: 115px; width: auto; max-width: 280px; object-fit: contain;" crossOrigin="anonymous" />
+                <img src="${safeLogo}" alt="الشعار" style="height: 105px; max-height: 115px; width: auto; max-width: 280px; object-fit: contain;" />
               </div>
             ` : `
               <div style="height: 100px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
@@ -343,9 +364,9 @@ export async function generateInvoicePdfBlob(sale, settings) {
         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; padding-top: 8px;">
           <!-- QR Code (Right) -->
           <div>
-            ${qrCodeUrl ? `
+            ${safeQr ? `
               <div style="width: 96px; height: 96px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-left: 16px; background-color: #ffffff; border: 1px solid #e2e8f0; padding: 4px;">
-                <img src="${qrCodeUrl}" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" crossOrigin="anonymous" />
+                <img src="${safeQr}" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" />
               </div>
             ` : `
               <div style="width: 96px; height: 96px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; background-color: #f8fafc; margin-left: 16px;">
