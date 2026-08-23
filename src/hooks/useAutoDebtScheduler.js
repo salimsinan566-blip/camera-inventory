@@ -15,13 +15,17 @@ export function useAutoDebtScheduler() {
   const isRunningRef = useRef(false);
   const lastRunTimestampRef = useRef(0);
 
-  useEffect(() => {
-    if (!settings || settings.whatsappAutoReminders === false) return;
-    if (!customers || customers.length === 0) return;
+  const dataRef = useRef({ customers, sales, incomes, settings, toast });
+  dataRef.current = { customers, sales, incomes, settings, toast };
 
+  useEffect(() => {
     async function checkReminders() {
-      // Prevent overlapping runs or rapid executions within 10 seconds
-      if (isRunningRef.current || Date.now() - lastRunTimestampRef.current < 10000) return;
+      const { customers, sales, incomes, settings, toast } = dataRef.current;
+      if (!settings || settings.whatsappAutoReminders === false) return;
+      if (!customers || customers.length === 0) return;
+
+      // Prevent overlapping runs or rapid executions within 60 seconds
+      if (isRunningRef.current || Date.now() - lastRunTimestampRef.current < 60000) return;
       isRunningRef.current = true;
       lastRunTimestampRef.current = Date.now();
 
@@ -47,14 +51,14 @@ export function useAutoDebtScheduler() {
       }
     }
 
-    // Debounce first check by 2 seconds
-    const timeout = setTimeout(checkReminders, 2000);
+    // First check after 10 seconds of mounting
+    const timeout = setTimeout(checkReminders, 10000);
 
-    // Repeat check every 15 seconds (15,000 ms) for timely dispatch
-    const interval = setInterval(checkReminders, 15000);
+    // Repeat check every 2 minutes (120,000 ms) instead of rapid 15s polling
+    const interval = setInterval(checkReminders, 120000);
     return () => {
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [customers, sales, incomes, settings]);
+  }, []);
 }

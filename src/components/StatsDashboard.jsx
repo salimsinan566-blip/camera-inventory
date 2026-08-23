@@ -19,25 +19,11 @@ export default function StatsDashboard({
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [reportViewMode, setReportViewMode] = useState('category'); // 'category' | 'list' | 'custody'
   const [scope, setScope] = useState('all'); // 'all' (كافة الأقسام والمخزون) | 'filtered' (المفلتر)
-  const [suspendedDrafts, setSuspendedDrafts] = useState([]);
 
-  useEffect(() => {
-    const q = query(
-      collection(db, 'sales'),
-      where('status', 'in', ['draft', 'suspended'])
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSuspendedDrafts(data);
-    });
-    return unsubscribe;
-  }, []);
-
-  // Merge drafts passed from props or real-time Firestore listener
+  // Use drafts passed from props
   const allDrafts = useMemo(() => {
-    if (draftSales && draftSales.length > 0) return draftSales;
-    return suspendedDrafts;
-  }, [draftSales, suspendedDrafts]);
+    return draftSales || [];
+  }, [draftSales]);
 
   // Product map for quick lookup
   const productMap = useMemo(() => {
