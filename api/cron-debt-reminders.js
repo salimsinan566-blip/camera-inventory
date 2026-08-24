@@ -194,6 +194,7 @@ export default async function handler(req, res) {
       let isDueToday = false;
 
       const isMinutely = schedule.startsWith('minutely_') || (schedule.startsWith('custom_') && (schedule.includes('_mins') || schedule.includes('_min')));
+      const now = new Date();
 
       if (force) {
         isDueToday = true;
@@ -203,7 +204,7 @@ export default async function handler(req, res) {
           isDueToday = true;
         } else {
           const lastDate = new Date(c.lastDebtReminderSent);
-          const diffMinutes = Math.abs(iraqDate - lastDate) / (1000 * 60);
+          const diffMinutes = Math.abs(now - lastDate) / (1000 * 60);
           if (diffMinutes >= (intervalMinutes - 0.1)) {
             isDueToday = true;
           }
@@ -214,7 +215,7 @@ export default async function handler(req, res) {
           isDueToday = true;
         } else {
           const lastDate = new Date(c.lastDebtReminderSent);
-          const diffTime = Math.abs(iraqDate - lastDate);
+          const diffTime = Math.abs(now - lastDate);
           const diffHours = diffTime / (1000 * 60 * 60);
           if (diffHours >= (intervalHours - 0.1)) {
             isDueToday = true;
@@ -237,7 +238,7 @@ export default async function handler(req, res) {
             isDueToday = true;
           } else {
             const lastDate = new Date(c.lastDebtReminderSent);
-            const diffTime = Math.abs(iraqDate - lastDate);
+            const diffTime = Math.abs(now - lastDate);
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             if (diffDays >= intervalDays) {
               isDueToday = true;
