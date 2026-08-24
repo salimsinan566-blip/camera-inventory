@@ -305,37 +305,8 @@ export default async function handler(req, res) {
         .replace(/\{statementLink\}/g, portalUrl);
 
       try {
-        if (req.query?.returnOnly === 'true') {
-          results.push({ id: cust.id, name: cust.name, phone: intPhone, message: message });
-          successCount++;
-          // Not updating lastDebtReminderSent here, the caller must update it or we update it in a separate call
-        } else {
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: token,
-              to: intPhone,
-              body: message,
-              message: message
-            })
-          });
-
-          const resData = await response.json().catch(() => ({}));
-          if (!resData.error && resData.sent !== 'false') {
-            successCount++;
-            // تسجيل تاريخ الإرسال
-            await db.collection('customers').doc(cust.id).update({
-              lastDebtReminderSent: new Date().toISOString()
-            });
-            results.push({ name: cust.name, phone: intPhone, status: 'sent' });
-          } else {
-            results.push({ name: cust.name, phone: intPhone, status: 'failed', error: resData.error || resData.message });
-          }
-
-          // مهلة 1 ثانية بين كل رسالة لحماية الحساب
-          await new Promise(r => setTimeout(r, 1200));
-        }
+        results.push({ id: cust.id, name: cust.name, phone: intPhone, message: message });
+        successCount++;
       } catch (err) {
         results.push({ name: cust.name, phone: intPhone, status: 'error', error: err.message });
       }
