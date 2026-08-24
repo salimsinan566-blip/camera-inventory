@@ -41,6 +41,19 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 0. Handle mark as sent
+    if (req.method === 'POST' && req.body?.markSent) {
+      const custIds = Array.isArray(req.body.markSent) ? req.body.markSent : [req.body.markSent];
+      const batch = db.batch();
+      for (const id of custIds) {
+        batch.update(db.collection('customers').doc(id), {
+          lastDebtReminderSent: new Date().toISOString()
+        });
+      }
+      await batch.commit();
+      return res.status(200).json({ status: 'success', marked: custIds.length });
+    }
+
     // 1. جلب إعدادات المتجر والواتساب
     const settingsDoc = await db.collection('settings').doc('store_info').get();
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
@@ -291,31 +304,37 @@ export default async function handler(req, res) {
         .replace(/\{statementLink\}/g, portalUrl);
 
       try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: token,
-            to: intPhone,
-            body: message,
-            message: message
-          })
-        });
-
-        const resData = await response.json().catch(() => ({}));
-        if (!resData.error && resData.sent !== 'false') {
+        if (req.query?.returnOnly === 'true') {
+          results.push({ id: cust.id, name: cust.name, phone: intPhone, message: message });
           successCount++;
-          // تسجيل تاريخ الإرسال
-          await db.collection('customers').doc(cust.id).update({
-            lastDebtReminderSent: new Date().toISOString()
-          });
-          results.push({ name: cust.name, phone: intPhone, status: 'sent' });
+          // Not updating lastDebtReminderSent here, the caller must update it or we update it in a separate call
         } else {
-          results.push({ name: cust.name, phone: intPhone, status: 'failed', error: resData.error || resData.message });
-        }
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: token,
+              to: intPhone,
+              body: message,
+              message: message
+            })
+          });
 
-        // مهلة 1 ثانية بين كل رسالة لحماية الحساب
-        await new Promise(r => setTimeout(r, 1200));
+          const resData = await response.json().catch(() => ({}));
+          if (!resData.error && resData.sent !== 'false') {
+            successCount++;
+            // تسجيل تاريخ الإرسال
+            await db.collection('customers').doc(cust.id).update({
+              lastDebtReminderSent: new Date().toISOString()
+            });
+            results.push({ name: cust.name, phone: intPhone, status: 'sent' });
+          } else {
+            results.push({ name: cust.name, phone: intPhone, status: 'failed', error: resData.error || resData.message });
+          }
+
+          // مهلة 1 ثانية بين كل رسالة لحماية الحساب
+          await new Promise(r => setTimeout(r, 1200));
+        }
       } catch (err) {
         results.push({ name: cust.name, phone: intPhone, status: 'error', error: err.message });
       }

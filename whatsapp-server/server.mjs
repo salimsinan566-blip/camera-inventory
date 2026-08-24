@@ -451,11 +451,44 @@ app.post('/scheduled/sync-debtors', (req, res) => {
 setInterval(async () => {
   try {
     if (!isConnected || !sock) return;
-    const cronUrl = process.env.CRON_DEBT_URL || 'https://camera-inventory-1qfh.vercel.app/api/cron-debt-reminders';
+    const baseUrl = process.env.CRON_DEBT_URL || 'https://camera-inventory-1qfh.vercel.app/api/cron-debt-reminders';
+    const cronUrl = `${baseUrl}?returnOnly=true`;
+    
     const res = await fetch(cronUrl);
     const data = await res.json().catch(() => ({}));
-    if (data?.status === 'success' || data?.sentCount > 0) {
-      console.log(`⏰ [AWS 24/7 Cron] تم إرسال التذكيرات المستحقة في الخلفية بنجاح:`, data);
+    
+    if (data?.results && data.results.length > 0) {
+      console.log(`⏰ [AWS 24/7 Cron] جلب ${data.results.length} تذكيرات مستحقة للإرسال...`);
+      const sentIds = [];
+      
+      for (const item of data.results) {
+        if (!item.phone || !item.message) continue;
+        const jid = `${item.phone}@s.whatsapp.net`;
+        try {
+          const debtResult = await sock.sendMessage(jid, { text: item.message });
+          storeOutgoingMessage(debtResult, { text: item.message });
+          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}»`);
+          if (item.id) sentIds.push(item.id);
+        } catch (err) {
+          console.error(`❌ [AWS 24/7 Cron] فشل إرسال التذكير للعميل «${item.name}»:`, err.message);
+        }
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      
+      // Mark as sent in Firebase to prevent duplicates
+      if (sentIds.length > 0) {
+        try {
+          await fetch(baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ markSent: sentIds })
+          });
+        } catch (markErr) {
+          console.error('Failed to mark sent in Firebase:', markErr);
+        }
+      }
+    } else if (data?.status === 'success' || data?.sentCount > 0) {
+      console.log(`⏰ [AWS 24/7 Cron] حالة التذكيرات:`, data);
     }
   } catch (e) {
     // Ignore network timeouts
