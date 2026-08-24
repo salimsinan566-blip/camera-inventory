@@ -112,43 +112,48 @@ export default async function handler(req, res) {
     salesSnap.forEach(doc => {
       const s = doc.data();
       if (s.status === 'draft' || s.status === 'suspended' || s.status === 'cancelled') return;
+      
       const rawName = (s.customerName || '').trim();
-      if (!rawName) return;
-      const key = normalizeArabic(rawName);
-
-      if (!customerFinancials[key]) {
-        customerFinancials[key] = { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0 };
-      }
+      const key = rawName ? normalizeArabic(rawName) : null;
+      const cId = s.customerId ? String(s.customerId) : null;
 
       const total = Number(s.total || 0);
-      customerFinancials[key].totalPurchases += total;
+      const paid = Number(s.paidAmount || 0);
+      const remaining = s.isSettled ? 0 : (s.remainingDebt !== undefined ? Math.min(Number(s.remainingDebt), Math.max(0, total - paid)) : Math.max(0, total - paid));
 
-      if (s.invoiceType === 'debt') {
-        const paid = Number(s.paidAmount || 0);
-        const remaining = s.isSettled ? 0 : (s.remainingDebt !== undefined ? Math.min(Number(s.remainingDebt), Math.max(0, total - paid)) : Math.max(0, total - paid));
-        customerFinancials[key].totalPaid += paid;
-        customerFinancials[key].totalDebt += remaining;
-        if (remaining > 0) {
-          customerFinancials[key].unpaidInvoicesCount += 1;
+      const updateFin = (idKey) => {
+        if (!idKey) return;
+        if (!customerFinancials[idKey]) customerFinancials[idKey] = { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0 };
+        customerFinancials[idKey].totalPurchases += total;
+        if (s.invoiceType === 'debt') {
+          customerFinancials[idKey].totalPaid += paid;
+          customerFinancials[idKey].totalDebt += remaining;
+          if (remaining > 0) customerFinancials[idKey].unpaidInvoicesCount += 1;
+        } else {
+          customerFinancials[idKey].totalPaid += total;
         }
-      } else {
-        customerFinancials[key].totalPaid += total;
-      }
+      };
+
+      if (cId) updateFin(`id_${cId}`);
+      if (key) updateFin(`name_${key}`);
     });
 
     incomesSnap.forEach(doc => {
       const inc = doc.data();
       const rawName = (inc.customerName || inc.payerName || '').trim();
-      if (!rawName) return;
-      const key = normalizeArabic(rawName);
-
-      if (!customerFinancials[key]) {
-        customerFinancials[key] = { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0 };
-      }
+      const key = rawName ? normalizeArabic(rawName) : null;
+      const cId = inc.customerId ? String(inc.customerId) : null;
 
       const amt = Number(inc.amount || 0);
-      customerFinancials[key].totalPaid += amt;
-      customerFinancials[key].totalDebt = Math.max(0, customerFinancials[key].totalDebt - amt);
+
+      const updateFin = (idKey) => {
+        if (!idKey || !customerFinancials[idKey]) return;
+        customerFinancials[idKey].totalPaid += amt;
+        customerFinancials[idKey].totalDebt = Math.max(0, customerFinancials[idKey].totalDebt - amt);
+      };
+
+      if (cId) updateFin(`id_${cId}`);
+      if (key) updateFin(`name_${key}`);
     });
 
     // 4. مطابقة العملاء المستحقين للتذكير اليوم
@@ -157,11 +162,23 @@ export default async function handler(req, res) {
     custSnap.forEach(doc => {
       const c = doc.data();
       const rawName = (c.name || '').trim();
-      if (!rawName) return;
-      const norm = normalizeArabic(rawName);
-      const fin = customerFinancials[norm] || { totalDebt: 0, unpaidInvoicesCount: 0 };
-
-      const totalDebt = fin.totalDebt;
+      const norm = rawName ? normalizeArabic(rawName) : null;
+      const cId = String(doc.id);
+      
+      const finById = customerFinancials[`id_${cId}`];
+      const finByName = customerFinancials[`name_${norm}`];
+      
+      // Merge if both exist, but usually they are the same or one is populated
+      let totalDebt = 0;
+      let unpaidInvoicesCount = 0;
+      
+      if (finById) {
+        totalDebt = finById.totalDebt;
+        unpaidInvoicesCount = finById.unpaidInvoicesCount;
+      } else if (finByName) {
+        totalDebt = finByName.totalDebt;
+        unpaidInvoicesCount = finByName.unpaidInvoicesCount;
+      }
       if (totalDebt <= 0) return; // لا يوجد عليه دين
 
       const phone = c.phone1 || c.phone;
@@ -257,7 +274,7 @@ export default async function handler(req, res) {
           name: rawName,
           phone: phone,
           totalDebt: totalDebt,
-          unpaidInvoicesCount: fin.unpaidInvoicesCount || 1,
+          unpaidInvoicesCount: unpaidInvoicesCount || 1,
           customerType: c.customerType || 'client'
         });
       }
