@@ -92,7 +92,7 @@ export function normalizeProduct(raw) {
 
   if (!hasNewFields) {
     const oldQty = Number(p.quantity) || 0;
-    const oldThreshold = Number(p.minThreshold) || DEFAULT_MIN_THRESHOLD;
+    const oldThreshold = p.minThreshold !== undefined ? Number(p.minThreshold) : 0;
     if (p.location === LOCATIONS.WAREHOUSE) {
       p.storeQty = 0;
       p.warehouseQty = oldQty;
@@ -101,17 +101,21 @@ export function normalizeProduct(raw) {
       p.warehouseQty = 0;
     }
     p.storeMinThreshold = oldThreshold;
-    p.warehouseMinThreshold = oldThreshold;
+    p.warehouseMinThreshold = 0;
   } else {
     p.storeQty = Number(p.storeQty) || 0;
     p.warehouseQty = Number(p.warehouseQty) || 0;
     p.storeMinThreshold =
-      p.storeMinThreshold !== undefined ? Number(p.storeMinThreshold) : DEFAULT_MIN_THRESHOLD;
+      p.storeMinThreshold !== undefined
+        ? Number(p.storeMinThreshold)
+        : (p.minThreshold !== undefined ? Number(p.minThreshold) : 0);
     p.warehouseMinThreshold =
       p.warehouseMinThreshold !== undefined
         ? Number(p.warehouseMinThreshold)
-        : DEFAULT_MIN_THRESHOLD;
+        : 0;
   }
+  p.cameraType = p.cameraType || p.category || 'أخرى';
+  p.category = p.category || p.cameraType || 'أخرى';
   p.company = p.company || '';
   if (p.customOrder !== undefined && p.customOrder !== null) {
     p.customOrder = Number(p.customOrder);
@@ -136,8 +140,8 @@ export function createEmptyProduct() {
     metersPerRoll: 305, // افتراضي لطول لفة الكيبل
     storeQty: 0,
     warehouseQty: 0,
-    storeMinThreshold: DEFAULT_MIN_THRESHOLD,
-    warehouseMinThreshold: DEFAULT_MIN_THRESHOLD,
+    storeMinThreshold: 0,
+    warehouseMinThreshold: 0,
     wholesalePrice: 0,
     profitMargin: 0,
     retailPrice: 0,
@@ -154,9 +158,9 @@ export function createEmptyProduct() {
  */
 function statusForQty(qty, threshold) {
   const q = Number(qty) || 0;
-  const t = Number(threshold) || DEFAULT_MIN_THRESHOLD;
+  const t = Number(threshold) || 0;
   if (q <= 0) return STOCK_STATUS.OUT_OF_STOCK;
-  if (q <= t) return STOCK_STATUS.LOW_STOCK;
+  if (t > 0 && q <= t) return STOCK_STATUS.LOW_STOCK;
   return STOCK_STATUS.IN_STOCK;
 }
 
@@ -178,8 +182,11 @@ export function getStockStatus(product) {
   const total = getTotalQuantity(product);
   if (total <= 0) return STOCK_STATUS.OUT_OF_STOCK;
   
-  const totalThreshold = (Number(product.storeMinThreshold) || 0) + (Number(product.warehouseMinThreshold) || 0);
-  if (total <= totalThreshold && totalThreshold > 0) return STOCK_STATUS.LOW_STOCK;
+  const storeT = Number(product.storeMinThreshold) || 0;
+  const whT = Number(product.warehouseMinThreshold) || 0;
+  const totalT = storeT + whT;
+  
+  if (totalT > 0 && total <= totalT) return STOCK_STATUS.LOW_STOCK;
   
   return STOCK_STATUS.IN_STOCK;
 }
