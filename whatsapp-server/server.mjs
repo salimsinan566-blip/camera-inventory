@@ -336,6 +336,16 @@ async function generateNativePdfFromHtml(htmlContent) {
   throw new Error('تعذر إنشاء ملف الـ PDF عبر محرك المتصفح');
 }
 
+// Cleanup old debt reminders from queue (delegated to Engine 2)
+(function cleanupOldDebtReminders() {
+  const jobs = loadScheduledJobs();
+  const filtered = jobs.filter(j => !j.isDebtReminder);
+  if (filtered.length !== jobs.length) {
+    saveScheduledJobs(filtered);
+    console.log(`🧹 [Cleanup] تم تنظيف ${jobs.length - filtered.length} مهام ديون قديمة من الطابور المحلي.`);
+  }
+})();
+
 // Background scheduler interval runner
 setInterval(async () => {
   if (!isConnected || !sock) return;
@@ -399,52 +409,8 @@ setInterval(async () => {
 
 // Synchronize all active debtor schedules directly to AWS Gateway queue (24/7 autonomous background engine)
 app.post('/scheduled/sync-debtors', (req, res) => {
-  const { debtors = [] } = req.body;
-  const jobs = loadScheduledJobs();
-  let updatedCount = 0;
-
-  debtors.forEach(debtor => {
-    if (!debtor.phone || !debtor.schedule || debtor.schedule === 'disabled') return;
-    const cleanPhone = formatInternationalPhone(debtor.phone);
-    if (!cleanPhone) return;
-    const jid = `${cleanPhone}@s.whatsapp.net`;
-    const jobId = `debtor_${debtor.customerId || debtor.id || cleanPhone}`;
-
-    const existingIndex = jobs.findIndex(j => j.id === jobId || (j.jid === jid && j.isDebtReminder));
-    const targetTimestamp = debtor.targetTimestamp || calculateNextScheduledTimestamp(debtor.schedule, debtor.timeStr || '20:00', new Date());
-
-    const newJob = {
-      id: jobId,
-      type: 'chat',
-      isDebtReminder: true,
-      isRecurring: true,
-      customerId: debtor.customerId || debtor.id,
-      customerName: debtor.customerName || debtor.name,
-      schedule: debtor.schedule,
-      timeStr: debtor.timeStr || '20:00',
-      jid,
-      cleanPhone,
-      body: debtor.message,
-      targetTimestamp,
-      targetTimeFormatted: new Date(targetTimestamp).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' }),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      token: req.body.token || 'SafeZone2026'
-    };
-
-    if (existingIndex >= 0) {
-      if (jobs[existingIndex].status === 'pending') {
-        jobs[existingIndex] = { ...jobs[existingIndex], ...newJob };
-      }
-    } else {
-      jobs.push(newJob);
-    }
-    updatedCount++;
-  });
-
-  saveScheduledJobs(jobs);
-  console.log(`📋 [Scheduler] تم مزامنة ${updatedCount} تذكير عميل في طابور السيرفر السحابي 24/7 بنجاح!`);
-  res.json({ success: true, count: jobs.length, syncedDebtors: updatedCount });
+  // تم تعطيل هذه الدالة محلياً والاعتماد كلياً على المحرك السحابي في Vercel (Engine 2)
+  res.json({ success: true, count: 0, syncedDebtors: 0, message: 'Delegated to Vercel Engine' });
 });
 
 // Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 1 minute)
@@ -634,131 +600,14 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
 
 // Sync and schedule automated customer debt reminders
 app.post('/reminders/sync', async (req, res) => {
-  const { customers = [], settings = {}, forceCheck = false } = req.body;
-  if (!isConnected || !sock) {
-    return res.status(503).json({ error: 'خادم الواتساب غير متصل', connected: false });
-  }
-
-  const now = new Date();
-  let jobs = loadScheduledJobs();
-
-  // 1. Purge disabled or settled debtors from server queue
-  const activeCustomerIds = new Set(
-    customers
-      .filter(c => c && (c.phone1 || c.phone) && c.reminderSchedule !== 'disabled' && Number(c.totalDebt || 0) > 0)
-      .map(c => String(c.id))
-  );
-
-  jobs = jobs.filter(j => {
-    if (!j.isDebtReminder) return true;
-    const cId = String(j.customerId || (j.id?.startsWith('job_debt_') ? j.id.replace('job_debt_', '') : '') || (j.id?.startsWith('debtor_') ? j.id.replace('debtor_', '') : ''));
-    if (!cId) return true;
-    return activeCustomerIds.has(cId);
-  });
-
-  const dispatchedImmediate = [];
-  const registeredScheduled = [];
-
-  for (const cust of customers) {
-    if (!cust?.phone1 || cust.reminderSchedule === 'disabled') continue;
-    const totalDebt = Number(cust.totalDebt || 0);
-    if (totalDebt <= 0) continue;
-
-    let schedCode = cust.reminderSchedule || 'default';
-    let timeStr = settings.whatsappReminderTime || '20:00';
-
-    if (schedCode.includes('@')) {
-      const parts = schedCode.split('@');
-      schedCode = parts[0];
-      if (parts[1] && parts[1].includes(':')) timeStr = parts[1];
-    }
-
-    let cleanPhone = String(cust.phone1).replace(/[^\d]/g, '').trim();
-    if (cleanPhone.startsWith('07') && cleanPhone.length === 11) {
-      cleanPhone = '964' + cleanPhone.substring(1);
-    } else if (cleanPhone.startsWith('7') && cleanPhone.length === 10) {
-      cleanPhone = '964' + cleanPhone;
-    }
-    const jid = `${cleanPhone}@s.whatsapp.net`;
-
-    const targetTimestamp = calculateNextScheduledTimestamp(schedCode, timeStr, now);
-    const isDueNow = forceCheck || (targetTimestamp <= now.getTime() + 10000);
-
-    const msgBody = cust.renderedMessage || `تذكير بمبلغ الدين المستحق: ${totalDebt.toLocaleString('en-US')} د.ع على حسابكم لدى المحل.`;
-
-    if (isDueNow) {
-      // Check last sent slot to prevent double sending in same slot
-      const [hStr, mStr] = String(timeStr).split(':');
-      const targetSlot = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hStr || '20', 10), parseInt(mStr || '0', 10), 0);
-      const lastSent = cust.lastDebtReminderSent ? new Date(cust.lastDebtReminderSent) : null;
-
-      if (!forceCheck && lastSent && lastSent.getTime() >= targetSlot.getTime() - 60000) {
-        continue; // Already sent for this slot today
-      }
-
-      try {
-        const debtResult = await sock.sendMessage(jid, { text: msgBody });
-        storeOutgoingMessage(debtResult, { text: msgBody });
-        console.log(`🚀 [AutoDebtReminder] تم إرسال تذكير الديون بنجاح للعميل «${cust.name}» (+${cleanPhone})`);
-        dispatchedImmediate.push({ id: cust.id, name: cust.name, phone: cleanPhone });
-      } catch (err) {
-        console.error(`❌ [AutoDebtReminder] فشل الإرسال إلى ${cleanPhone}:`, err.message);
-      }
-    } else {
-      const jobId = `job_debt_${cust.id}`;
-      // Check if this customer already has an active pending countdown job
-      const existingJob = jobs.find(j => 
-        (j.id === jobId || j.id === `debt_sched_${cust.id}` || j.customerId === cust.id || (!j.isDebtReminder && (j.jid === jid || j.cleanPhone === cleanPhone))) &&
-        j.status === 'pending' &&
-        j.targetTimestamp &&
-        j.targetTimestamp > now.getTime()
-      );
-
-      // Preserve existing countdown target time if available, otherwise calculate next slot
-      const finalTargetTimestamp = existingJob 
-        ? existingJob.targetTimestamp 
-        : (cust.targetTimestamp || targetTimestamp);
-
-      // Remove any existing pending job for this customer
-      jobs = jobs.filter(j => 
-        j.id !== jobId && 
-        j.customerId !== cust.id && 
-        j.id !== `debtor_${cust.id}` && 
-        j.id !== `debt_sched_${cust.id}` &&
-        (!j.isDebtReminder || (j.jid !== jid && j.cleanPhone !== cleanPhone))
-      );
-
-      const newJob = {
-        id: jobId,
-        type: 'chat',
-        isDebtReminder: true,
-        isRecurring: true,
-        schedule: schedCode,
-        timeStr,
-        customerId: cust.id,
-        customerName: cust.name,
-        cleanPhone,
-        totalDebt,
-        jid,
-        body: msgBody,
-        scheduledAt: new Date(finalTargetTimestamp).toISOString(),
-        targetTimestamp: finalTargetTimestamp,
-        createdAt: existingJob?.createdAt || new Date().toISOString(),
-        status: 'pending'
-      };
-      jobs.push(newJob);
-      registeredScheduled.push(newJob);
-    }
-  }
-
-  saveScheduledJobs(jobs);
-
+  // تم تعطيل الإضافة للطابور المحلي والاعتماد كلياً على المحرك السحابي في Vercel
   return res.json({
     success: true,
-    dispatchedImmediateCount: dispatchedImmediate.length,
-    dispatchedImmediate,
-    registeredScheduledCount: registeredScheduled.length,
-    registeredScheduled: registeredScheduled.map(j => ({ id: j.id, customerName: j.customerName, scheduledAt: j.scheduledAt }))
+    dispatchedImmediateCount: 0,
+    dispatchedImmediate: [],
+    registeredScheduledCount: 0,
+    registeredScheduled: [],
+    message: 'Delegated to Vercel Engine'
   });
 });
 
