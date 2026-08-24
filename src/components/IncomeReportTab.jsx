@@ -319,15 +319,17 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
 
       let cashOutflowSince = 0;
       expenses.forEach((e) => {
-        const eDate = new Date(e.date || e.createdAt);
-        if (eDate > recDate) {
-          cashOutflowSince += Number(e.amount || 0);
+        if (e.paymentSource !== 'management') {
+          const eDate = e.createdAt ? new Date(e.createdAt) : (e.date ? new Date(e.date) : null);
+          if (eDate && eDate > recDate) {
+            cashOutflowSince += Number(e.amount || 0);
+          }
         }
       });
 
       purchases.forEach((p) => {
-        const pDate = new Date(p.date || p.createdAt);
-        if (pDate > recDate) {
+        const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
+        if (pDate && pDate > recDate) {
           cashOutflowSince += Number(p.paidAmount || 0);
         }
       });
