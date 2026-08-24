@@ -54,6 +54,7 @@ export const CATEGORIES = [
   'Audio Systems',
   'Video Intercom',
   'Networking Equipment',
+  'Cables',
   'Cables & Connectors',
   'Video Accessories',
   'Computer Accessories',

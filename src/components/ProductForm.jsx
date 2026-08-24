@@ -10,12 +10,19 @@ import {
 import { createProduct, updateProduct, isSkuTaken } from '../services/productsService';
 import { uploadProductImage } from '../services/storageService';
 
+export const isCableCategory = (type) => {
+  if (!type) return false;
+  const t = String(type).trim().toLowerCase();
+  return t === 'cables' || t === 'cables & connectors' || t.includes('cable') || t.includes('كبل') || t.includes('كيبل') || t.includes('سلك') || t.includes('connectors');
+};
+
 export default function ProductForm({ product, products = [], onClose }) {
   const { user } = useAuth();
   const isEditing = Boolean(product && product.id);
+  const isCable = isCableCategory(product?.cameraType) || isCableCategory(product?.category);
   const [form, setForm] = useState(product ? { 
     ...product, 
-    sellMode: product.sellMode || (product.cameraType === 'Cables & Connectors' ? 'meter' : 'unit'), 
+    sellMode: product.sellMode || (isCable ? 'meter' : 'unit'), 
     metersPerRoll: product.metersPerRoll || 305 
   } : createEmptyProduct());
   const [changeReason, setChangeReason] = useState('');
@@ -288,10 +295,8 @@ export default function ProductForm({ product, products = [], onClose }) {
                     onChange={(e) => {
                       const newType = e.target.value !== 'OTHER' ? e.target.value : '';
                       handleChange('cameraType', newType);
-                      if (newType === 'Cables & Connectors') {
+                      if (isCableCategory(newType)) {
                         handleChange('sellMode', form.sellMode === 'unit' ? 'meter' : form.sellMode);
-                      } else {
-                        handleChange('sellMode', 'unit');
                       }
                     }}
                     className={`input ${!dynamicCategories.includes(form.cameraType) ? 'w-1/3' : 'w-full'}`}
@@ -321,7 +326,7 @@ export default function ProductForm({ product, products = [], onClose }) {
             <div className="bg-ink-50/50 rounded-xl p-4 border border-ink-100 space-y-4">
               <h3 className="text-xs font-bold text-ink-500 uppercase tracking-wider">المخزون</h3>
 
-              {form.cameraType === 'Cables & Connectors' && (
+              {(isCableCategory(form.cameraType) || form.sellMode === 'meter' || form.sellMode === 'roll') && (
                 <div className="bg-brand-50/50 rounded-xl p-4 border border-brand-100 space-y-4 mb-4">
                   <h3 className="text-sm font-bold text-brand-800">إعدادات الكيبل والقياس</h3>
                   <div className="grid grid-cols-2 gap-4">
@@ -373,7 +378,7 @@ export default function ProductForm({ product, products = [], onClose }) {
                 </Field>
               </div>
 
-              {form.cameraType === 'Cables & Connectors' && form.sellMode === 'meter' && (
+              {(isCableCategory(form.cameraType) || form.sellMode === 'meter') && form.sellMode === 'meter' && (
                 <div className="text-xs text-brand-600 p-3 bg-brand-50 rounded-lg border border-brand-100 mt-4">
                   <label className="font-bold mb-3 block flex items-center gap-1">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
@@ -440,7 +445,7 @@ export default function ProductForm({ product, products = [], onClose }) {
                 </div>
               </div>
               
-              {form.cameraType === 'Cables & Connectors' && form.sellMode === 'meter' && (
+              {(isCableCategory(form.cameraType) || form.sellMode === 'meter') && form.sellMode === 'meter' && (
                 <div className="col-span-2 mb-2 p-3 bg-brand-50 rounded-lg border border-brand-100">
                   <label className="font-bold mb-2 block flex items-center gap-1 text-xs text-brand-700">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
