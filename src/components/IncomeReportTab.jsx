@@ -291,18 +291,26 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
           } else if (s.invoiceType === 'mastercard') {
             cardInflowSince += Number(s.total || 0);
           } else if (s.invoiceType === 'debt') {
-            if (s.payments && Array.isArray(s.payments)) {
-              s.payments.forEach(p => {
-                const pDate = p.date ? new Date(p.date) : null;
-                if (pDate && pDate > recDate) {
-                  const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر');
-                  if (isPCard) cardInflowSince += Number(p.amount || 0);
-                  else cashInflowSince += Number(p.amount || 0);
-                }
-              });
-            } else {
-              cashInflowSince += Number(s.paidAmount || 0);
-            }
+            // نفس منطق لوحة التحكم: نستخدم paidAmount مباشرة للفواتير المسجلة بعد التسوية
+            cashInflowSince += Number(s.paidAmount || 0);
+          }
+        }
+      });
+
+      // دفعات الديون اللاحقة (payments على فواتير قبل تاريخ التسوية)
+      sales.forEach((s) => {
+        const sDate = toDateSafe(s.createdAt);
+        // فواتير الدين المسجلة قبل تاريخ التسوية: نحتسب فقط دفعاتها اللاحقة
+        if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
+          if (s.payments && Array.isArray(s.payments)) {
+            s.payments.forEach(p => {
+              const pDate = p.date ? new Date(p.date) : null;
+              if (pDate && pDate > recDate) {
+                const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر');
+                if (isPCard) cardInflowSince += Number(p.amount || 0);
+                else cashInflowSince += Number(p.amount || 0);
+              }
+            });
           }
         }
       });
@@ -330,7 +338,11 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       purchases.forEach((p) => {
         const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
         if (pDate && pDate > recDate) {
-          cashOutflowSince += Number(p.paidAmount || 0);
+          // استخدام نفس المنطق في لوحة التحكم: paidFromCashDrawerAmount له الأولوية
+          const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
+            ? Number(p.paidFromCashDrawerAmount)
+            : Number(p.paidAmount || 0);
+          cashOutflowSince += actualDrawerPaid;
         }
       });
 
