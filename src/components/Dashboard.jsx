@@ -17,6 +17,7 @@ import POSScreen from './POSScreen';
 import OffersScreen from './OffersScreen';
 import PurchasesScreen from './PurchasesScreen';
 import ExpensesScreen from './ExpensesScreen';
+import SalariesScreen from './SalariesScreen';
 import SalesReports from './SalesReports';
 import CustomersScreen from './CustomersScreen';
 import HomeDashboard from './HomeDashboard';
@@ -321,6 +322,10 @@ export default function Dashboard({ user }) {
 
         <div className={activeTab === 'expenses' ? 'block h-full' : 'hidden'}>
           <ExpensesScreen user={user} />
+        </div>
+
+        <div className={activeTab === 'salaries' ? 'block h-full' : 'hidden'}>
+          <SalariesScreen />
         </div>
 
         <div className={activeTab === 'reports' ? 'block h-full' : 'hidden'}>

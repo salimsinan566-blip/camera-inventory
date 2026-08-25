@@ -8,3 +8,5 @@ dist
 *.rar
 whatsapp-server/auth_session
 whatsapp-server/node_modules
+scratch
+*.timestamp-*.mjs
