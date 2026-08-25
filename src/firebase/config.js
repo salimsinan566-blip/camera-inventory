@@ -1,6 +1,6 @@
 // إعداد الاتصال بـ Firebase
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -15,3 +15,12 @@ const firebaseConfig = {
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// تفعيل قاعدة البيانات المحلية (Offline Persistence) للحماية من نفاذ الكوتا وتسريع النظام
+enableMultiTabIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.warn('تفعيل الذاكرة المحلية فشل: الموقع مفتوح في عدة تبويبات غير متوافقة.');
+  } else if (err.code === 'unimplemented') {
+    console.warn('المتصفح الحالي لا يدعم ميزة الذاكرة المحلية لـ Firebase.');
+  }
+});
