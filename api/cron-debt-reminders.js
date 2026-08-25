@@ -44,13 +44,14 @@ export default async function handler(req, res) {
     // 0. Handle mark as sent
     if (req.method === 'POST' && req.body?.markSent) {
       const custIds = Array.isArray(req.body.markSent) ? req.body.markSent : [req.body.markSent];
-      const batch = db.batch();
-      for (const id of custIds) {
-        batch.update(db.collection('customers').doc(id), {
+      const promises = custIds.map(id => 
+        db.collection('customers').doc(id).update({
           lastDebtReminderSent: new Date().toISOString()
-        });
-      }
-      await batch.commit();
+        }).catch(err => {
+          console.error(`Failed to update customer ${id}:`, err);
+        })
+      );
+      await Promise.all(promises);
       return res.status(200).json({ status: 'success', marked: custIds.length });
     }
 
