@@ -282,17 +282,29 @@ export function subscribeToEmployees(callback) {
 }
 
 /**
- * جلب سجل مدفوعات موظف معين عند الطلب فقط (Lazy Loading with Limit - توفير الكوتا)
+ * جلب سجل مدفوعات موظف معين عند الطلب فقط (Lazy Loading with in-memory sorting - لا يتطلب فهرس مركب في فايربيس)
  */
-export async function getEmployeePaymentHistory(employeeId, limitCount = 25) {
+export async function getEmployeePaymentHistory(employeeId, limitCount = 50) {
   if (!employeeId) return [];
-  const q = query(
-    collection(db, SALARY_PAYMENTS_COLLECTION),
-    where('employeeId', '==', employeeId),
-    orderBy('date', 'desc'),
-    limit(limitCount)
-  );
+  try {
+    const q = query(
+      collection(db, SALARY_PAYMENTS_COLLECTION),
+      where('employeeId', '==', employeeId)
+    );
 
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const snap = await getDocs(q);
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // الترتيب في الذاكرة لتجنب خطأ الفهرس المركب (Composite Index) تماماً
+    list.sort((a, b) => {
+      const timeA = new Date(a.date || a.createdAt || 0).getTime();
+      const timeB = new Date(b.date || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    return list.slice(0, limitCount);
+  } catch (err) {
+    console.error('Error fetching employee payment history:', err);
+    throw err;
+  }
 }

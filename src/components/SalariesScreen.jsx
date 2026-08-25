@@ -464,79 +464,110 @@ export default function SalariesScreen() {
             return (
               <div
                 key={emp.id}
-                className={`bg-white rounded-2xl border p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden ${dueStatus.cardBorder || 'border-slate-200'}`}
+                className={`bg-white rounded-2xl border p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden ${
+                  daysRemaining !== null && daysRemaining < 0
+                    ? 'border-red-300 ring-1 ring-red-200'
+                    : daysRemaining === 0
+                    ? 'border-amber-400 ring-2 ring-amber-300/60'
+                    : 'border-slate-200 hover:border-indigo-300'
+                }`}
               >
-                {/* Top Row: Name, Job, Status Badge */}
                 <div>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                  {/* Top Header: Avatar, Name, Job Title & Status */}
+                  <div className="flex items-start justify-between gap-3 mb-3.5">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center font-black text-base shrink-0 shadow-sm">
                         {emp.name?.charAt(0) || '👤'}
                       </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>{emp.name}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-sm font-black text-slate-900 truncate">
+                            {emp.name}
+                          </h3>
                           {isInactive && (
-                            <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold border border-slate-200">
                               متوقف
                             </span>
                           )}
-                        </h3>
-                        <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                          <span>💼</span>
-                          <span>{emp.jobTitle || 'موظف'}</span>
-                          {emp.phone && (
-                            <>
-                              <span className="text-slate-300">•</span>
-                              <span className="font-mono text-slate-600">{emp.phone}</span>
-                            </>
-                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5 flex items-center gap-1">
+                          <span>💼 {emp.jobTitle || 'موظف'}</span>
                         </p>
                       </div>
                     </div>
 
-                    {/* Due Badge (How many days remaining) */}
-                    <div className={`px-2.5 py-1 rounded-xl text-[11px] border shrink-0 ${dueStatus.badgeBg}`}>
-                      {dueStatus.label}
-                    </div>
+                    {/* Salary Cycle Pill */}
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 shrink-0 whitespace-nowrap">
+                      {typeLabel}
+                    </span>
                   </div>
 
-                  {/* Salary & Cycle Info Card */}
-                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 mb-3 space-y-2">
+                  {/* Highlighted Remaining Days Banner */}
+                  <div className={`p-3 rounded-xl border mb-3.5 flex items-center justify-between gap-2 ${
+                    daysRemaining !== null && daysRemaining < 0
+                      ? 'bg-rose-50 border-rose-200 text-rose-900'
+                      : daysRemaining === 0
+                      ? 'bg-amber-50 border-amber-300 text-amber-950 animate-pulse'
+                      : daysRemaining !== null && daysRemaining <= 3
+                      ? 'bg-orange-50 border-orange-200 text-orange-950'
+                      : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                  }`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base shrink-0">
+                        {daysRemaining !== null && daysRemaining < 0 ? '⚠️' : daysRemaining === 0 ? '🔔' : '⏳'}
+                      </span>
+                      <div className="min-w-0">
+                        <span className="text-xs font-black block truncate">
+                          {dueStatus.label}
+                        </span>
+                        <span className="text-[10px] text-slate-500 block truncate">
+                          موعد الاستحقاق: {emp.nextDueDate || 'غير محدد'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {emp.phone && (
+                      <a
+                        href={`https://wa.me/${emp.phone.replace(/[^0-9]/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 bg-white text-emerald-600 hover:bg-emerald-100 rounded-lg border border-emerald-200 shadow-2xs transition-colors shrink-0"
+                        title="مراسلة عبر واتساب"
+                      >
+                        💬
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Financial & Cycle Details */}
+                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 mb-3 space-y-2.5 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-600 font-bold">الراتب الأساسي:</span>
-                      <span className="text-base font-black font-mono text-slate-900">
-                        {formatIQD(emp.salaryAmount)} <span className="text-[11px] font-normal text-slate-600">د.ع</span>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
-                      <span className="text-slate-500">نظام الدورة:</span>
-                      <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                        {typeLabel}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500">موعد الراتب القادم:</span>
-                      <span className="font-mono font-bold text-slate-800">
-                        {emp.nextDueDate || '—'}
+                      <span className="text-slate-600 font-bold">الراتب الأساسي:</span>
+                      <span className="text-sm font-black font-mono text-slate-900">
+                        {formatIQD(emp.salaryAmount)} <span className="text-[10px] font-normal text-slate-500">د.ع</span>
                       </span>
                     </div>
 
                     {advanceDebt > 0 && (
-                      <div className="flex items-center justify-between text-xs pt-1 border-t border-dashed border-amber-300 text-amber-900 bg-amber-50/70 p-1.5 rounded-lg">
-                        <span className="font-bold">سلف وذمم قائمة:</span>
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-amber-300 text-amber-900 bg-amber-100/50 p-2 rounded-lg font-bold">
+                        <span>ذمة سلف قائمة:</span>
                         <span className="font-mono font-black text-rose-700">
                           {formatIQD(advanceDebt)} د.ع
                         </span>
                       </div>
                     )}
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-slate-500 text-[11px]">
+                      <span>آخر صرف:</span>
+                      <span className="font-mono font-medium text-slate-700">
+                        {emp.lastPaymentDate ? new Date(emp.lastPaymentDate).toLocaleDateString('ar-IQ') : 'لا يوجد صرف سابق'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Bottom Actions: Pay Button & Quick Icons */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => handleOpenPayModal(emp)}
@@ -549,7 +580,7 @@ export default function SalariesScreen() {
                   <button
                     type="button"
                     onClick={() => handleOpenHistory(emp)}
-                    className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                    className="p-2.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl transition-colors cursor-pointer"
                     title="كشف حساب وسجل المدفوعات"
                   >
                     📑
@@ -558,8 +589,8 @@ export default function SalariesScreen() {
                   <button
                     type="button"
                     onClick={() => handleOpenEditEmployee(emp)}
-                    className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl transition-colors cursor-pointer"
-                    title="تعديل الموظف"
+                    className="p-2.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                    title="تعديل بيانات الموظف"
                   >
                     ✏️
                   </button>
@@ -567,7 +598,7 @@ export default function SalariesScreen() {
                   <button
                     type="button"
                     onClick={() => handleDeleteEmployee(emp)}
-                    className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                    className="p-2.5 text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 rounded-xl transition-colors cursor-pointer"
                     title="حذف الموظف"
                   >
                     🗑️
