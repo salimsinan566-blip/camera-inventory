@@ -101,12 +101,42 @@ export default async function handler(req, res) {
     const currentDayName = DAYS_MAP[dayOfWeekIndex]; // e.g. 'thursday'
     const defaultReminderDay = settings.whatsappDefaultDay || 'thursday';
 
-    // 3. جلب وتجميع حسابات العملاء الدقيقة من المبيعات وسندات القبض
-    const [custSnap, salesSnap, incomesSnap] = await Promise.all([
-      db.collection('customers').get(),
-      db.collection('sales').get(),
-      db.collection('office_incomes').get()
-    ]);
+    // 3. جلب وتجميع حسابات العملاء الدقيقة من المبيعات وسندات القبض (مع ذاكرة تخزين مؤقتة لحماية الكوتا)
+    const CACHE_TTL = 15 * 60 * 1000; // 15 دقائق
+    let custSnap, salesSnap, incomesSnap;
+
+    if (global.cachedFirebaseData && (Date.now() - global.cachedFirebaseData.timestamp < CACHE_TTL) && !force) {
+      custSnap = global.cachedFirebaseData.custSnap;
+      salesSnap = global.cachedFirebaseData.salesSnap;
+      incomesSnap = global.cachedFirebaseData.incomesSnap;
+    } else {
+      const [cSnap, sSnap, iSnap] = await Promise.all([
+        db.collection('customers').get(),
+        db.collection('sales').get(),
+        db.collection('office_incomes').get()
+      ]);
+      
+      const createCachedSnap = (snap) => {
+        const cachedDocs = [];
+        snap.forEach(d => {
+          cachedDocs.push({ id: d.id, data: d.data() });
+        });
+        return {
+          forEach: (cb) => cachedDocs.forEach(d => cb({ id: d.id, data: () => d.data }))
+        };
+      };
+      
+      custSnap = createCachedSnap(cSnap);
+      salesSnap = createCachedSnap(sSnap);
+      incomesSnap = createCachedSnap(iSnap);
+      
+      global.cachedFirebaseData = {
+        timestamp: Date.now(),
+        custSnap,
+        salesSnap,
+        incomesSnap
+      };
+    }
 
     const customerFinancials = {};
 
