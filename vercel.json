@@ -17,6 +17,10 @@
     {
       "source": "/aws-whatsapp/:match*",
       "destination": "http://13.61.182.143:3005/:match*"
+    },
+    {
+      "source": "/((?!api/|.*\\..*).*)",
+      "destination": "/index.html"
     }
   ]
 }

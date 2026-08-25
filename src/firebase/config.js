@@ -1,9 +1,6 @@
 // إعداد الاتصال بـ Firebase
-// جميع القيم تُقرأ من ملف .env (انظر .env.example لأسماء المتغيرات المطلوبة)
-// لا تضع أي مفتاح حقيقي هنا مباشرة في الكود.
-
-import { initializeApp } from 'firebase/app';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -15,13 +12,6 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:121093072046:web:f22510081336eb7341393f',
 };
 
-export const app = initializeApp(firebaseConfig);
-
-// تفعيل الكاش المحلي المستمر متعدد التبويبات لتوفير أكثر من 85% من قراءات الفايربيس ومنع استنزاف الكوتا
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
-
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const db = getFirestore(app);
 export const storage = getStorage(app);
