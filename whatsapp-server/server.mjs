@@ -1,3 +1,4 @@
+process.env.TZ = 'Asia/Baghdad';
 import express from 'express';
 import cors from 'cors';
 import qrcode from 'qrcode';
