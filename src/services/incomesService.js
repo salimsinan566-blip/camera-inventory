@@ -78,14 +78,13 @@ export async function deleteIncome(id) {
  * الاشتراك بالدخل والمقبوضات الإضافية في الوقت الفعلي
  */
 export function subscribeToIncomes(callback) {
-  const q = query(collection(db, INCOMES_COLLECTION));
+  const q = query(
+    collection(db, INCOMES_COLLECTION),
+    orderBy('createdAt', 'desc'),
+    limit(100)
+  );
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    list.sort((a, b) => {
-      const da = new Date(a.date || a.createdAt || 0).getTime() || 0;
-      const dbDate = new Date(b.date || b.createdAt || 0).getTime() || 0;
-      return dbDate - da;
-    });
     callback(list);
   }, (err) => {
     console.error('Error subscribing to incomes:', err);

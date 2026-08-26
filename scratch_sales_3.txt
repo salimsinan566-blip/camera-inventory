@@ -1,0 +1,300 @@
+    }
+    const counterSnap = await transaction.get(counterRef);
+
+    for (const item of items) {
+      if (item.isService) continue;
+      
+      const snap = productSnapsMap[item.productId];
+      if (!snap || !snap.exists()) {
+        throw new Error(`المنتج "${item.name}" لم يعد موجوداً`);
+      }
+      
+      const currentStoreQty = Number(snap.data().storeQty) || 0;
+      
+      if (draftData.status === 'suspended') {
+        // الفاتورة معلقة (تم خصم المتوفر مسبقاً)، لا حاجة للتحقق من المتوفر هنا
+      } else {
+        // الفاتورة مؤقتة، يجب التحقق من المتوفر
+        if (currentStoreQty < item.quantity) {
+          throw new Error(
+            `الكمية المتوفرة في المحل من "${item.name}" هي ${currentStoreQty} فقط (مطلوب ${item.quantity})`
+          );
+        }
+      }
+    }
+
+    const existingInvoiceNumber = draftData.invoiceNumber;
+    let nextInvoiceNumber = existingInvoiceNumber;
+
+    if (!existingInvoiceNumber) {
+      nextInvoiceNumber = counterSnap.exists() ? counterSnap.data().next : STARTING_INVOICE_NUMBER;
+      transaction.set(counterRef, { next: nextInvoiceNumber + 1 }, { merge: true });
+    }
+
+    for (const item of items) {
+      if (item.isService) continue;
+      const ref = productRefsMap[item.productId];
+      const snap = productSnapsMap[item.productId];
+      const currentStoreQty = Number(snap.data().storeQty) || 0;
+      const currentPendingQty = Number(snap.data().pendingQty) || 0;
+      
+      if (draftData.status === 'suspended') {
+        // خصم من المعلق فقط
+        transaction.update(ref, { 
+          pendingQty: Math.max(0, currentPendingQty - item.quantity) 
+        });
+      } else {
+        // خصم من المتوفر
+        transaction.update(ref, { 
+          storeQty: currentStoreQty - item.quantity 
+        });
+      }
+    }
+    
+    transaction.update(draftRef, {
+      status: 'confirmed',
+      invoiceNumber: nextInvoiceNumber,
+      customerId,
+      ...(invoiceType ? { invoiceType } : {}),
+      cashierEmail,
+      confirmedAt: serverTimestamp(),
+    });
+
+    return {
+      invoiceNumber: nextInvoiceNumber,
+      items,
+      subtotal: draftData.subtotal,
+      discount: draftData.discount || 0,
+      taxRate: draftData.taxRate || 0,
+      total: draftData.total,
+      customerName: draftData.customerName || null,
+      phone1: draftData.phone1 || '',
+      phone2: draftData.phone2 || '',
+      invoiceType: invoiceType || draftData.invoiceType || 'cash',
+      cashierEmail,
+      createdAt: new Date(),
+    };
+  });
+
+  return result;
+}
+
+/** 
+ * إرجاع فاتورة مؤكدة إلى فاتورة معلقة. 
+ * لا يرجع المتوفر، فقط يزيد الكمية المعلقة ويغير حالة الفاتورة.
+ */
+export async function revertSaleToSuspended(saleId) {
+  const saleRef = doc(db, SALES_COLLECTION, saleId);
+
+  await runTransaction(db, async (transaction) => {
+    const saleSnap = await transaction.get(saleRef);
+    if (!saleSnap.exists()) {
+      throw new Error('الفاتورة غير موجودة');
+    }
+    const saleData = saleSnap.data();
+    
+    if (saleData.status !== 'confirmed') {
+      throw new Error('يمكن إرجاع الفواتير المؤكدة فقط');
+    }
+
+    const items = saleData.items || [];
+    const productRefsMap = {};
+    for (const item of items) {
+      if (!item.isService) {
+        productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+      }
+    }
+    
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);
+    }
+
+    for (const item of items) {
+      if (item.isService) continue;
+      const snap = productSnapsMap[item.productId];
+      if (!snap || !snap.exists()) continue; // إذا انحذف المنتج لا نسوي شي
+      const currentPendingQty = Number(snap.data().pendingQty) || 0;
+      
+      transaction.update(productRefsMap[item.productId], {
+        pendingQty: currentPendingQty + item.quantity
+      });
+    }
+
+    transaction.update(saleRef, {
+      status: 'suspended',
+      updatedAt: serverTimestamp()
+    });
+  });
+}
+
+/**
+ * ==========================================================
+ * التعديل والمرتجعات (Returns & Exchanges)
+ * ==========================================================
+ * يسمح بتعديل فاتورة مؤكدة. يقارن العناصر القديمة بالجديدة، 
+ * ويعيد المخزون للقطع المحذوفة أو يقلله للقطع المضافة حديثاً.
+ * يسجل التغييرات في مصفوفة historyLogs داخل المستند.
+ */
+export async function editConfirmedSale(saleId, newCartItems = [], orderOptions, cashierEmail) {
+
+  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '' } = orderOptions;
+  const customerId = customerName ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
+  const saleRef = doc(db, SALES_COLLECTION, saleId);
+
+  const result = await runTransaction(db, async (transaction) => {
+    const saleSnap = await transaction.get(saleRef);
+    if (!saleSnap.exists()) {
+      throw new Error('الفاتورة غير موجودة');
+    }
+    const saleData = saleSnap.data();
+    if (saleData.status !== 'confirmed') {
+      throw new Error('هذه الفاتورة ليست مؤكدة ولا يمكن تعديلها من هنا');
+    }
+
+    const oldItems = saleData.items || [];
+    
+    const productIdsSet = new Set([
+      ...oldItems.filter(i => !i.isService).map(i => i.productId),
+      ...newCartItems.filter(i => !i.isService).map(i => i.productId)
+    ]);
+    const productIds = Array.from(productIdsSet);
+    const productRefs = productIds.map(id => doc(db, PRODUCTS_COLLECTION, id));
+    const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+    
+    const productsMap = {};
+    productSnaps.forEach(snap => {
+      if (snap.exists()) {
+        productsMap[snap.id] = snap.data();
+      }
+    });
+
+    const deltas = {}; 
+    oldItems.forEach(item => {
+      deltas[item.productId] = -(item.quantity || 0); 
+    });
+
+    newCartItems.forEach(item => {
+      deltas[item.productId] = (deltas[item.productId] || 0) + (item.quantity || 0); 
+    });
+
+    const logs = [];
+    const updatedItems = [];
+
+    for (const item of newCartItems) {
+      const pid = item.productId;
+      const delta = deltas[pid] || 0;
+      const oldItem = oldItems.find(o => o.productId === item.productId);
+      
+      if (delta > 0) {
+        if (!item.isService) {
+          const pData = productsMap[pid];
+          if (!pData) throw new Error(`المنتج "${item.name}" غير موجود في قاعدة البيانات`);
+          const currentQty = Number(pData.storeQty) || 0;
+          if (currentQty < delta) {
+            throw new Error(`الكمية المتوفرة في المحل من "${item.name}" هي ${currentQty} (مطلوب إضافة ${delta} إضافية)`);
+          }
+        }
+        logs.push(`إضافة ${delta}x ${item.name}`);
+      } else if (delta < 0) {
+        logs.push(`إرجاع ${Math.abs(delta)}x ${item.name}`);
+      }
+
+      // Check if price changed for this item
+      if (oldItem && Number(oldItem.unitPrice || 0) !== Number(item.unitPrice || 0)) {
+        logs.push(`تعديل سعر "${item.name}" من ${oldItem.unitPrice || 0} إلى ${item.unitPrice || 0} د.ع`);
+      }
+
+      updatedItems.push({
+        productId: item.productId,
+        sku: item.sku || oldItem?.sku || '',
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice) || 0,
+        originalPrice: item.originalPrice || oldItem?.originalPrice || item.unitPrice,
+        wholesalePrice: item.wholesalePrice ?? oldItem?.wholesalePrice ?? 0,
+        sellMode: item.sellMode || oldItem?.sellMode || 'unit',
+        lineTotal: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
+        isService: item.isService || false
+      });
+    }
+
+    oldItems.forEach(oldItem => {
+      if (!newCartItems.find(n => n.productId === oldItem.productId)) {
+        logs.push(`إرجاع ${oldItem.quantity}x ${oldItem.name} (حذف)`);
+      }
+    });
+
+    if (logs.length === 0 && 
+        saleData.discount === discount && 
+        saleData.taxRate === taxRate && 
+        saleData.invoiceType === invoiceType &&
+        saleData.customerName === customerName) {
+      throw new Error('لم تقم بإجراء أي تغييرات.');
+    }
+
+    for (const pid of productIds) {
+      const delta = deltas[pid] || 0;
+      if (delta !== 0) {
+        const pData = productsMap[pid];
+        if (pData) {
+          const currentQty = Number(pData.storeQty) || 0;
+          transaction.update(doc(db, PRODUCTS_COLLECTION, pid), { storeQty: currentQty - delta });
+        }
+      }
+    }
+
+    const summary = calculateOrderSummary(updatedItems, discount, taxRate);
+    const paidAmount = Number(saleData.paidAmount) || 0;
+    const remainingDebt = invoiceType === 'debt' ? Math.max(0, summary.total - paidAmount) : 0;
+    const isSettled = invoiceType === 'debt' ? remainingDebt <= 0 : true;
+
+    const historyLogs = saleData.historyLogs || [];
+    const logEntry = {
+      date: new Date(),
+      cashierEmail,
+      action: logs.length > 0 ? logs.join('، ') : 'تعديل بيانات الفاتورة'
+    };
+    
+    transaction.update(saleRef, {
+      items: updatedItems,
+      subtotal: summary.subtotal,
+      discount: summary.discount,
+      taxRate: summary.taxRate,
+      total: summary.total,
+      paidAmount,
+      remainingDebt,
+      isSettled,
+      invoiceType,
+      customerId,
+      customerName: customerName || null,
+      phone1: phone1 || '',
+      phone2: phone2 || '',
+      updatedAt: serverTimestamp(),
+      historyLogs: [...historyLogs, logEntry]
+    });
+
+    return {
+      id: saleId,
+      ...saleData,
+      items: updatedItems,
+      subtotal: summary.subtotal,
+      discount: summary.discount,
+      taxRate: summary.taxRate,
+      total: summary.total,
+      invoiceType,
+      customerName: customerName || null,
+      phone1: phone1 || '',
+      phone2: phone2 || '',
+      historyLogs: [...historyLogs, logEntry]
+    };
+  });
+  return result;
+}
+
+/**
+ * حذف فاتورة مؤكدة نهائياً وإرجاع المنتجات إلى المحل.
+ */
+export async function deleteConfirmedSale(saleId) {
+  const saleRef = doc(db, SALES_COLLECTION, saleId);
+

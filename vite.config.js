@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 function apiDevPlugin() {
   return {
@@ -71,7 +72,24 @@ function apiDevPlugin() {
 }
 
 export default defineConfig({
-  plugins: [react(), apiDevPlugin()],
+  plugins: [
+    react(),
+    apiDevPlugin(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        maximumFileSizeToCacheInBytes: 5000000
+      },
+      manifest: {
+        name: 'Camera Inventory POS',
+        short_name: 'POS',
+        description: 'نظام الكاميرات ونقاط البيع',
+        theme_color: '#ffffff',
+        display: 'standalone',
+      }
+    })
+  ],
   build: {
     outDir: 'dist',
   },

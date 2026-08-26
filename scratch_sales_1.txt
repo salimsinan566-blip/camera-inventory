@@ -1,0 +1,300 @@
+// خدمة نقطة البيع: البحث عن منتج بالباركود، وإتمام عملية البيع.
+//
+// قرار مهم للاستقرار: إنقاص الكمية + إنشاء الفاتورة + توليد رقمها
+// التسلسلي، كل هذا يصير داخل Firestore Transaction واحدة. لو صارت
+// عمليتا بيع لنفس المنتج بنفس اللحظة (مثلاً بيّاعين استخدموا نقطة
+// البيع بنفس الثانية)، Firestore يمنع أي تعارض ويعيد المحاولة تلقائياً
+// بدل ما تنزل الكمية غلط أو تحت الصفر.
+
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+} from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { calculateOrderSummary } from '../models/sale';
+import { findOrCreateCustomer } from './customersService';
+
+const PRODUCTS_COLLECTION = 'products';
+const SALES_COLLECTION = 'sales';
+const SALES_COUNTER_PATH = ['counters', 'sales'];
+const STARTING_INVOICE_NUMBER = 1001;
+
+/** يبحث عن منتج بالباركود الممسوح. يرجع null لو ما لقى شي. */
+export async function findProductByBarcode(barcode) {
+  const q = query(collection(db, PRODUCTS_COLLECTION), where('barcode', '==', barcode));
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  const d = snapshot.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+/**
+ * يُتمّ عملية بيع: يتحقق من توفر الكمية، ينقصها، وينشئ فاتورة برقم تسلسلي.
+ * @param {Array} cartItems - [{ productId, sku, name, quantity, unitPrice }]
+ * @param {string} cashierEmail
+ * @param {{discount?: number, taxRate?: number, customerName?: string}} orderOptions
+ * @returns {Promise<{ invoiceNumber: number, total: number }>}
+ * يرمي خطأ واضح لو أي منتج بالسلة كميته الحالية أقل من المطلوب — بدون أي تعديل جزئي.
+ */
+export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
+  if (!cartItems || cartItems.length === 0) {
+    throw new Error('السلة فاضية');
+  }
+  const {
+    discount = 0,
+    taxRate = 0,
+    customerName = '',
+    invoiceType = 'cash',
+    phone1 = '',
+    phone2 = '',
+    stockSource = 'store', // 'store' | 'warehouse' | 'custody'
+    technicianId = null,
+    technicianName = ''
+  } = orderOptions;
+
+  // إيجاد/إنشاء العميل يصير خارج الـ Transaction (مو حرج إذا صار تكرار نادر بالاسم)
+  const customerId = customerName ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
+
+  const counterRef = doc(db, ...SALES_COUNTER_PATH);
+  const salesRef = doc(collection(db, SALES_COLLECTION));
+
+  const result = await runTransaction(db, async (transaction) => {
+    // 1) قراءة كل منتجات السلة والعداد، ووثيقة عهدة الفني إذا كان مصدر الصرف عهدة
+    const productRefsMap = {};
+    for (const item of cartItems) {
+      if (!item.isService) {
+        productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+      }
+    }
+    
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);
+    }
+    const counterSnap = await transaction.get(counterRef);
+
+    let custodyRef = null;
+    let custodySnap = null;
+    let custodyItems = [];
+    if (stockSource === 'custody' && technicianId) {
+      custodyRef = doc(db, 'custody_inventory', technicianId);
+      custodySnap = await transaction.get(custodyRef);
+      if (!custodySnap.exists()) {
+        throw new Error(`لا توجد عهدة مسجلة للفني: ${technicianName || technicianId}`);
+      }
+      custodyItems = [...(custodySnap.data().items || [])];
+    }
+
+    // 2) التحقق من توفر الكمية لكل منتج قبل أي تعديل
+    const items = [];
+
+    for (const cartItem of cartItems) {
+      if (cartItem.isService) {
+        items.push({
+          productId: cartItem.productId,
+          sku: cartItem.sku,
+          name: cartItem.name,
+          quantity: cartItem.quantity,
+          unitPrice: cartItem.unitPrice,
+          originalPrice: cartItem.originalPrice || cartItem.unitPrice,
+          wholesalePrice: cartItem.wholesalePrice || 0,
+          sellMode: cartItem.sellMode || 'unit',
+          lineTotal: cartItem.quantity * cartItem.unitPrice,
+          isService: true,
+        });
+        continue;
+      }
+
+      const snap = productSnapsMap[cartItem.productId];
+      if (!snap || !snap.exists()) {
+        throw new Error(`المنتج "${cartItem.name}" لم يعد موجوداً`);
+      }
+      const pData = snap.data();
+
+      if (stockSource === 'custody') {
+        const cIdx = custodyItems.findIndex(ci => ci.productId === cartItem.productId);
+        const inCustodyQty = cIdx >= 0 ? (Number(custodyItems[cIdx].quantity) || 0) : 0;
+        if (inCustodyQty < cartItem.quantity) {
+          throw new Error(
+            `الكمية المتوفرة في سيارة الفني (${technicianName}) من "${cartItem.name}" هي ${inCustodyQty} فقط (مطلوب ${cartItem.quantity})`
+          );
+        }
+        custodyItems[cIdx].quantity = inCustodyQty - cartItem.quantity;
+      } else if (stockSource === 'warehouse') {
+        const currentWarehouseQty = Number(pData.warehouseQty) || 0;
+        if (currentWarehouseQty < cartItem.quantity) {
+          throw new Error(
+            `الكمية المتوفرة في المخزن من "${cartItem.name}" هي ${currentWarehouseQty} فقط (مطلوب ${cartItem.quantity})`
+          );
+        }
+      } else {
+        const currentStoreQty = Number(pData.storeQty) || 0;
+        if (currentStoreQty < cartItem.quantity) {
+          throw new Error(
+            `الكمية المتوفرة في المحل من "${cartItem.name}" هي ${currentStoreQty} فقط (مطلوب ${cartItem.quantity})`
+          );
+        }
+      }
+
+      items.push({
+        productId: cartItem.productId,
+        sku: cartItem.sku,
+        name: cartItem.name,
+        quantity: cartItem.quantity,
+        unitPrice: cartItem.unitPrice,
+        wholesalePrice: cartItem.wholesalePrice || 0,
+        sellMode: cartItem.sellMode || 'unit',
+        lineTotal: cartItem.quantity * cartItem.unitPrice,
+        isService: false,
+      });
+    }
+
+    const summary = calculateOrderSummary(cartItems, discount, taxRate);
+
+    // 3) توليد رقم الفاتورة التسلسلي
+    const nextInvoiceNumber = counterSnap.exists()
+      ? counterSnap.data().next
+      : STARTING_INVOICE_NUMBER;
+
+    // 4) تنفيذ كل الكتابات: إنقاص الكميات + تحديث العداد + إنشاء الفاتورة
+    if (stockSource === 'custody' && custodyRef) {
+      const cleanedCustody = custodyItems.filter(i => Number(i.quantity) > 0);
+      const totalCost = cleanedCustody.reduce((s, i) => s + (Number(i.costPrice) || 0) * Number(i.quantity), 0);
+      const totalRetail = cleanedCustody.reduce((s, i) => s + (Number(i.retailPrice) || 0) * Number(i.quantity), 0);
+      transaction.set(custodyRef, {
+        items: cleanedCustody,
+        totalCost,
+        totalRetail,
+        totalItemsCount: cleanedCustody.reduce((s, i) => s + Number(i.quantity), 0),
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+
+      // Log to custody_logs
+      const cLogRef = doc(collection(db, 'custody_logs'));
+      transaction.set(cLogRef, {
+        type: 'sale_deduct',
+        technicianId,
+        technicianName,
+        invoiceNumber: nextInvoiceNumber,
+        customerName: customerName || 'زبون نقدي',
+        items: items.map(i => ({ productId: i.productId, name: i.name, quantity: i.quantity })),
+        totalQuantity: items.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
+        notes: `صرف بيع مباشر - فاتورة رقم: ${nextInvoiceNumber}`,
+        performedBy: cashierEmail,
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      for (const cartItem of cartItems) {
+        if (cartItem.isService) continue;
+        const snap = productSnapsMap[cartItem.productId];
+        const ref = productRefsMap[cartItem.productId];
+        if (stockSource === 'warehouse') {
+          const currentQty = Number(snap.data().warehouseQty) || 0;
+          transaction.update(ref, { warehouseQty: currentQty - cartItem.quantity });
+        } else {
+          const currentQty = Number(snap.data().storeQty) || 0;
+          transaction.update(ref, { storeQty: currentQty - cartItem.quantity });
+        }
+      }
+    }
+
+    transaction.set(counterRef, { next: nextInvoiceNumber + 1 }, { merge: true });
+    transaction.set(salesRef, {
+      invoiceNumber: nextInvoiceNumber,
+      status: 'confirmed',
+      items,
+      subtotal: summary.subtotal,
+      discount: summary.discount,
+      taxRate: summary.taxRate,
+      total: summary.total,
+      customerId,
+      customerName: customerName || null,
+      phone1: phone1 || '',
+      phone2: phone2 || '',
+      invoiceType,
+      paymentMethod: orderOptions?.paymentMethod || (invoiceType === 'mastercard' ? 'mastercard' : (invoiceType === 'debt' ? 'debt' : 'cash')),
+      stockSource,
+      technicianId: technicianId || null,
+      technicianName: technicianName || null,
+      cashierEmail,
+      createdAt: serverTimestamp(),
+      confirmedAt: serverTimestamp(),
+    });
+
+    return {
+      invoiceNumber: nextInvoiceNumber,
+      status: 'confirmed',
+      items,
+      subtotal: summary.subtotal,
+      discount: summary.discount,
+      taxRate: summary.taxRate,
+      total: summary.total,
+      customerName: customerName || null,
+      phone1: phone1 || '',
+      phone2: phone2 || '',
+      invoiceType,
+      stockSource,
+      technicianId,
+      technicianName,
+      cashierEmail,
+      createdAt: new Date(),
+    };
+  });
+
+  return result;
+}
+
+/**
+ * ==========================================================
+ * الفواتير المؤقتة (Draft) — حفظ، تعديل، حذف، وتأكيد لاحقاً
+ * ==========================================================
+ * الفاتورة المؤقتة لا تُنقص أي كمية من المخزون ولا تأخذ رقم فاتورة
+ * رسمي — هذا يصير فقط عند "التأكيد". فتقدر تسوي، تعدّل، أو تحذف
+ * فواتير مؤقتة براحتك بدون أي أثر على المخزون الفعلي.
+ */
+
+export function buildDraftItems(cartItems) {
+  return cartItems.map((item) => ({
+    productId: item.productId,
+    sku: item.sku,
+    name: item.name,
+    quantity: item.quantity,
+    unitPrice: Number(item.unitPrice) || 0,
+    originalPrice: item.originalPrice || item.unitPrice,
+    wholesalePrice: Number(item.wholesalePrice) || 0,
+    sellMode: item.sellMode || 'unit',
+    lineTotal: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
+    isService: item.isService || false,
+  }));
+}
+
+/** ينشئ فاتورة معلقة جديدة ويحجز المخزون فوراً */
+export async function createDraftSale(cartItems, cashierEmail, orderOptions = {}) {
+  if (!cartItems || cartItems.length === 0) {
+    throw new Error('السلة فاضية');
+  }
+  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '' } = orderOptions;
+  const items = buildDraftItems(cartItems);
+  const summary = calculateOrderSummary(cartItems, discount, taxRate);
+
+  const draftRef = doc(collection(db, SALES_COLLECTION));
+
+  await runTransaction(db, async (transaction) => {
+    const productRefsMap = {};
+    for (const item of items) {
+      if (!item.isService) productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+    }
+    
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);
+    }

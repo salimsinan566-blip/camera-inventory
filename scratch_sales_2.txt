@@ -1,0 +1,300 @@
+
+    // التحقق من الكمية قبل الحجز
+    for (const item of items) {
+      if (item.isService) continue;
+      const snap = productSnapsMap[item.productId];
+      if (!snap || !snap.exists()) throw new Error(`المنتج "${item.name}" غير موجود`);
+      const currentStoreQty = Number(snap.data().storeQty) || 0;
+      if (currentStoreQty < item.quantity) {
+        throw new Error(`الكمية المتوفرة من "${item.name}" هي ${currentStoreQty} فقط (مطلوب ${item.quantity})`);
+      }
+    }
+
+    // الخصم من المتوفر والإضافة للمعلق
+    for (const item of items) {
+      if (item.isService) continue;
+      const snap = productSnapsMap[item.productId];
+      const currentStoreQty = Number(snap.data().storeQty) || 0;
+      const currentPendingQty = Number(snap.data().pendingQty) || 0;
+      transaction.update(productRefsMap[item.productId], {
+        storeQty: currentStoreQty - item.quantity,
+        pendingQty: currentPendingQty + item.quantity,
+      });
+    }
+
+    const payload = {
+      status: 'suspended',
+      items,
+      subtotal: summary.subtotal,
+      discount: summary.discount,
+      taxRate: summary.taxRate,
+      total: summary.total,
+      customerName: customerName || null,
+      phone1,
+      phone2,
+      invoiceType,
+      cashierEmail,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    transaction.set(draftRef, payload);
+  });
+
+  return draftRef.id;
+}
+
+/** يحدّث فاتورة معلقة (يُرجع الكميات القديمة ويحجز الكميات الجديدة) */
+export async function updateDraftSale(draftId, cartItems, orderOptions = {}) {
+  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '' } = orderOptions;
+  const newItems = buildDraftItems(cartItems);
+  const summary = calculateOrderSummary(cartItems, discount, taxRate);
+  const draftRef = doc(db, SALES_COLLECTION, draftId);
+
+  await runTransaction(db, async (transaction) => {
+    const draftSnap = await transaction.get(draftRef);
+    if (!draftSnap.exists()) throw new Error('الفاتورة غير موجودة');
+    const oldData = draftSnap.data();
+    const oldItems = oldData.items || [];
+
+    // جمع كافة المنتجات (القديمة والجديدة) لقرائتها
+    const allProductIds = new Set([
+      ...oldItems.map(i => i.productId),
+      ...newItems.map(i => i.productId)
+    ]);
+
+    const productRefsMap = {};
+    for (const id of allProductIds) {
+      if (id) productRefsMap[id] = doc(db, PRODUCTS_COLLECTION, id);
+    }
+
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);
+    }
+
+    // 1) إرجاع الكميات القديمة مؤقتاً لحساب الميزانية
+    const tempStoreQty = {};
+    const tempPendingQty = {};
+
+    for (const [id, snap] of Object.entries(productSnapsMap)) {
+      if (snap && snap.exists()) {
+        tempStoreQty[id] = Number(snap.data().storeQty) || 0;
+        tempPendingQty[id] = Number(snap.data().pendingQty) || 0;
+      }
+    }
+
+    // إذا كانت الفاتورة السابقة معلقة، نعيد كمياتها للمتغيرات المؤقتة
+    if (oldData.status === 'suspended') {
+      for (const item of oldItems) {
+        if (item.isService || tempStoreQty[item.productId] === undefined) continue;
+        tempStoreQty[item.productId] += item.quantity;
+        tempPendingQty[item.productId] = Math.max(0, tempPendingQty[item.productId] - item.quantity);
+      }
+    }
+
+    // 2) التحقق من توفر الكميات الجديدة بعد الإرجاع
+    for (const item of newItems) {
+      if (item.isService) continue;
+      const available = tempStoreQty[item.productId] || 0;
+      if (available < item.quantity) {
+        throw new Error(`الكمية المتوفرة من "${item.name}" هي ${available} فقط (مطلوب ${item.quantity})`);
+      }
+    }
+
+    // 3) تطبيق الكميات الجديدة
+    for (const item of newItems) {
+      if (item.isService) continue;
+      tempStoreQty[item.productId] -= item.quantity;
+      tempPendingQty[item.productId] += item.quantity;
+    }
+
+    // 4) حفظ التعديلات في قاعدة البيانات
+    for (const id of allProductIds) {
+      if (!productRefsMap[id] || !productSnapsMap[id]?.exists()) continue;
+      transaction.update(productRefsMap[id], {
+        storeQty: tempStoreQty[id],
+        pendingQty: tempPendingQty[id]
+      });
+    }
+
+    transaction.update(draftRef, {
+      status: 'suspended',
+      items: newItems,
+      subtotal: summary.subtotal,
+      discount: summary.discount,
+      taxRate: summary.taxRate,
+      total: summary.total,
+      customerName: customerName || null,
+      phone1,
+      phone2,
+      invoiceType,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+/** يحذف فاتورة (مؤقتة أو معلقة). إذا كانت معلقة، يُرجع المخزون المحجوز. */
+export async function deleteDraftSale(draftId) {
+  const draftRef = doc(db, SALES_COLLECTION, draftId);
+  const draftSnap = await getDoc(draftRef);
+  if (!draftSnap.exists()) return;
+  const draftData = draftSnap.data();
+
+  if (draftData.status === 'suspended') {
+    // إرجاع الكميات المحجوزة
+    await runTransaction(db, async (transaction) => {
+      const items = draftData.items || [];
+      const productRefsMap = {};
+      for (const item of items) {
+        if (!item.isService) productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+      }
+      
+      const productSnapsMap = {};
+      for (const [id, ref] of Object.entries(productRefsMap)) {
+        productSnapsMap[id] = await transaction.get(ref);
+      }
+
+      for (const item of items) {
+        if (item.isService) continue;
+        const snap = productSnapsMap[item.productId];
+        if (snap && snap.exists()) {
+          const currentStoreQty = Number(snap.data().storeQty) || 0;
+          const currentPendingQty = Number(snap.data().pendingQty) || 0;
+          transaction.update(productRefsMap[item.productId], {
+            storeQty: currentStoreQty + item.quantity,
+            pendingQty: Math.max(0, currentPendingQty - item.quantity),
+          });
+        }
+      }
+      transaction.delete(draftRef);
+    });
+  } else {
+    // فاتورة مؤقتة عادية لم تحجز أي مخزون
+    await deleteDoc(draftRef);
+  }
+}
+
+/** يحوّل الفاتورة المؤقتة إلى معلقة (ويحجز المخزون) */
+export async function suspendSale(draftId) {
+  const draftRef = doc(db, SALES_COLLECTION, draftId);
+  await runTransaction(db, async (transaction) => {
+    const draftSnap = await transaction.get(draftRef);
+    if (!draftSnap.exists()) throw new Error('الفاتورة غير موجودة');
+    const draftData = draftSnap.data();
+    
+    if (draftData.status === 'suspended') return; // معلقة مسبقاً
+    
+    const items = draftData.items || [];
+    const productRefsMap = {};
+    for (const item of items) {
+      if (!item.isService) productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+    }
+    
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);
+    }
+
+    // التحقق من الكميات قبل الخصم
+    for (const item of items) {
+      if (item.isService) continue;
+      const snap = productSnapsMap[item.productId];
+      if (!snap || !snap.exists()) throw new Error(`المنتج "${item.name}" غير موجود`);
+      const currentStoreQty = Number(snap.data().storeQty) || 0;
+      if (currentStoreQty < item.quantity) {
+        throw new Error(`الكمية المتوفرة من "${item.name}" هي ${currentStoreQty} فقط (مطلوب ${item.quantity})`);
+      }
+    }
+
+    // التنفيذ الفعلي: خصم من المتوفر وزيادة في المعلق
+    for (const item of items) {
+      if (item.isService) continue;
+      const snap = productSnapsMap[item.productId];
+      const currentStoreQty = Number(snap.data().storeQty) || 0;
+      const currentPendingQty = Number(snap.data().pendingQty) || 0;
+      transaction.update(productRefsMap[item.productId], {
+        storeQty: currentStoreQty - item.quantity,
+        pendingQty: currentPendingQty + item.quantity,
+      });
+    }
+    
+    transaction.update(draftRef, { status: 'suspended', updatedAt: serverTimestamp() });
+  });
+}
+
+/** يُلغي تعليق الفاتورة ويعيدها كمؤقتة (يحرر المخزون المحجوز) */
+export async function unsuspendSale(draftId) {
+  const draftRef = doc(db, SALES_COLLECTION, draftId);
+  await runTransaction(db, async (transaction) => {
+    const draftSnap = await transaction.get(draftRef);
+    if (!draftSnap.exists()) throw new Error('الفاتورة غير موجودة');
+    const draftData = draftSnap.data();
+    
+    if (draftData.status !== 'suspended') return; // ليست معلقة
+    
+    const items = draftData.items || [];
+    const productRefsMap = {};
+    for (const item of items) {
+      if (!item.isService) productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+    }
+    
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);
+    }
+
+    // التنفيذ الفعلي: إرجاع للمتوفر وخصم من المعلق
+    for (const item of items) {
+      if (item.isService) continue;
+      const snap = productSnapsMap[item.productId];
+      if (snap && snap.exists()) {
+        const currentStoreQty = Number(snap.data().storeQty) || 0;
+        const currentPendingQty = Number(snap.data().pendingQty) || 0;
+        transaction.update(productRefsMap[item.productId], {
+          storeQty: currentStoreQty + item.quantity,
+          pendingQty: Math.max(0, currentPendingQty - item.quantity),
+        });
+      }
+    }
+    
+    transaction.update(draftRef, { status: 'draft', updatedAt: serverTimestamp() });
+  });
+}
+
+/**
+ * يؤكّد فاتورة مؤقتة: نفس منطق الاستقرار بـ checkoutSale — يتحقق من
+ * توفر الكمية لكل صنف، ينقصها، يولّد رقم فاتورة تسلسلي، ويحوّل حالة
+ * نفس المستند من "draft" إلى "confirmed" (بدون إنشاء مستند جديد).
+ */
+export async function confirmDraftSale(draftId, cashierEmail, invoiceType = null) {
+  const counterRef = doc(db, ...SALES_COUNTER_PATH);
+  const draftRef = doc(db, SALES_COLLECTION, draftId);
+
+  // نقرأ بيانات المسودة أولاً (خارج الـ Transaction) لمعرفة اسم العميل المطلوب حلّه
+  const draftPreviewSnap = await getDoc(draftRef);
+  const previewData = draftPreviewSnap.data();
+  const customerId = previewData?.customerName
+    ? await findOrCreateCustomer(previewData.customerName, previewData.phone1 || '', previewData.phone2 || '')
+    : null;
+
+  const result = await runTransaction(db, async (transaction) => {
+    const draftSnap = await transaction.get(draftRef);
+    if (!draftSnap.exists()) {
+      throw new Error('الفاتورة المؤقتة لم تعد موجودة');
+    }
+    const draftData = draftSnap.data();
+    const items = draftData.items || [];
+    if (items.length === 0) {
+      throw new Error('الفاتورة فاضية');
+    }
+
+    const productRefsMap = {};
+    for (const item of items) {
+      if (!item.isService) {
+        productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
+      }
+    }
+    
+    const productSnapsMap = {};
+    for (const [id, ref] of Object.entries(productRefsMap)) {
+      productSnapsMap[id] = await transaction.get(ref);

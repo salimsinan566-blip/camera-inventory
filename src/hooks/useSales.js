@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 /** Hook يشترك بشكل حي بسجل المبيعات المؤكدة فقط (الأحدث أولاً) — الفواتير المؤقتة مستبعدة */
@@ -12,7 +12,8 @@ export function useSales() {
     const q = query(
       collection(db, 'sales'),
       where('status', '==', 'confirmed'),
-      orderBy('invoiceNumber', 'desc')
+      orderBy('invoiceNumber', 'desc'),
+      limit(100)
     );
     const unsubscribe = onSnapshot(
       q,

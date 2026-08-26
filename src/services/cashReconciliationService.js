@@ -5,6 +5,7 @@ import {
   addDoc,
   query,
   orderBy,
+  limit,
   onSnapshot,
   getDoc
 } from 'firebase/firestore';
@@ -74,7 +75,8 @@ export async function saveCashReconciliation({
 export function subscribeToCashReconciliations(callback) {
   const q = query(
     collection(db, RECONCILIATIONS_COLLECTION),
-    orderBy('createdAt', 'desc')
+    orderBy('createdAt', 'desc'),
+    limit(50)
   );
   return onSnapshot(
     q,
