@@ -4,7 +4,7 @@ import { useSettings } from '../hooks/useSettings';
 import { useCustomers } from '../hooks/useCustomers';
 import { useSales } from '../hooks/useSales';
 import { useIncomes } from '../hooks/useIncomes';
-import { calculateNextCustomerReminderTimestamp } from '../services/debtReminderScheduler';
+import { calculateNextCustomerReminderTimestamp, processAutomatedDebtReminders } from '../services/debtReminderScheduler';
 import { sendWhatsAppMessageViaGateway, renderWhatsAppTemplate, DEFAULT_WHATSAPP_TEMPLATES } from '../services/whatsappService';
 import { updateCustomer } from '../services/customersService';
 
@@ -46,12 +46,15 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '');
   }
 
-  // Live timer tick every second for smooth countdown
+  // Live timer tick every second for smooth countdown and automated dispatch
   useEffect(() => {
     if (!isOpen) return;
-    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    const timer = setInterval(() => {
+      setTick(t => t + 1);
+      processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
+    }, 2000);
     return () => clearInterval(timer);
-  }, [isOpen]);
+  }, [isOpen, customers, sales, incomes, settings]);
 
   // Fetch server scheduled queue
   async function fetchQueue() {
