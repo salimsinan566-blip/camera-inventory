@@ -269,7 +269,9 @@ function loadScheduledJobs() {
   try {
     if (fs.existsSync(SCHEDULED_FILE)) {
       const data = fs.readFileSync(SCHEDULED_FILE, 'utf8');
-      return data ? JSON.parse(data) : [];
+      const raw = data ? JSON.parse(data) : [];
+      // تنظيف واستبعاد أي مهام ديون — تدار حصرياً عبر المحرك السحابي
+      return raw.filter(j => !j.isDebtReminder && !j.id?.startsWith('debt_sched_') && !j.id?.startsWith('job_debt_') && !j.id?.startsWith('debtor_'));
     }
   } catch (e) {
     console.warn('Failed to read scheduled jobs:', e.message);
@@ -356,12 +358,14 @@ async function generateNativePdfFromHtml(htmlContent) {
 
 // Cleanup old debt reminders from queue (delegated to Engine 2)
 (function cleanupOldDebtReminders() {
-  const jobs = loadScheduledJobs();
-  const filtered = jobs.filter(j => !j.isDebtReminder);
-  if (filtered.length !== jobs.length) {
+  try {
+    const jobs = loadScheduledJobs();
+    const filtered = jobs.filter(j => !j.isDebtReminder && !j.id?.startsWith('debt_sched_') && !j.id?.startsWith('job_debt_') && !j.id?.startsWith('debtor_'));
     saveScheduledJobs(filtered);
-    console.log(`🧹 [Cleanup] تم تنظيف ${jobs.length - filtered.length} مهام ديون قديمة من الطابور المحلي.`);
-  }
+    if (filtered.length !== jobs.length) {
+      console.log(`🧹 [Cleanup] تم تنظيف ${jobs.length - filtered.length} مهام ديون قديمة من الطابور المحلي نهائياً.`);
+    }
+  } catch (e) {}
 })();
 
 // Background scheduler interval runner (Single-instance mutex with in-flight lock)

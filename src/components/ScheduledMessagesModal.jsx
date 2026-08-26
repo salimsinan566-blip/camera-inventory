@@ -149,21 +149,27 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
 
   // Combined pending list deduplicated by Customer ID, Normalized Phone, and Normalized Name
   const allPending = useMemo(() => {
-    // Exclude stale server-side debt jobs — debt reminders are rendered purely from live upcomingDebtorReminders
-    const serverPending = jobs.filter(j => j.status === 'pending' && !j.isDebtReminder && !j.id?.startsWith('debt_sched_') && !j.id?.startsWith('job_debt_'));
+    // Exclude any stale server-side debt jobs — debt reminders are rendered purely from live upcomingDebtorReminders
+    const serverPending = jobs.filter(j => 
+      j.status === 'pending' && 
+      !j.isDebtReminder && 
+      !j.id?.startsWith('debt_sched_') && 
+      !j.id?.startsWith('job_debt_') &&
+      !j.id?.startsWith('debtor_')
+    );
     const seenCustIds = new Set();
     const seenPhones = new Set();
     const seenNames = new Set();
     const result = [];
 
     const isDuplicateOrInvalid = (item) => {
-      const cId = item.customerId || (item.id?.startsWith('job_debt_') ? item.id.replace('job_debt_', '') : null) || (item.id?.startsWith('debt_sched_') ? item.id.replace('debt_sched_', '') : null);
+      const cId = item.customerId || (item.id?.startsWith('job_debt_') ? item.id.replace('job_debt_', '') : null) || (item.id?.startsWith('debt_sched_') ? item.id.replace('debt_sched_', '') : null) || (item.id?.startsWith('debtor_') ? item.id.replace('debtor_', '') : null);
       const phoneDigits = normalizePhoneDigits(item.cleanPhone || item.phone || item.phone1);
       const nameNorm = normalizeArabic(item.customerName || item.name);
       const debtAmt = Number(item.totalDebt ?? (item.customer?.totalDebt || 0));
 
-      // 1. If it's a debt reminder and debt is 0 or negative -> DO NOT SHOW
-      if (item.isDebtReminder && debtAmt <= 0 && item.totalDebt !== undefined) {
+      // 1. If it's a debt reminder (or has debt property) and debt <= 0 -> NEVER SHOW
+      if ((item.isDebtReminder || item.id?.startsWith('debt_') || item.id?.startsWith('job_debt_') || item.totalDebt !== undefined) && debtAmt <= 0) {
         return true;
       }
 
