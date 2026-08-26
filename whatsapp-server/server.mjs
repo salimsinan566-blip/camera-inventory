@@ -478,9 +478,18 @@ setInterval(async () => {
       for (const item of data.results) {
         if (!item.phone || !item.message) continue;
         
+        let cleanPhone = String(item.phone || '').replace(/[^\d]/g, '').trim();
+        if (cleanPhone.startsWith('07') && cleanPhone.length === 11) {
+          cleanPhone = '964' + cleanPhone.substring(1);
+        } else if (cleanPhone.startsWith('7') && cleanPhone.length === 10) {
+          cleanPhone = '964' + cleanPhone;
+        } else if (cleanPhone.startsWith('00964')) {
+          cleanPhone = cleanPhone.substring(2);
+        }
+
         // حماية مزدوجة: بالمعرف + برقم الهاتف لمنع إرسال أكثر من رسالة لنفس الشخص
-        const dedupeKey = item.id || item.phone;
-        const phoneKey = `phone_${String(item.phone).replace(/[^\d]/g, '')}`;
+        const dedupeKey = item.id || cleanPhone;
+        const phoneKey = `phone_${cleanPhone}`;
         
         const lastSentById = recentlySentCustomerMap.get(dedupeKey);
         const lastSentByPhone = recentlySentCustomerMap.get(phoneKey);
@@ -492,14 +501,14 @@ setInterval(async () => {
           continue;
         }
 
-        const jid = `${item.phone}@s.whatsapp.net`;
+        const jid = `${cleanPhone}@s.whatsapp.net`;
         try {
           const debtResult = await sock.sendMessage(jid, { text: item.message });
           storeOutgoingMessage(debtResult, { text: item.message });
           // تسجيل الإرسال بالمعرف وبالهاتف معاً
           recentlySentCustomerMap.set(dedupeKey, Date.now());
           recentlySentCustomerMap.set(phoneKey, Date.now());
-          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}» على الهاتف ${item.phone}`);
+          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}» على الهاتف +${cleanPhone}`);
           if (item.id) sentIds.push(item.id);
         } catch (err) {
           console.error(`❌ [AWS 24/7 Cron] فشل إرسال التذكير للعميل «${item.name}»:`, err.message);

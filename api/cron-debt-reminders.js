@@ -172,8 +172,16 @@ async function executeCronDebtReminders(req, res) {
 
     if (totalDebt <= 0) return; // لا يوجد عليه دين
 
-    const phone = c.phone1 || c.phone;
-    if (!phone) return; // لا يوجد هاتف
+    let cleanPhone = String(c.phone1 || c.phone || '').replace(/[^\d]/g, '').trim();
+    if (cleanPhone.startsWith('07') && cleanPhone.length === 11) {
+      cleanPhone = '964' + cleanPhone.substring(1);
+    } else if (cleanPhone.startsWith('7') && cleanPhone.length === 10) {
+      cleanPhone = '964' + cleanPhone;
+    } else if (cleanPhone.startsWith('00964')) {
+      cleanPhone = cleanPhone.substring(2);
+    }
+    if (!cleanPhone) return; // لا يوجد هاتف صحيح
+    const phone = cleanPhone;
 
     const schedule = c.reminderSchedule || 'disabled';
     if (!schedule || schedule === 'disabled') return; // معطل تماماً
