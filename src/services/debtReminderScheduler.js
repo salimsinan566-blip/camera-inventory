@@ -194,21 +194,26 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
   const targetHour = parseInt(targetHourStr || '20', 10);
   const targetMinute = parseInt(targetMinStr || '0', 10);
 
-  // Check if already sent on the same calendar day
-  let alreadySentToday = false;
+  const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
+
+  // فحص ما إذا كان قد تم الإرسال بالفعل لهذا الموعد اليوم (عند أو بعد الوقت المحدد)
+  let alreadySentForTodaySlot = false;
   if (customer?.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    alreadySentToday = 
+    const isSameCalendarDay = 
       lastSentDate.getFullYear() === now.getFullYear() &&
       lastSentDate.getMonth() === now.getMonth() &&
       lastSentDate.getDate() === now.getDate();
+    
+    // يعتبر مرسلاً لموعد اليوم فقط إذا كان وقت الإرسال عند أو بعد موعد التذكير المحدد اليوم
+    if (isSameCalendarDay && lastSentDate.getTime() >= candidate.getTime() - 60000) {
+      alreadySentForTodaySlot = true;
+    }
   }
-
-  const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
 
   // 1. Daily / Custom 1 Days
   if (schedCode === 'custom_1_days' || schedCode === 'daily' || schedCode.startsWith('custom_1_')) {
-    if (!alreadySentToday && candidate.getTime() > now.getTime()) {
+    if (!alreadySentForTodaySlot && candidate.getTime() > now.getTime()) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + 1);
@@ -220,21 +225,23 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
   if (DAYS.includes(schedCode) || schedCode === 'default') {
     const targetDayIndex = DAYS.indexOf(schedCode === 'default' ? (settings?.whatsappDefaultDay || 'thursday') : schedCode);
     let daysAhead = (targetDayIndex - now.getDay() + 7) % 7;
-    if (alreadySentToday || (daysAhead === 0 && candidate.getTime() <= now.getTime())) {
-      daysAhead = daysAhead === 0 ? 7 : daysAhead;
-      if (alreadySentToday && daysAhead === 0) daysAhead = 7;
+    if (daysAhead === 0) {
+      // نفس اليوم: إذا تم الإرسال لموعد اليوم بالفعل أو إذا كان الوقت الحالي قد تجاوز وقت الموعد
+      if (alreadySentForTodaySlot || candidate.getTime() <= now.getTime()) {
+        daysAhead = 7;
+      }
     }
     candidate.setDate(now.getDate() + daysAhead);
     return candidate.getTime();
   }
 
-  // 3. Monthly (e.g. monthly_8)
+  // 3. Monthly (e.g. monthly_26)
   if (schedCode.startsWith('monthly_')) {
     const targetDay = parseInt(schedCode.replace('monthly_', ''), 10) || 1;
     let targetYear = now.getFullYear();
     let targetMonth = now.getMonth();
 
-    if (alreadySentToday || (now.getDate() > targetDay) || (now.getDate() === targetDay && (now.getHours() > targetHour || (now.getHours() === targetHour && now.getMinutes() >= targetMinute)))) {
+    if (now.getDate() > targetDay || (now.getDate() === targetDay && (alreadySentForTodaySlot || candidate.getTime() <= now.getTime()))) {
       targetMonth += 1;
       if (targetMonth > 11) {
         targetMonth = 0;
@@ -259,7 +266,7 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
         return nextDate.getTime();
       }
     }
-    if (!alreadySentToday && candidate.getTime() > now.getTime()) {
+    if (!alreadySentForTodaySlot && candidate.getTime() > now.getTime()) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + n);

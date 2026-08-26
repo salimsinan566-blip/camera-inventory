@@ -268,23 +268,30 @@ async function executeCronDebtReminders(req, res) {
       }
     }
 
-    // فحص عدم تكرار الإرسال في نفس اليوم للأنماط اليومية/الأسبوعية والشهرية
-    let lastSentDateStr = null;
+    // فحص عدم تكرار الإرسال لموعد اليوم المحدد للأنماط اليومية/الأسبوعية والشهرية
+    let alreadySentForTodaySlot = false;
     let diffSecondsSinceLastSent = Infinity;
     if (c.lastDebtReminderSent) {
       try {
         const lastSentDateObj = new Date(c.lastDebtReminderSent);
-        lastSentDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDateObj);
+        const lastSentDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDateObj);
         diffSecondsSinceLastSent = (now.getTime() - lastSentDateObj.getTime()) / 1000;
+        
+        const isSameCalendarDay = lastSentDateStr === todayStr;
+        const targetSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
+        
+        // يعتبر مرسلاً لموعد اليوم إذا كان تاريخ الإرسال عند أو بعد موعد التذكير المحدد اليوم (أو تم الإرسال مؤخراً خلال آخر 30 دقيقة)
+        if (isSameCalendarDay && (lastSentDateObj.getTime() >= targetSlotTime.getTime() - 60000 || diffSecondsSinceLastSent < 30 * 60)) {
+          alreadySentForTodaySlot = true;
+        }
       } catch (e) {
-        lastSentDateStr = c.lastDebtReminderSent.slice(0, 10);
+        alreadySentForTodaySlot = c.lastDebtReminderSent.slice(0, 10) === todayStr;
       }
     }
 
-    // منع تكرار الإرسال إذا تم إرساله اليوم (أو خلال آخر 30 ثانية في حالة الـ force لمنع سباق التكرار)
-    const isAlreadySentToday = lastSentDateStr === todayStr;
+    // منع تكرار الإرسال إذا تم إرساله لهذا الموعد اليوم (أو خلال آخر 30 ثانية في حالة الـ force لمنع سباق التكرار)
     const isRecentForceDuplicate = force && diffSecondsSinceLastSent < 30;
-    const canDispatch = isDueToday && !isRecentForceDuplicate && (isMinutely || isHourly || force || !isAlreadySentToday);
+    const canDispatch = isDueToday && !isRecentForceDuplicate && (isMinutely || isHourly || force || !alreadySentForTodaySlot);
 
     if (canDispatch) {
       targetCustomers.push({
