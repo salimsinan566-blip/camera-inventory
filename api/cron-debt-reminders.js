@@ -280,8 +280,8 @@ async function executeCronDebtReminders(req, res) {
         const isSameCalendarDay = lastSentDateStr === todayStr;
         const targetSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
         
-        // يعتبر مرسلاً لموعد اليوم إذا كان تاريخ الإرسال عند أو بعد موعد التذكير المحدد اليوم (أو تم الإرسال مؤخراً خلال آخر 30 دقيقة)
-        if (isSameCalendarDay && (lastSentDateObj.getTime() >= targetSlotTime.getTime() - 60000 || diffSecondsSinceLastSent < 30 * 60)) {
+        // يعتبر مرسلاً لموعد اليوم إذا كان تاريخ الإرسال عند أو بعد موعد التذكير المحدد اليوم
+        if (isSameCalendarDay && lastSentDateObj.getTime() >= targetSlotTime.getTime() - 60000) {
           alreadySentForTodaySlot = true;
         }
       } catch (e) {

@@ -486,9 +486,9 @@ setInterval(async () => {
         const lastSentByPhone = recentlySentCustomerMap.get(phoneKey);
         const lastSentLocal = lastSentById || lastSentByPhone;
         
-        // منع تكرار الإرسال لنفس العميل أو نفس الرقم خلال 55 دقيقة
-        if (lastSentLocal && (nowTs - lastSentLocal < 55 * 60 * 1000)) {
-          console.log(`⏭️ [AWS 24/7 Cron] تخطي التذكير للعميل «${item.name}» لأنه أُرسل مؤخراً (${Math.round((nowTs - lastSentLocal) / 1000)} ثانية مضت)`);
+        // منع تكرار الإرسال الفوري لنفس العميل أو نفس الرقم خلال دقيقتين لمنع سباق الإرسال
+        if (lastSentLocal && (nowTs - lastSentLocal < 2 * 60 * 1000)) {
+          console.log(`⏭️ [AWS 24/7 Cron] تخطي التذكير للعميل «${item.name}» لأنه أُرسل قبل قليل (${Math.round((nowTs - lastSentLocal) / 1000)} ثانية مضت)`);
           continue;
         }
 
