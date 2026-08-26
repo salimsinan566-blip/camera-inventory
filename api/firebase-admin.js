@@ -7,7 +7,8 @@ import {
   doc as clientDoc, 
   getDoc as clientGetDoc, 
   getDocs as clientGetDocs, 
-  updateDoc as clientUpdateDoc 
+  updateDoc as clientUpdateDoc,
+  setDoc as clientSetDoc
 } from 'firebase/firestore';
 
 const DEFAULT_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'safe-zone-inv';
@@ -65,6 +66,9 @@ async function getClientDb() {
 
 export const db = {
   collection: (colName) => {
+    if (global._testDb) {
+      return global._testDb.collection(colName);
+    }
     if (_adminDb) {
       try {
         return _adminDb.collection(colName);
@@ -104,6 +108,11 @@ export const db = {
             const cDb = await getClientDb();
             const dRef = clientDoc(cDb, colName, docId);
             return clientUpdateDoc(dRef, data);
+          },
+          set: async (data, options = {}) => {
+            const cDb = await getClientDb();
+            const dRef = clientDoc(cDb, colName, docId);
+            return clientSetDoc(dRef, data, options);
           }
         };
       }

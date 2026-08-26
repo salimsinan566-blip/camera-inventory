@@ -259,19 +259,36 @@ app.post('/messages/chat', async (req, res) => {
 
 const SCHEDULED_FILE = path.join(__dirname, 'scheduled_messages.json');
 
+// In-flight locks to prevent concurrent executions of the same job or interval
+const inFlightJobIds = new Set();
+let isSchedulerRunning = false;
+let isAwsCronRunning = false;
+const recentlySentCustomerMap = new Map(); // customerId/phone -> timestamp
+
 function loadScheduledJobs() {
   try {
     if (fs.existsSync(SCHEDULED_FILE)) {
-      return JSON.parse(fs.readFileSync(SCHEDULED_FILE, 'utf8'));
+      const data = fs.readFileSync(SCHEDULED_FILE, 'utf8');
+      return data ? JSON.parse(data) : [];
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to read scheduled jobs:', e.message);
+  }
   return [];
 }
 
 function saveScheduledJobs(jobs) {
   try {
-    fs.writeFileSync(SCHEDULED_FILE, JSON.stringify(jobs, null, 2), 'utf8');
-  } catch (e) {}
+    const tmpFile = `${SCHEDULED_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(jobs || [], null, 2), 'utf8');
+    fs.renameSync(tmpFile, SCHEDULED_FILE);
+  } catch (e) {
+    try {
+      fs.writeFileSync(SCHEDULED_FILE, JSON.stringify(jobs || [], null, 2), 'utf8');
+    } catch (writeErr) {
+      console.error('Failed to save scheduled jobs:', writeErr.message);
+    }
+  }
 }
 
 async function generateNativePdfFromHtml(htmlContent) {
@@ -347,64 +364,83 @@ async function generateNativePdfFromHtml(htmlContent) {
   }
 })();
 
-// Background scheduler interval runner
+// Background scheduler interval runner (Single-instance mutex with in-flight lock)
 setInterval(async () => {
-  if (!isConnected || !sock) return;
+  if (isSchedulerRunning || !isConnected || !sock) return;
+  isSchedulerRunning = true;
 
-  const jobs = loadScheduledJobs();
-  const now = Date.now();
-  let changed = false;
+  try {
+    const jobs = loadScheduledJobs();
+    const now = Date.now();
+    let changed = false;
 
-  for (const job of jobs) {
-    if (job.status === 'pending' && job.targetTimestamp <= now) {
-      job.status = 'processing';
-      changed = true;
-      saveScheduledJobs(jobs);
+    for (const job of jobs) {
+      if (job.status === 'pending' && job.targetTimestamp <= now && !inFlightJobIds.has(job.id)) {
+        inFlightJobIds.add(job.id);
+        job.status = 'processing';
+        changed = true;
+        saveScheduledJobs(jobs);
 
-      try {
-        let docBuffer = null;
-        if (job.htmlContent) {
-          docBuffer = await generateNativePdfFromHtml(job.htmlContent);
+        try {
+          let docBuffer = null;
+          if (job.htmlContent) {
+            docBuffer = await generateNativePdfFromHtml(job.htmlContent);
+          }
+          if (!docBuffer && (job.documentDataBase64 || job.document || job.file || job.pdf)) {
+            const rawData = job.documentDataBase64 || job.document || job.file || job.pdf;
+            const base64 = typeof rawData === 'string' && rawData.includes(',') ? rawData.split(',')[1] : rawData;
+            docBuffer = Buffer.from(base64, 'base64');
+          }
+
+          if (job.type === 'document') {
+            if (!docBuffer) {
+              throw new Error('تعذر توليد أو استخراج ملف الـ PDF للمهمة المجدولة');
+            }
+            const docContent = { document: docBuffer, mimetype: job.mimetype || 'application/pdf', fileName: job.filename || 'invoice.pdf', caption: job.caption || undefined };
+            const docResult = await sock.sendMessage(job.jid, docContent);
+            storeOutgoingMessage(docResult, docContent);
+            console.log(`⏰ [Scheduler] تم إرسال المستند المجدول بنجاح إلى: +${job.cleanPhone} (${job.filename})`);
+          } else if (job.type === 'chat' && job.body) {
+            const chatResult = await sock.sendMessage(job.jid, { text: job.body });
+            storeOutgoingMessage(chatResult, { text: job.body });
+            console.log(`⏰ [Scheduler] تم إرسال الرسالة المجدولة بنجاح إلى: +${job.cleanPhone}`);
+          }
+
+          if (job.isRecurring && job.schedule) {
+            const nextTarget = calculateNextScheduledTimestamp(job.schedule, job.timeStr || '20:00', new Date(), true);
+            const safeNextTarget = Math.max(nextTarget, Date.now() + 60 * 1000);
+            job.targetTimestamp = safeNextTarget;
+            job.targetTimeFormatted = new Date(safeNextTarget).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
+            job.status = 'pending';
+            job.lastSentAt = new Date().toISOString();
+            console.log(`🔁 [Scheduler] تم تجديد التذكير الدوري تلقائياً للموعد القادم: ${job.targetTimeFormatted}`);
+          } else {
+            job.status = 'completed';
+            job.sentAt = new Date().toISOString();
+          }
+        } catch (err) {
+          console.error(`❌ [Scheduler] فشل إرسال المهمة المجدولة (${job.id}):`, err);
+          job.status = 'failed';
+          job.error = err.message;
+        } finally {
+          inFlightJobIds.delete(job.id);
+          changed = true;
         }
-        if (!docBuffer && job.documentDataBase64) {
-          const base64 = job.documentDataBase64.includes(',') ? job.documentDataBase64.split(',')[1] : job.documentDataBase64;
-          docBuffer = Buffer.from(base64, 'base64');
-        }
-
-        if (job.type === 'document' && docBuffer) {
-          const docContent = { document: docBuffer, mimetype: job.mimetype || 'application/pdf', fileName: job.filename || 'invoice.pdf', caption: job.caption || undefined };
-          const docResult = await sock.sendMessage(job.jid, docContent);
-          storeOutgoingMessage(docResult, docContent);
-          console.log(`⏰ [Scheduler] تم إرسال المستند المجدول بنجاح إلى: +${job.cleanPhone} (${job.filename})`);
-        } else if (job.type === 'chat' && job.body) {
-          const chatResult = await sock.sendMessage(job.jid, { text: job.body });
-          storeOutgoingMessage(chatResult, { text: job.body });
-          console.log(`⏰ [Scheduler] تم إرسال الرسالة المجدولة بنجاح إلى: +${job.cleanPhone}`);
-        }
-
-        if (job.isRecurring && job.schedule) {
-          const nextTarget = calculateNextScheduledTimestamp(job.schedule, job.timeStr || '20:00', new Date(), true);
-          job.targetTimestamp = nextTarget;
-          job.targetTimeFormatted = new Date(nextTarget).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
-          job.status = 'pending';
-          job.lastSentAt = new Date().toISOString();
-          console.log(`🔁 [Scheduler] تم تجديد التذكير الدوري تلقائياً للموعد القادم: ${job.targetTimeFormatted}`);
-        } else {
-          job.status = 'completed';
-          job.sentAt = new Date().toISOString();
-        }
-      } catch (err) {
-        console.error(`❌ [Scheduler] فشل إرسال المهمة المجدولة (${job.id}):`, err);
-        job.status = 'failed';
-        job.error = err.message;
       }
     }
-  }
 
-  // Cleanup old records (keep pending & recurring jobs indefinitely)
-  const filtered = jobs.filter(j => j.status === 'pending' || j.isRecurring || (Date.now() - new Date(j.createdAt).getTime()) < 3600 * 1000);
-  if (filtered.length !== jobs.length || changed) {
-    saveScheduledJobs(filtered);
+    // Merge and cleanup old records (keep pending & recurring jobs indefinitely)
+    if (changed) {
+      const freshJobs = loadScheduledJobs();
+      const updatedMap = new Map(jobs.map(j => [j.id, j]));
+      const merged = freshJobs.map(j => updatedMap.get(j.id) || j);
+      const filtered = merged.filter(j => j.status === 'pending' || j.isRecurring || (Date.now() - new Date(j.createdAt || Date.now()).getTime()) < 3600 * 1000);
+      saveScheduledJobs(filtered);
+    }
+  } catch (loopErr) {
+    console.error('Error in scheduler loop:', loopErr);
+  } finally {
+    isSchedulerRunning = false;
   }
 }, 3000);
 
@@ -414,10 +450,12 @@ app.post('/scheduled/sync-debtors', (req, res) => {
   res.json({ success: true, count: 0, syncedDebtors: 0, message: 'Delegated to Vercel Engine' });
 });
 
-// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 1 minute)
+// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 1 minute with strict mutex and deduplication)
 setInterval(async () => {
+  if (isAwsCronRunning || !isConnected || !sock) return;
+  isAwsCronRunning = true;
+
   try {
-    if (!isConnected || !sock) return;
     const baseUrl = process.env.CRON_DEBT_URL || 'https://camera-inventory-1qfh.vercel.app/api/cron-debt-reminders';
     const cronUrl = `${baseUrl}?returnOnly=true`;
     
@@ -427,13 +465,24 @@ setInterval(async () => {
     if (data?.results && data.results.length > 0) {
       console.log(`⏰ [AWS 24/7 Cron] جلب ${data.results.length} تذكيرات مستحقة للإرسال...`);
       const sentIds = [];
+      const nowTs = Date.now();
       
       for (const item of data.results) {
         if (!item.phone || !item.message) continue;
+        
+        const dedupeKey = item.id || item.phone;
+        const lastSentLocal = recentlySentCustomerMap.get(dedupeKey);
+        // منع تكرار الإرسال لنفس العميل خلال دقيقتين على مستوى خادم الواتساب (حماية إضافية ضد التكرار السريع)
+        if (lastSentLocal && (nowTs - lastSentLocal < 2 * 60 * 1000)) {
+          console.log(`⏭️ [AWS 24/7 Cron] تخطي التذكير للعميل «${item.name}» لأنه أُرسل مؤخراً (${Math.round((nowTs - lastSentLocal) / 1000)} ثانية مضت)`);
+          continue;
+        }
+
         const jid = `${item.phone}@s.whatsapp.net`;
         try {
           const debtResult = await sock.sendMessage(jid, { text: item.message });
           storeOutgoingMessage(debtResult, { text: item.message });
+          recentlySentCustomerMap.set(dedupeKey, Date.now());
           console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}»`);
           if (item.id) sentIds.push(item.id);
         } catch (err) {
@@ -442,7 +491,7 @@ setInterval(async () => {
         await new Promise(r => setTimeout(r, 1200));
       }
       
-      // Mark as sent in Firebase to prevent duplicates
+      // Mark as sent in Firebase to confirm and prevent duplicates
       if (sentIds.length > 0) {
         try {
           await fetch(baseUrl, {
@@ -457,8 +506,17 @@ setInterval(async () => {
     } else if (data?.status === 'success' || data?.sentCount > 0) {
       console.log(`⏰ [AWS 24/7 Cron] حالة التذكيرات:`, data);
     }
+
+    // تنظيف الكاش المحلي للتذكيرات الأقدم من 30 دقيقة
+    for (const [key, timestamp] of recentlySentCustomerMap.entries()) {
+      if (Date.now() - timestamp > 30 * 60 * 1000) {
+        recentlySentCustomerMap.delete(key);
+      }
+    }
   } catch (e) {
     // Ignore network timeouts
+  } finally {
+    isAwsCronRunning = false;
   }
 }, 60 * 1000);
 
@@ -502,14 +560,38 @@ app.post('/scheduled/:id/send-now', async (req, res) => {
   const job = jobs.find(j => j.id === id);
   if (!job) return res.status(404).json({ error: 'المهمة غير موجودة في الطابور' });
 
+  if (inFlightJobIds.has(id) || job.status === 'processing') {
+    return res.status(409).json({ error: 'المهمة قيد الإرسال بالفعل حالياً' });
+  }
+
+  if (job.status === 'completed') {
+    return res.status(400).json({ error: 'تم إرسال المهمة مسبقاً' });
+  }
+
   if (!isConnected || !sock) {
     return res.status(503).json({ error: 'خادم الواتساب غير متصل حالياً بالهاتف' });
   }
 
+  inFlightJobIds.add(id);
+  job.status = 'processing';
+  saveScheduledJobs(jobs);
+
   try {
-    if (job.type === 'document' && job.document) {
-      const buffer = Buffer.from(job.document, 'base64');
-      const docContent = { document: buffer, mimetype: job.mimetype || 'application/pdf', fileName: job.filename || 'invoice.pdf', caption: job.caption || '' };
+    let docBuffer = null;
+    if (job.htmlContent) {
+      docBuffer = await generateNativePdfFromHtml(job.htmlContent);
+    }
+    if (!docBuffer && (job.documentDataBase64 || job.document || job.file || job.pdf)) {
+      const rawData = job.documentDataBase64 || job.document || job.file || job.pdf;
+      const base64 = typeof rawData === 'string' && rawData.includes(',') ? rawData.split(',')[1] : rawData;
+      docBuffer = Buffer.from(base64, 'base64');
+    }
+
+    if (job.type === 'document') {
+      if (!docBuffer) {
+        throw new Error('تعذر توليد أو استخراج ملف الـ PDF للمهمة المجدولة');
+      }
+      const docContent = { document: docBuffer, mimetype: job.mimetype || 'application/pdf', fileName: job.filename || 'invoice.pdf', caption: job.caption || '' };
       const docResult = await sock.sendMessage(job.jid, docContent);
       storeOutgoingMessage(docResult, docContent);
     } else if (job.type === 'chat' && job.body) {
@@ -517,15 +599,30 @@ app.post('/scheduled/:id/send-now', async (req, res) => {
       storeOutgoingMessage(chatResult, { text: job.body });
     }
 
-    job.status = 'completed';
-    job.sentAt = new Date().toISOString();
+    if (job.isRecurring && job.schedule) {
+      const nextTarget = calculateNextScheduledTimestamp(job.schedule, job.timeStr || '20:00', new Date(), true);
+      const safeNextTarget = Math.max(nextTarget, Date.now() + 60 * 1000);
+      job.targetTimestamp = safeNextTarget;
+      job.targetTimeFormatted = new Date(safeNextTarget).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
+      job.status = 'pending';
+      job.lastSentAt = new Date().toISOString();
+      console.log(`⚡🔁 [Scheduler] تم إرسال المهمة المجدولة فوراً وتجديد موعدها الدوري القادم: ${job.targetTimeFormatted}`);
+    } else {
+      job.status = 'completed';
+      job.sentAt = new Date().toISOString();
+    }
     saveScheduledJobs(jobs);
 
     console.log(`⚡ [Scheduler] تم إرسال المهمة المجدولة فوراً بطلب يدوي (${job.id}) إلى: +${job.cleanPhone}`);
     return res.json({ success: true, message: 'تم إرسال الرسالة فوراً بنجاح 🚀' });
   } catch (err) {
     console.error(`❌ [Scheduler] فشل إرسال المهمة يدوياً:`, err.message);
+    job.status = 'failed';
+    job.error = err.message;
+    saveScheduledJobs(jobs);
     return res.status(500).json({ error: err.message || 'فشل إرسال الرسالة' });
+  } finally {
+    inFlightJobIds.delete(id);
   }
 });
 
@@ -579,11 +676,22 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
   // 3. Monthly (e.g. monthly_8)
   if (schedCode.startsWith('monthly_')) {
     const targetDay = parseInt(schedCode.replace('monthly_', ''), 10) || 1;
-    candidate.setDate(targetDay);
-    if (isRenewal || candidate.getTime() <= now.getTime()) {
-      candidate.setMonth(candidate.getMonth() + 1);
+    let targetYear = now.getFullYear();
+    let targetMonth = now.getMonth();
+    
+    if (isRenewal || (now.getDate() > targetDay) || (now.getDate() === targetDay && (now.getHours() > targetH || (now.getHours() === targetH && now.getMinutes() >= targetM)))) {
+      targetMonth += 1;
+      if (targetMonth > 11) {
+        targetMonth = 0;
+        targetYear += 1;
+      }
     }
-    return candidate.getTime();
+    
+    // Clamp to valid max days in target month
+    const maxDaysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const safeDay = Math.min(targetDay, maxDaysInMonth);
+    const monthlyCandidate = new Date(targetYear, targetMonth, safeDay, targetH, targetM, 0, 0);
+    return monthlyCandidate.getTime();
   }
 
   // 4. Custom N days

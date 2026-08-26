@@ -1,9 +1,9 @@
-import { updateCustomer } from './customersService';
+import { updateCustomer } from './customersService.js';
 import { 
   renderWhatsAppTemplate, 
   DEFAULT_WHATSAPP_TEMPLATES, 
   sendWhatsAppMessageViaGateway 
-} from './whatsappService';
+} from './whatsappService.js';
 
 function normalizeArabic(text) {
   if (!text) return '';
@@ -125,8 +125,10 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
   }
 
   if (schedCode.startsWith('monthly_')) {
-    const targetDayOfMonth = parseInt(schedCode.replace('monthly_', ''), 10);
-    return currentDayOfMonth === targetDayOfMonth;
+    const targetDayOfMonth = parseInt(schedCode.replace('monthly_', ''), 10) || 1;
+    const maxDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const safeTargetDay = Math.min(targetDayOfMonth, maxDaysInMonth);
+    return currentDayOfMonth === safeTargetDay;
   }
 
   if (schedCode.startsWith('custom_')) {
@@ -137,7 +139,9 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     }
     if (!customer.lastDebtReminderSent) return true;
     const lastSent = new Date(customer.lastDebtReminderSent);
-    const diffDays = Math.floor((now.getTime() - lastSent.getTime()) / (1000 * 60 * 60 * 24));
+    const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dLast = new Date(lastSent.getFullYear(), lastSent.getMonth(), lastSent.getDate());
+    const diffDays = Math.round((dNow.getTime() - dLast.getTime()) / (1000 * 60 * 60 * 24));
     return diffDays >= intervalDays;
   }
 
@@ -227,11 +231,21 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
   // 3. Monthly (e.g. monthly_8)
   if (schedCode.startsWith('monthly_')) {
     const targetDay = parseInt(schedCode.replace('monthly_', ''), 10) || 1;
-    candidate.setDate(targetDay);
-    if (alreadySentToday || candidate.getTime() <= now.getTime()) {
-      candidate.setMonth(candidate.getMonth() + 1);
+    let targetYear = now.getFullYear();
+    let targetMonth = now.getMonth();
+
+    if (alreadySentToday || (now.getDate() > targetDay) || (now.getDate() === targetDay && (now.getHours() > targetHour || (now.getHours() === targetHour && now.getMinutes() >= targetMinute)))) {
+      targetMonth += 1;
+      if (targetMonth > 11) {
+        targetMonth = 0;
+        targetYear += 1;
+      }
     }
-    return candidate.getTime();
+
+    const maxDaysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const safeDay = Math.min(targetDay, maxDaysInMonth);
+    const monthlyCandidate = new Date(targetYear, targetMonth, safeDay, targetHour, targetMinute, 0, 0);
+    return monthlyCandidate.getTime();
   }
 
   // 4. Custom N days

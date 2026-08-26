@@ -13,7 +13,7 @@ import {
   query,
   where
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db } from '../firebase/config.js';
 
 const CUSTOMERS_COLLECTION = 'customers';
 
