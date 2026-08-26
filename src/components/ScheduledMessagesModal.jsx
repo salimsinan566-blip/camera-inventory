@@ -116,15 +116,8 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
       // CRITICAL: NEVER include or queue anyone with 0 debt!
       if (calculatedDebt <= 0) return;
 
-      const existingServerJob = (jobs || []).find(j => 
-        j.status === 'pending' && 
-        (j.customerId === cust.id || j.id === `job_debt_${cust.id}` || j.id === `debt_sched_${cust.id}`) &&
-        j.targetTimestamp
-      );
-
-      const targetTimestamp = existingServerJob 
-        ? existingServerJob.targetTimestamp 
-        : calculateNextCustomerReminderTimestamp(cust, settings, now);
+      // ALWAYS calculate the exact live target timestamp dynamically based on current schedule & lastSentAt
+      const targetTimestamp = calculateNextCustomerReminderTimestamp(cust, settings, now);
 
       if (!targetTimestamp) return;
 
@@ -154,34 +147,10 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     return reminders;
   }, [customers, sales, incomes, settings, jobs]);
 
-  // Sync scheduled debtors with AWS server when modal is open (ONLY after first queue load)
-  useEffect(() => {
-    if (!isOpen || !initialLoadDone.current || upcomingDebtorReminders.length === 0) return;
-    const syncCustomers = upcomingDebtorReminders.map(d => ({
-      id: d.customerId,
-      name: d.customerName,
-      phone1: d.cleanPhone,
-      totalDebt: d.totalDebt,
-      reminderSchedule: d.customer?.reminderSchedule || 'default',
-      lastDebtReminderSent: d.customer?.lastDebtReminderSent || null,
-      renderedMessage: d.renderedMessage || undefined,
-      targetTimestamp: d.targetTimestamp
-    }));
-
-    fetch(`${baseUrl}/reminders/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: settings?.whatsappToken || 'SafeZone2026',
-        customers: syncCustomers,
-        settings
-      })
-    }).then(() => fetchQueue()).catch(() => {});
-  }, [isOpen, upcomingDebtorReminders.length]);
-
   // Combined pending list deduplicated by Customer ID, Normalized Phone, and Normalized Name
   const allPending = useMemo(() => {
-    const serverPending = jobs.filter(j => j.status === 'pending');
+    // Exclude stale server-side debt jobs — debt reminders are rendered purely from live upcomingDebtorReminders
+    const serverPending = jobs.filter(j => j.status === 'pending' && !j.isDebtReminder && !j.id?.startsWith('debt_sched_') && !j.id?.startsWith('job_debt_'));
     const seenCustIds = new Set();
     const seenPhones = new Set();
     const seenNames = new Set();

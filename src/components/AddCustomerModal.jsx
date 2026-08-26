@@ -53,55 +53,6 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
         toast('تمت إضافة العميل وتفعيل الموعد بنجاح 💾', 'success');
       }
 
-      // Sync immediately with background server scheduler queue
-      if (phone1.trim() && reminderSchedule !== 'disabled') {
-        try {
-          const portalUrl = `${window.location.origin}${window.location.pathname}?portal=customer&name=${encodeURIComponent(trimmedName)}`;
-          const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
-          const totalDebt = customer?.totalDebt || 0;
-          const rawPhone = String(phone1 || '').replace(/[^\d]/g, '');
-          const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
-          const password = pinCode || last4 || 'آخر 4 أرقام من هاتفك';
-
-          const msg = renderWhatsAppTemplate(template, {
-            customerName: trimmedName,
-            username: trimmedName,
-            password: password,
-            pin: password,
-            phone: phone1,
-            storeName: settings?.storeName || 'المحل',
-            totalDebt: Number(totalDebt).toLocaleString('en-US'),
-            unpaidInvoicesCount: customer?.unpaidInvoicesCount || 1,
-            statementLink: portalUrl
-          });
-
-          const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
-          let apiUrl = settings?.whatsappApiUrl || `${defaultBase}/messages/chat`;
-          let baseUrl = defaultBase;
-          if (apiUrl.startsWith('http') && !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1')) {
-            baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
-          }
-
-          await fetch(`${baseUrl}/reminders/sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              customers: [{
-                id: savedCustId || 'cust_temp',
-                name: trimmedName,
-                phone1: phone1.trim(),
-                reminderSchedule,
-                totalDebt: totalDebt || 1,
-                renderedMessage: msg
-              }],
-              settings
-            })
-          });
-        } catch (syncErr) {
-          console.warn('Background sync error:', syncErr);
-        }
-      }
-
       if (onSaved) onSaved();
       onClose();
     } catch (err) {
