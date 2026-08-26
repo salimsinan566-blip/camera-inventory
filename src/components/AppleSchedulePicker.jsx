@@ -206,7 +206,9 @@ export default function AppleSchedulePicker({
 
   const handleTimeSelect = (t) => {
     setSelectedTime(t);
-    updateSchedule(mode, selectedDay, selectedMonthDay, customDays, customHours, customMinutes, t);
+    const targetMode = mode === 'disabled' ? 'weekly' : mode;
+    if (mode === 'disabled') setMode('weekly');
+    updateSchedule(targetMode, selectedDay, selectedMonthDay, customDays, customHours, customMinutes, t);
   };
 
   // Human friendly summary text

@@ -269,9 +269,9 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
       (job.id?.startsWith('debtor_') ? job.id.replace('debtor_', '') : null);
 
     try {
-      // 1. If it's a debtor, disable the reminder in database
+      // 1. If it's a debtor, snooze the reminder for today by setting lastDebtReminderSent
       if (customerId) {
-        await updateCustomer(customerId, { reminderSchedule: 'disabled' }).catch(() => {});
+        await updateCustomer(customerId, { lastDebtReminderSent: new Date().toISOString() }).catch(() => {});
       }
 
       // 2. Delete from server queue

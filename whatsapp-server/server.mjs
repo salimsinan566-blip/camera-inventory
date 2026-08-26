@@ -458,7 +458,7 @@ app.post('/scheduled/sync-debtors', (req, res) => {
   res.json({ success: true, count: 0, syncedDebtors: 0, message: 'Delegated to Vercel Engine' });
 });
 
-// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 5 minutes with strict mutex and deduplication)
+// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 30 seconds with strict mutex and deduplication)
 setInterval(async () => {
   if (isAwsCronRunning || !isConnected || !sock) return;
   isAwsCronRunning = true;
@@ -471,7 +471,7 @@ setInterval(async () => {
     const data = await res.json().catch(() => ({}));
     
     if (data?.results && data.results.length > 0) {
-      console.log(`⏰ [AWS 24/7 Cron] جلب ${data.results.length} تذكيرات مستحقة للإرسال...`);
+      console.log(`⏰ [AWS 24/7 Cron] تم العثور على ${data.results.length} تذكيرات مستحقة للإرسال...`);
       const sentIds = [];
       const nowTs = Date.now();
       
@@ -499,7 +499,7 @@ setInterval(async () => {
           // تسجيل الإرسال بالمعرف وبالهاتف معاً
           recentlySentCustomerMap.set(dedupeKey, Date.now());
           recentlySentCustomerMap.set(phoneKey, Date.now());
-          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}»`);
+          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}» على الهاتف ${item.phone}`);
           if (item.id) sentIds.push(item.id);
         } catch (err) {
           console.error(`❌ [AWS 24/7 Cron] فشل إرسال التذكير للعميل «${item.name}»:`, err.message);
@@ -519,8 +519,6 @@ setInterval(async () => {
           console.error('Failed to mark sent in Firebase:', markErr);
         }
       }
-    } else if (data?.status === 'success' || data?.sentCount > 0) {
-      console.log(`⏰ [AWS 24/7 Cron] حالة التذكيرات:`, data);
     }
 
     // تنظيف الكاش المحلي للتذكيرات الأقدم من ساعة
@@ -530,11 +528,11 @@ setInterval(async () => {
       }
     }
   } catch (e) {
-    // Ignore network timeouts
+    console.error('❌ [AWS 24/7 Cron] خطأ في جلب التذكيرات:', e.message);
   } finally {
     isAwsCronRunning = false;
   }
-}, 60 * 1000);
+}, 30 * 1000);
 
 // Get scheduled queue
 app.get('/scheduled', (req, res) => {
