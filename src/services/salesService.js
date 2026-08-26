@@ -6,7 +6,7 @@
 // البيع بنفس الثانية)، Firestore يمنع أي تعارض ويعيد المحاولة تلقائياً
 // بدل ما تنزل الكمية غلط أو تحت الصفر.
 
-import {
+import { writeBatch, 
   collection,
   doc,
   getDoc,

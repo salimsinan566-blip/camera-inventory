@@ -1,4 +1,4 @@
-import {
+import { writeBatch, 
   collection,
   doc,
   getDoc,
