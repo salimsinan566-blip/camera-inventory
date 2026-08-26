@@ -23,6 +23,34 @@ import { db } from '../firebase/config';
 import { calculateOrderSummary } from '../models/sale';
 import { findOrCreateCustomer } from './customersService';
 
+
+async function runOfflineSafeTransaction(dbInstance, callback) {
+  try {
+    return await runTransaction(dbInstance, callback);
+  } catch (err) {
+    const msg = err.message ? err.message.toLowerCase() : '';
+    if (msg.includes('connection') || msg.includes('offline') || msg.includes('network') || err.code === 'unavailable' || msg.includes('failed to get document')) {
+       console.warn('Network error in transaction, falling back to offline batch...', err);
+       const batch = writeBatch(dbInstance);
+       const fakeTransaction = {
+         get: async (ref) => await getDoc(ref),
+         set: (ref, data, opts) => { batch.set(ref, data, opts); return fakeTransaction; },
+         update: (ref, data) => { batch.update(ref, data); return fakeTransaction; },
+         delete: (ref) => { batch.delete(ref); return fakeTransaction; }
+       };
+       const result = await callback(fakeTransaction);
+       
+       // Do not await batch.commit() so that the UI does not hang while offline.
+       // The local cache will be updated immediately, and Firebase will sync it in the background when online.
+       batch.commit().catch(e => console.error("Offline batch commit sync failed later:", e));
+       
+       return result;
+    }
+    throw err;
+  }
+}
+
+
 const PRODUCTS_COLLECTION = 'products';
 const SALES_COLLECTION = 'sales';
 const SALES_COUNTER_PATH = ['counters', 'sales'];
