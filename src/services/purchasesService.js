@@ -26,8 +26,32 @@ async function runOfflineSafeTransaction(dbInstance, callback) {
        console.warn('Network error in transaction, falling back to offline batch...', err);
        const batch = writeBatch(dbInstance);
        const fakeTransaction = {
-         get: async (ref) => await getDoc(ref),
-         set: (ref, data, opts) => { batch.set(ref, data, opts); return fakeTransaction; },
+         get: async (ref) => {
+           try {
+             return await getDoc(ref);
+           } catch(e) {
+             if (e.message && e.message.toLowerCase().includes('offline')) {
+                console.warn('Offline cache miss for', ref.path, 'Mocking snapshot.');
+                if (ref.path.includes('counters')) {
+                    // For counters, use a timestamp-based ID to avoid resetting the counter to 1000
+                    return {
+                        exists: () => true,
+                        data: () => ({ next: Math.floor(Date.now() / 1000) }),
+                        id: ref.id, ref
+                    };
+                }
+                return { exists: () => false, data: () => ({}), id: ref.id, ref };
+             }
+             throw e;
+           }
+         },
+         set: (ref, data, opts) => {
+             if (ref.path.includes('counters') && data.next > 1000000000) {
+                 return fakeTransaction;
+             }
+             batch.set(ref, data, opts); 
+             return fakeTransaction; 
+         },
          update: (ref, data) => { batch.update(ref, data); return fakeTransaction; },
          delete: (ref) => { batch.delete(ref); return fakeTransaction; }
        };
