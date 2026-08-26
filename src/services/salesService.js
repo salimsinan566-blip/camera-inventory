@@ -29,7 +29,7 @@ async function runOfflineSafeTransaction(dbInstance, callback) {
     return await runTransaction(dbInstance, callback);
   } catch (err) {
     const msg = err.message ? err.message.toLowerCase() : '';
-    if (msg.includes('connection') || msg.includes('offline') || msg.includes('network') || err.code === 'unavailable' || msg.includes('failed to get document')) {
+    if (msg.includes('connection') || msg.includes('offline') || msg.includes('network') || err.code === 'unavailable' || err.code === 'resource-exhausted' || msg.includes('quota') || msg.includes('failed to get document')) {
        console.warn('Network error in transaction, falling back to offline batch...', err);
        const batch = writeBatch(dbInstance);
        const fakeTransaction = {
