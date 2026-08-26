@@ -375,6 +375,10 @@ setInterval(async () => {
     let changed = false;
 
     for (const job of jobs) {
+      // تخطي مهام تذكيرات الديون — يتولاها المحرك السحابي (AWS Cron → Vercel) حصرياً لمنع التكرار
+      if (job.isDebtReminder || job.id?.startsWith('job_debt_') || job.id?.startsWith('debt_sched_')) {
+        continue;
+      }
       if (job.status === 'pending' && job.targetTimestamp <= now && !inFlightJobIds.has(job.id)) {
         inFlightJobIds.add(job.id);
         job.status = 'processing';
@@ -450,7 +454,7 @@ app.post('/scheduled/sync-debtors', (req, res) => {
   res.json({ success: true, count: 0, syncedDebtors: 0, message: 'Delegated to Vercel Engine' });
 });
 
-// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 1 minute with strict mutex and deduplication)
+// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 5 minutes with strict mutex and deduplication)
 setInterval(async () => {
   if (isAwsCronRunning || !isConnected || !sock) return;
   isAwsCronRunning = true;
@@ -470,10 +474,16 @@ setInterval(async () => {
       for (const item of data.results) {
         if (!item.phone || !item.message) continue;
         
+        // حماية مزدوجة: بالمعرف + برقم الهاتف لمنع إرسال أكثر من رسالة لنفس الشخص
         const dedupeKey = item.id || item.phone;
-        const lastSentLocal = recentlySentCustomerMap.get(dedupeKey);
-        // منع تكرار الإرسال لنفس العميل خلال دقيقتين على مستوى خادم الواتساب (حماية إضافية ضد التكرار السريع)
-        if (lastSentLocal && (nowTs - lastSentLocal < 2 * 60 * 1000)) {
+        const phoneKey = `phone_${String(item.phone).replace(/[^\d]/g, '')}`;
+        
+        const lastSentById = recentlySentCustomerMap.get(dedupeKey);
+        const lastSentByPhone = recentlySentCustomerMap.get(phoneKey);
+        const lastSentLocal = lastSentById || lastSentByPhone;
+        
+        // منع تكرار الإرسال لنفس العميل أو نفس الرقم خلال 55 دقيقة
+        if (lastSentLocal && (nowTs - lastSentLocal < 55 * 60 * 1000)) {
           console.log(`⏭️ [AWS 24/7 Cron] تخطي التذكير للعميل «${item.name}» لأنه أُرسل مؤخراً (${Math.round((nowTs - lastSentLocal) / 1000)} ثانية مضت)`);
           continue;
         }
@@ -482,7 +492,9 @@ setInterval(async () => {
         try {
           const debtResult = await sock.sendMessage(jid, { text: item.message });
           storeOutgoingMessage(debtResult, { text: item.message });
+          // تسجيل الإرسال بالمعرف وبالهاتف معاً
           recentlySentCustomerMap.set(dedupeKey, Date.now());
+          recentlySentCustomerMap.set(phoneKey, Date.now());
           console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}»`);
           if (item.id) sentIds.push(item.id);
         } catch (err) {
@@ -507,9 +519,9 @@ setInterval(async () => {
       console.log(`⏰ [AWS 24/7 Cron] حالة التذكيرات:`, data);
     }
 
-    // تنظيف الكاش المحلي للتذكيرات الأقدم من 30 دقيقة
+    // تنظيف الكاش المحلي للتذكيرات الأقدم من ساعة
     for (const [key, timestamp] of recentlySentCustomerMap.entries()) {
-      if (Date.now() - timestamp > 30 * 60 * 1000) {
+      if (Date.now() - timestamp > 60 * 60 * 1000) {
         recentlySentCustomerMap.delete(key);
       }
     }
@@ -518,7 +530,7 @@ setInterval(async () => {
   } finally {
     isAwsCronRunning = false;
   }
-}, 60 * 1000);
+}, 5 * 60 * 1000);
 
 // Get scheduled queue
 app.get('/scheduled', (req, res) => {

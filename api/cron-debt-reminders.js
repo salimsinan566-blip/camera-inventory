@@ -194,8 +194,8 @@ async function executeCronDebtReminders(req, res) {
     const targetTotalMins = targetHour * 60 + targetMinute;
     const currentTotalMins = currentHour * 60 + currentMinute;
 
-    // نافذة الوقت: يبدأ من الدقيقة المحددة وحتى +59 دقيقة ضمن نفس الساعة
-    const isTimeWindow = currentTotalMins >= targetTotalMins && currentTotalMins <= targetTotalMins + 59;
+    // نافذة الوقت: يبدأ من الدقيقة المحددة وحتى +10 دقائق فقط (لمنع التكرار المتعدد ضمن نفس الساعة)
+    const isTimeWindow = currentTotalMins >= targetTotalMins && currentTotalMins <= targetTotalMins + 10;
 
     let isDueToday = false;
 

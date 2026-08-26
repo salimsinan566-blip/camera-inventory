@@ -349,48 +349,14 @@ export async function processAutomatedDebtReminders({
     }
 
     if (isCustomerDebtReminderDue(cust, totalDebt, settings, now)) {
-      // Instantly mark in memory to prevent rapid duplicate calls
+      // تم تعطيل الإرسال المباشر من الواجهة — المحرك السحابي (AWS Cron → Vercel) هو المسؤول الوحيد عن الإرسال
+      // نكتفي بتسجيل العميل في الذاكرة لمنع التكرار وإضافته لقائمة العرض
       sessionSentDebtors.set(cust.id, Date.now());
-      try {
-        const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
-        const rawPhone = String(cust.phone1 || '').replace(/[^\d]/g, '');
-        const last4 = rawPhone.length >= 4 ? rawPhone.slice(-4) : rawPhone;
-        const password = cust.pinCode || cust.passcode || last4 || 'آخر 4 أرقام من هاتفك';
-        const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${password}` : '';
-        const idParam = rawPhone ? `phone=${rawPhone}` : `name=${encodeURIComponent(cust.name)}`;
-        const portalUrl = `${portalBaseUrl}?portal=customer&${idParam}${pinParam}`;
-        const template = settings?.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder;
-
-        const message = renderWhatsAppTemplate(template, {
-          customerName: cust.name,
-          username: cust.name,
-          password: password,
-          pin: password,
-          phone: cust.phone1,
-          storeName: settings?.storeName || 'المحل',
-          totalDebt: Number(totalDebt).toLocaleString('en-US'),
-          unpaidInvoicesCount: unpaidInvoicesCount || 1,
-          statementLink: portalUrl
-        });
-
-        await sendWhatsAppMessageViaGateway({
-          phone: cust.phone1,
-          message,
-          settings
-        });
-
-        await updateCustomer(cust.id, {
-          lastDebtReminderSent: new Date().toISOString()
-        });
-
-        dispatched.push(cust);
-        if (onNotification) {
-          onNotification(cust, totalDebt);
-        }
-        console.log(`⏰ [AutoDebtReminder] تم إرسال تذكير الديون تلقائياً للعميل «${cust.name}» (هاتف: ${cust.phone1})`);
-      } catch (err) {
-        console.warn(`⚠️ [AutoDebtReminder] تعذر إرسال تذكير تلقائي للعميل ${cust.name}:`, err.message);
+      dispatched.push(cust);
+      if (onNotification) {
+        onNotification(cust, totalDebt);
       }
+      console.log(`📋 [AutoDebtReminder] العميل «${cust.name}» مستحق للتذكير — سيتم الإرسال عبر المحرك السحابي`);
     }
   }
 
