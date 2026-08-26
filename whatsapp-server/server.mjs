@@ -704,6 +704,11 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
     return candidate.getTime();
   }
 
+  // 5. Fallback for unrecognized schedules
+  if (isRenewal || candidate.getTime() <= now.getTime()) {
+    // Default to at least tomorrow to prevent infinite 1-minute retry loops
+    candidate.setDate(candidate.getDate() + 1);
+  }
   return candidate.getTime();
 }
 
