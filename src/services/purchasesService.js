@@ -16,6 +16,30 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
+
+async function runOfflineSafeTransaction(dbInstance, callback) {
+  try {
+    return await runTransaction(dbInstance, callback);
+  } catch (err) {
+    const msg = err.message ? err.message.toLowerCase() : '';
+    if (msg.includes('connection') || msg.includes('offline') || msg.includes('network') || err.code === 'unavailable' || msg.includes('failed to get document')) {
+       console.warn('Network error in transaction, falling back to offline batch...', err);
+       const batch = writeBatch(dbInstance);
+       const fakeTransaction = {
+         get: async (ref) => await getDoc(ref),
+         set: (ref, data, opts) => { batch.set(ref, data, opts); return fakeTransaction; },
+         update: (ref, data) => { batch.update(ref, data); return fakeTransaction; },
+         delete: (ref) => { batch.delete(ref); return fakeTransaction; }
+       };
+       const result = await callback(fakeTransaction);
+       batch.commit().catch(e => console.error('Offline batch commit sync failed later:', e));
+       return result;
+    }
+    throw err;
+  }
+}
+
+
 const PURCHASES_COLLECTION = 'purchases';
 const DRAFT_PURCHASES_COLLECTION = 'draft_purchases';
 const SUPPLIER_DEBTS_COLLECTION = 'supplier_debts';
@@ -210,7 +234,7 @@ export async function createPurchaseInvoice({
   }
   const remainingAmount = Math.max(0, numTotal - numPaid);
 
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     // ----------------------------------------------------
     // PHASE 1: READ ALL EXISTING PRODUCTS AND SUPPLIER DEBT DOC
     // ----------------------------------------------------
@@ -517,7 +541,7 @@ export async function recordSupplierDebtPayment({
   const cleanSupplierName = supplierName.trim();
   const supplierDocId = cleanSupplierName.replace(/[\/\\]/g, '_');
 
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     const supplierRef = doc(db, SUPPLIER_DEBTS_COLLECTION, supplierDocId);
     const supplierSnap = await transaction.get(supplierRef);
 
@@ -561,7 +585,7 @@ export async function recordSupplierDebtPayment({
  * حذف فاتورة شراء مع استرجاع/خصم كميات المخزون التي تم توريدها وتعديل الديون
  */
 export async function deletePurchaseInvoice(purchaseId, deletedBy = 'المسؤول') {
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     // ----------------------------------------------------
     // PHASE 1: READ PURCHASE DOC, ITEMS PRODUCTS & SUPPLIER DEBT
     // ----------------------------------------------------
@@ -710,7 +734,7 @@ export async function updatePurchaseInvoice(purchaseId, {
   const cleanSupplierName = supplierName.trim();
   const newSupplierDocId = cleanSupplierName.replace(/[\/\\]/g, '_');
 
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     // 1. Read existing purchase invoice
     const pRef = doc(db, PURCHASES_COLLECTION, purchaseId);
     const pSnap = await transaction.get(pRef);

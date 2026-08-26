@@ -95,7 +95,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
   const counterRef = doc(db, ...SALES_COUNTER_PATH);
   const salesRef = doc(collection(db, SALES_COLLECTION));
 
-  const result = await runTransaction(db, async (transaction) => {
+  const result = await runOfflineSafeTransaction(db, async (transaction) => {
     // 1) قراءة كل منتجات السلة والعداد، ووثيقة عهدة الفني إذا كان مصدر الصرف عهدة
     const productRefsMap = {};
     for (const item of cartItems) {
@@ -316,7 +316,7 @@ export async function createDraftSale(cartItems, cashierEmail, orderOptions = {}
 
   const draftRef = doc(collection(db, SALES_COLLECTION));
 
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const productRefsMap = {};
     for (const item of items) {
       if (!item.isService) productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
@@ -378,7 +378,7 @@ export async function updateDraftSale(draftId, cartItems, orderOptions = {}) {
   const summary = calculateOrderSummary(cartItems, discount, taxRate);
   const draftRef = doc(db, SALES_COLLECTION, draftId);
 
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const draftSnap = await transaction.get(draftRef);
     if (!draftSnap.exists()) throw new Error('الفاتورة غير موجودة');
     const oldData = draftSnap.data();
@@ -470,7 +470,7 @@ export async function deleteDraftSale(draftId) {
 
   if (draftData.status === 'suspended') {
     // إرجاع الكميات المحجوزة
-    await runTransaction(db, async (transaction) => {
+    await runOfflineSafeTransaction(db, async (transaction) => {
       const items = draftData.items || [];
       const productRefsMap = {};
       for (const item of items) {
@@ -505,7 +505,7 @@ export async function deleteDraftSale(draftId) {
 /** يحوّل الفاتورة المؤقتة إلى معلقة (ويحجز المخزون) */
 export async function suspendSale(draftId) {
   const draftRef = doc(db, SALES_COLLECTION, draftId);
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const draftSnap = await transaction.get(draftRef);
     if (!draftSnap.exists()) throw new Error('الفاتورة غير موجودة');
     const draftData = draftSnap.data();
@@ -553,7 +553,7 @@ export async function suspendSale(draftId) {
 /** يُلغي تعليق الفاتورة ويعيدها كمؤقتة (يحرر المخزون المحجوز) */
 export async function unsuspendSale(draftId) {
   const draftRef = doc(db, SALES_COLLECTION, draftId);
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const draftSnap = await transaction.get(draftRef);
     if (!draftSnap.exists()) throw new Error('الفاتورة غير موجودة');
     const draftData = draftSnap.data();
@@ -605,7 +605,7 @@ export async function confirmDraftSale(draftId, cashierEmail, invoiceType = null
     ? await findOrCreateCustomer(previewData.customerName, previewData.phone1 || '', previewData.phone2 || '')
     : null;
 
-  const result = await runTransaction(db, async (transaction) => {
+  const result = await runOfflineSafeTransaction(db, async (transaction) => {
     const draftSnap = await transaction.get(draftRef);
     if (!draftSnap.exists()) {
       throw new Error('الفاتورة المؤقتة لم تعد موجودة');
@@ -714,7 +714,7 @@ export async function confirmDraftSale(draftId, cashierEmail, invoiceType = null
 export async function revertSaleToSuspended(saleId) {
   const saleRef = doc(db, SALES_COLLECTION, saleId);
 
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const saleSnap = await transaction.get(saleRef);
     if (!saleSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
@@ -770,7 +770,7 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
   const customerId = customerName ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
   const saleRef = doc(db, SALES_COLLECTION, saleId);
 
-  const result = await runTransaction(db, async (transaction) => {
+  const result = await runOfflineSafeTransaction(db, async (transaction) => {
     const saleSnap = await transaction.get(saleRef);
     if (!saleSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
@@ -926,7 +926,7 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
 export async function deleteConfirmedSale(saleId) {
   const saleRef = doc(db, SALES_COLLECTION, saleId);
 
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const saleSnap = await transaction.get(saleRef);
     if (!saleSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
@@ -970,7 +970,7 @@ export async function recordCustomerDebtPayment(saleId, amount, paymentDetails =
   }
 
   const saleRef = doc(db, SALES_COLLECTION, saleId);
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     const saleSnap = await transaction.get(saleRef);
     if (!saleSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
@@ -1018,7 +1018,7 @@ export async function recordCustomerDebtPayment(saleId, amount, paymentDetails =
  */
 export async function deleteCustomerDebtPayment(saleId, paymentId) {
   const saleRef = doc(db, SALES_COLLECTION, saleId);
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     const saleSnap = await transaction.get(saleRef);
     if (!saleSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
@@ -1055,7 +1055,7 @@ export async function deleteCustomerDebtPayment(saleId, paymentId) {
  */
 export async function resetCustomerDebtPayments(saleId) {
   const saleRef = doc(db, SALES_COLLECTION, saleId);
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     const saleSnap = await transaction.get(saleRef);
     if (!saleSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
