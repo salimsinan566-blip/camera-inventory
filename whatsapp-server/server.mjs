@@ -269,9 +269,7 @@ function loadScheduledJobs() {
   try {
     if (fs.existsSync(SCHEDULED_FILE)) {
       const data = fs.readFileSync(SCHEDULED_FILE, 'utf8');
-      const raw = data ? JSON.parse(data) : [];
-      // تنظيف واستبعاد أي مهام ديون — تدار حصرياً عبر المحرك السحابي
-      return raw.filter(j => !j.isDebtReminder && !j.id?.startsWith('debt_sched_') && !j.id?.startsWith('job_debt_') && !j.id?.startsWith('debtor_'));
+      return data ? JSON.parse(data) : [];
     }
   } catch (e) {
     console.warn('Failed to read scheduled jobs:', e.message);
@@ -356,18 +354,6 @@ async function generateNativePdfFromHtml(htmlContent) {
   throw new Error('تعذر إنشاء ملف الـ PDF عبر محرك المتصفح');
 }
 
-// Cleanup old debt reminders from queue (delegated to Engine 2)
-(function cleanupOldDebtReminders() {
-  try {
-    const jobs = loadScheduledJobs();
-    const filtered = jobs.filter(j => !j.isDebtReminder && !j.id?.startsWith('debt_sched_') && !j.id?.startsWith('job_debt_') && !j.id?.startsWith('debtor_'));
-    saveScheduledJobs(filtered);
-    if (filtered.length !== jobs.length) {
-      console.log(`🧹 [Cleanup] تم تنظيف ${jobs.length - filtered.length} مهام ديون قديمة من الطابور المحلي نهائياً.`);
-    }
-  } catch (e) {}
-})();
-
 // Background scheduler interval runner (Single-instance mutex with in-flight lock)
 setInterval(async () => {
   if (isSchedulerRunning || !isConnected || !sock) return;
@@ -379,10 +365,6 @@ setInterval(async () => {
     let changed = false;
 
     for (const job of jobs) {
-      // تخطي مهام تذكيرات الديون — يتولاها المحرك السحابي (AWS Cron → Vercel) حصرياً لمنع التكرار
-      if (job.isDebtReminder || job.id?.startsWith('job_debt_') || job.id?.startsWith('debt_sched_')) {
-        continue;
-      }
       if (job.status === 'pending' && job.targetTimestamp <= now && !inFlightJobIds.has(job.id)) {
         inFlightJobIds.add(job.id);
         job.status = 'processing';
@@ -411,7 +393,7 @@ setInterval(async () => {
           } else if (job.type === 'chat' && job.body) {
             const chatResult = await sock.sendMessage(job.jid, { text: job.body });
             storeOutgoingMessage(chatResult, { text: job.body });
-            console.log(`⏰ [Scheduler] تم إرسال الرسالة المجدولة بنجاح إلى: +${job.cleanPhone}`);
+            console.log(`🚀⏰ [Scheduler] تم إرسال الرسالة المجدولة بنجاح إلى: +${job.cleanPhone} (${job.customerName || ''})`);
           }
 
           if (job.isRecurring && job.schedule) {
@@ -427,7 +409,7 @@ setInterval(async () => {
             job.sentAt = new Date().toISOString();
           }
         } catch (err) {
-          console.error(`❌ [Scheduler] فشل إرسال المهمة المجدولة (${job.id}):`, err);
+          console.error(`❌ [Scheduler] فشل إرسال المهمة المجدولة (${job.id}):`, err.message);
           job.status = 'failed';
           job.error = err.message;
         } finally {
@@ -650,7 +632,17 @@ app.post('/scheduled/:id/send-now', async (req, res) => {
 });
 
 // Calculate next scheduled occurrence
-function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new Date(), isRenewal = false) {
+// Calculate next scheduled occurrence
+function calculateNextScheduledTimestamp(rawSchedCode, timeStr = '20:00', now = new Date(), isRenewal = false) {
+  let schedCode = rawSchedCode || 'default';
+  if (schedCode.includes('@')) {
+    const parts = schedCode.split('@');
+    schedCode = parts[0];
+    if (parts[1] && parts[1].includes(':')) {
+      timeStr = parts[1];
+    }
+  }
+
   // 0. Minute Schedules (e.g. minutely_15, minutely_30)
   if (schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')))) {
     const intervalMinutes = parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
@@ -729,22 +721,88 @@ function calculateNextScheduledTimestamp(schedCode, timeStr = '20:00', now = new
 
   // 5. Fallback for unrecognized schedules
   if (isRenewal || candidate.getTime() <= now.getTime()) {
-    // Default to at least tomorrow to prevent infinite 1-minute retry loops
     candidate.setDate(candidate.getDate() + 1);
   }
   return candidate.getTime();
 }
 
-// Sync and schedule automated customer debt reminders
+// Sync and schedule automated customer debt reminders directly on the AWS local queue
 app.post('/reminders/sync', async (req, res) => {
-  // تم تعطيل الإضافة للطابور المحلي والاعتماد كلياً على المحرك السحابي في Vercel
+  const token = req.body?.token || req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+  if (AUTH_TOKEN && token && token !== AUTH_TOKEN) {
+    return res.status(401).json({ error: 'رمز الأمان غير صحيح' });
+  }
+
+  const syncCustomers = req.body?.customers || [];
+  if (!Array.isArray(syncCustomers)) {
+    return res.status(400).json({ error: 'قائمة العملاء غير صالحة' });
+  }
+
+  const jobs = loadScheduledJobs();
+  const existingJobMap = new Map(jobs.map(j => [j.id, j]));
+  const registeredScheduled = [];
+
+  for (const cust of syncCustomers) {
+    const jobId = `job_debt_${cust.id}`;
+    const totalDebt = Number(cust.totalDebt || 0);
+    const schedule = cust.reminderSchedule || 'disabled';
+
+    if (totalDebt <= 0 || schedule === 'disabled' || !cust.phone1) {
+      existingJobMap.delete(jobId);
+      continue;
+    }
+
+    let cleanPhone = String(cust.phone1).replace(/[^\d]/g, '').trim();
+    if (cleanPhone.startsWith('07') && cleanPhone.length === 11) {
+      cleanPhone = '964' + cleanPhone.substring(1);
+    } else if (cleanPhone.startsWith('7') && cleanPhone.length === 10) {
+      cleanPhone = '964' + cleanPhone;
+    } else if (cleanPhone.startsWith('00964')) {
+      cleanPhone = cleanPhone.substring(2);
+    }
+
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+    const targetTimestamp = calculateNextScheduledTimestamp(schedule, cust.timeStr || '20:00', new Date(), false);
+    const targetTimeFormatted = new Date(targetTimestamp).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
+
+    const existing = existingJobMap.get(jobId);
+    if (existing && existing.status === 'pending') {
+      existing.targetTimestamp = targetTimestamp;
+      existing.targetTimeFormatted = targetTimeFormatted;
+      if (cust.renderedMessage) existing.body = cust.renderedMessage;
+      existing.cleanPhone = cleanPhone;
+      existing.jid = jid;
+      registeredScheduled.push(existing);
+    } else {
+      const newJob = {
+        id: jobId,
+        type: 'chat',
+        isDebtReminder: true,
+        isRecurring: true,
+        customerId: cust.id,
+        customerName: cust.name,
+        schedule: schedule,
+        targetTimestamp: targetTimestamp,
+        targetTimeFormatted: targetTimeFormatted,
+        cleanPhone: cleanPhone,
+        jid: jid,
+        body: cust.renderedMessage || '',
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+      existingJobMap.set(jobId, newJob);
+      registeredScheduled.push(newJob);
+    }
+  }
+
+  saveScheduledJobs(Array.from(existingJobMap.values()));
+  console.log(`📋 [Reminders Sync] تم مزامنة وتثبيت ${registeredScheduled.length} تذكيرات ديون في طابور السيرفر المحلي.`);
+
   return res.json({
     success: true,
-    dispatchedImmediateCount: 0,
-    dispatchedImmediate: [],
-    registeredScheduledCount: 0,
-    registeredScheduled: [],
-    message: 'Delegated to Vercel Engine'
+    count: registeredScheduled.length,
+    registeredScheduledCount: registeredScheduled.length,
+    registeredScheduled
   });
 });
 
