@@ -403,100 +403,35 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
   };
 
   const captureInvoicePortalPdfBlob = async () => {
-    const portalEl = document.getElementById('print-portal');
-    if (!portalEl) throw new Error('لا يمكن العثور على محتوى الفاتورة');
-
-    const overlay = document.createElement('div');
-    overlay.style.position = 'fixed';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.width = '794px';
-    overlay.style.height = 'auto';
-    overlay.style.opacity = '0.005';
-    overlay.style.pointerEvents = 'none';
-    overlay.style.zIndex = '-99999';
-    overlay.style.overflow = 'hidden';
-    overlay.dir = 'rtl';
-
-    const container = document.createElement('div');
-    container.style.width = '794px';
-    container.style.backgroundColor = '#ffffff';
-    container.style.boxSizing = 'border-box';
-    container.style.margin = '0';
-    container.style.padding = '0';
-    container.dir = 'rtl';
-
-    const clone = portalEl.cloneNode(true);
-    clone.classList.remove('hidden', 'print:block');
-    clone.style.display = 'block';
-    clone.querySelectorAll('.print\\:hidden, [class*="print:hidden"]').forEach(el => el.remove());
-
-    container.innerHTML = `
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
-        * {
-          box-sizing: border-box !important;
-          letter-spacing: 0px !important;
-          word-spacing: normal !important;
-          -webkit-font-smoothing: antialiased !important;
-          -moz-osx-font-smoothing: grayscale !important;
-          text-rendering: optimizeLegibility !important;
-        }
-        body, div, p, span, h1, h2, h3, h4, table, th, td, strong, em {
-          font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, sans-serif !important;
-          letter-spacing: 0px !important;
-        }
-        .tracking-wide, .tracking-wider, .tracking-widest {
-          letter-spacing: 0px !important;
-        }
-        table {
-          border-collapse: collapse !important;
-        }
-        th, td {
-          font-feature-settings: "liga" 1, "dlig" 1, "calt" 1 !important;
-        }
-        .print\\:hidden, [class*="print:hidden"] {
-          display: none !important;
-        }
-      </style>
-      <div style="width: 794px; background: #ffffff; padding: 20px;">
-        ${clone.innerHTML}
-      </div>
-    `;
-
-    overlay.appendChild(container);
-    document.body.appendChild(overlay);
+    // التقاط عنصر الفاتورة المعروض على الشاشة مباشرة لضمان تطابق الخطوط والتنسيق 100%
+    const targetEl = document.getElementById('invoice-receipt-capture-area') || document.getElementById('print-portal');
+    if (!targetEl) throw new Error('لا يمكن العثور على محتوى الفاتورة');
 
     if (document.fonts && document.fonts.ready) {
       try {
         await document.fonts.ready;
       } catch (e) {}
     }
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
-    try {
-      const opt = {
-        margin: 0,
-        filename: `فاتورة_${sale.invoiceNumber || 'draft'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2.5, 
-          useCORS: true, 
-          logging: false, 
-          scrollY: 0, 
-          windowWidth: 794,
-          letterRendering: false,
-          allowTaint: true
-        },
-        jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'] }
-      };
+    const opt = {
+      margin: 0,
+      filename: `فاتورة_${sale.invoiceNumber || 'draft'}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { 
+        scale: 2.5, 
+        useCORS: true, 
+        logging: false, 
+        scrollY: 0, 
+        letterRendering: false,
+        allowTaint: true
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
 
-      const pdfBlob = await html2pdf().set(opt).from(container).output('blob');
-      return pdfBlob;
-    } finally {
-      document.body.removeChild(overlay);
-    }
+    const pdfBlob = await html2pdf().set(opt).from(targetEl).output('blob');
+    return pdfBlob;
   };
 
   const handleDownloadPdf = async () => {
@@ -1072,7 +1007,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="bg-slate-100 w-full mx-auto p-4 md:p-8 flex flex-col gap-8 items-center rounded overflow-y-auto">
             {/* عرض الصفحات المقطعة بشكل متتالي */}
             {invoiceContent.map((page, idx) => (
-              <div key={idx} className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]">
+              <div 
+                key={idx} 
+                id={idx === 0 ? "invoice-receipt-capture-area" : undefined}
+                className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]"
+              >
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
                   <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
@@ -1099,7 +1038,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       {createPortal(
         <div id="print-portal" className="hidden print:block w-full relative m-0 p-0 bg-transparent" dir="rtl">
           {invoiceContent.map((page, idx) => (
-            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full">
+            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full p-8">
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
                 <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
