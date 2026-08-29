@@ -127,30 +127,30 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="flex items-center justify-between mb-3 border-b-2 border-[#C89B3C] pb-3">
             {/* اليمين: معلومات المتجر */}
             <div className="flex flex-col items-start text-right">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-wide mb-1">
+              <h1 className="text-3xl font-extrabold text-slate-900 tracking-wide mb-1">
                 {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
               </h1>
               {settings?.address && (
-                <div className="text-xs sm:text-sm text-slate-500 font-bold flex items-center gap-1.5 mb-0.5">
-                  <svg style={{ width: '15px', height: '15px', minWidth: '15px', display: 'inline-block', verticalAlign: 'middle' }} className="text-[#C89B3C] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                  <span style={{ verticalAlign: 'middle' }}>{settings.address}</span>
-                </div>
+                <p className="text-sm text-slate-500 flex items-center gap-1.5 font-bold mb-1">
+                  <svg className="w-4 h-4 text-[#C89B3C] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                  <span>{settings.address}</span>
+                </p>
               )}
             </div>
             
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-1.5 pr-2 relative">
               {settings?.logoUrl ? (
-                <div className="h-16 sm:h-20 flex items-center justify-end">
+                <div className="h-20 sm:h-24 flex items-center justify-end">
                   <img 
                     src={settings.logoUrl} 
                     alt="SAFE ZONE" 
-                    className="h-16 sm:h-20 max-h-20 w-auto max-w-[240px] object-contain drop-shadow-xs" 
+                    className="h-20 sm:h-24 max-h-24 w-auto max-w-[260px] object-contain drop-shadow-xs" 
                     crossOrigin="anonymous"
                   />
                 </div>
               ) : (
-                <div className="h-16 w-32 flex items-center justify-center text-amber-600 border-2 border-dashed border-amber-300 p-1 font-bold rounded text-center text-sm">
+                <div className="h-20 w-36 flex items-center justify-center text-amber-600 border-2 border-dashed border-amber-300 p-1 font-bold rounded text-center text-sm">
                   SAFE ZONE
                 </div>
               )}
@@ -435,24 +435,8 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
   };
 
   const handleDownloadPdf = async () => {
-    setIsDownloadingPdf(true);
-    try {
-      const pdfBlob = await captureInvoicePortalPdfBlob();
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `فاتورة_${sale.invoiceNumber || 'safe_zone'}_${sale.customerName || 'عميل'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      if (toast) toast('تم تحميل ملف الفاتورة PDF بنجاح! 📥', 'success');
-    } catch (err) {
-      console.error('PDF download error:', err);
-      handlePrint();
-    } finally {
-      setIsDownloadingPdf(false);
-    }
+    // تشغيل نافذة الطباعة الأصلية لحفظ ملف PDF بدقة متجهات 100% بدون تقطيع الحروف العربية
+    handlePrint();
   };
 
   const shareToTelegram = async () => {
