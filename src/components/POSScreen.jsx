@@ -900,17 +900,19 @@ export default function POSScreen({
           )}
 
           <div className="card flex-1 flex flex-col shadow-xl shadow-ink-200/40 border-ink-200 min-h-0 min-w-0 overflow-hidden rounded-2xl w-full">
-            {/* Header: Title + Type Switch + Drafts + Services Dropdown */}
-            <div className="p-3 border-b border-ink-100 bg-white">
-              <div className="flex items-center justify-between gap-2 mb-2.5">
-                <div className="flex items-center gap-2 flex-wrap">
+            {/* Header: Organized 3-Tier Layout */}
+            <div className="p-2.5 border-b border-ink-100 bg-white space-y-2 shrink-0">
+              {/* Row 1: Title + Badges + Header Actions */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-base">🛒</span>
                   <h3 className="font-black text-ink-900 text-sm shrink-0">تفاصيل الفاتورة</h3>
 
-                  {/* شارة تعديل فاتورة مؤقتة - مدمجة دون التأثير على الحجم */}
+                  {/* شارة تعديل فاتورة مؤقتة */}
                   {editingDraftId && (
-                    <div className="bg-warn-50 border border-warn-300 text-warn-900 text-xs px-2 py-0.5 rounded-lg flex items-center gap-1.5 shadow-2xs animate-in fade-in duration-150">
+                    <div className="bg-warn-50 border border-warn-300 text-warn-900 text-xs px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-2xs animate-in fade-in duration-150">
                       <span className="text-xs">✏️</span>
-                      <span className="font-bold text-[11px]">تعديل مؤقتة</span>
+                      <span className="font-bold text-[10px]">تعديل مؤقتة</span>
                       <button 
                         type="button"
                         onClick={resetOrderState} 
@@ -922,15 +924,15 @@ export default function POSScreen({
                     </div>
                   )}
 
-                  {/* شارة تم البيع - مدمجة دون التأثير على الحجم */}
+                  {/* شارة تم البيع */}
                   {lastInvoice && !editingDraftId && (
-                    <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs px-2 py-0.5 rounded-lg flex items-center gap-1.5 shadow-2xs animate-in fade-in duration-150">
+                    <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs px-1.5 py-0.5 rounded-lg flex items-center gap-1 shadow-2xs animate-in fade-in duration-150">
                       <span className="text-xs text-emerald-600">✓</span>
-                      <span className="font-bold text-[11px]">تم البيع (#{lastInvoice.invoiceNumber})</span>
+                      <span className="font-bold text-[10px]">تم (#{lastInvoice.invoiceNumber})</span>
                       <button
                         type="button"
                         onClick={() => setShowReceipt(true)}
-                        className="text-emerald-700 hover:text-emerald-950 font-black text-[10px] underline mr-0.5 cursor-pointer"
+                        className="text-emerald-700 hover:text-emerald-950 font-black text-[10px] underline cursor-pointer"
                         title="عرض / طباعة الفاتورة"
                       >
                         عرض
@@ -938,17 +940,79 @@ export default function POSScreen({
                       <button
                         type="button"
                         onClick={() => setLastInvoice(null)}
-                        className="text-ink-400 hover:text-ink-700 text-[10px] mr-1 cursor-pointer"
-                        title="إخفاء الإشعار"
+                        className="text-ink-400 hover:text-ink-700 text-[10px] cursor-pointer"
+                        title="إخفاء"
                       >
                         ✕
                       </button>
                     </div>
                   )}
+                </div>
+
+                {/* Quick Toolbar Actions */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {mode === 'sale' && laborCharges?.length > 0 && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowLaborMenu(!showLaborMenu)}
+                        className="px-2 py-1 text-xs font-bold text-brand-700 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        title="إضافة أجور صيانة أو خدمات"
+                      >
+                        <span>+ أجور</span>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                      </button>
+                      {showLaborMenu && (
+                        <div className="absolute left-0 top-full mt-1.5 w-56 bg-white border border-brand-200 rounded-xl shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-100">
+                          <p className="text-[10px] font-bold text-ink-400 px-2 py-1 border-b border-ink-100 mb-1">اختر خدمة لإضافتها:</p>
+                          {laborCharges.map((labor) => (
+                            <button
+                              key={labor.id}
+                              onClick={() => {
+                                setCart((prev) => {
+                                  const existing = prev.find((i) => i.productId === `labor_${labor.id}`);
+                                  if (existing) {
+                                    return prev.map((i) =>
+                                      i.productId === `labor_${labor.id}`
+                                        ? { ...i, quantity: i.quantity + 1 }
+                                        : i
+                                    );
+                                  }
+                                  return [...prev, createLaborCartItem(labor)];
+                                });
+                                setShowLaborMenu(false);
+                              }}
+                              className="w-full text-right px-2.5 py-1.5 text-xs font-bold text-ink-800 hover:bg-brand-50 hover:text-brand-700 rounded-lg flex justify-between items-center transition-colors cursor-pointer"
+                            >
+                              <span>{labor.name}</span>
+                              <span className="font-mono text-[11px] text-brand-600">+{Number(labor.price || 0).toLocaleString()}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {mode === 'sale' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowDraftsModal(true)}
+                      className="px-2 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                      title="عرض الفواتير المعلقة"
+                    >
+                      <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                      <span className="hidden sm:inline text-xs">المعلقة</span>
+                      {drafts.length > 0 && (
+                        <span className="bg-brand-600 text-white text-[10px] min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center font-black font-mono">
+                          {drafts.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setIsCartMaximized(!isCartMaximized)}
-                    className="hidden lg:flex items-center justify-center p-1 text-ink-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors cursor-pointer"
+                    className="hidden lg:flex items-center justify-center p-1.5 text-ink-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors cursor-pointer"
                     title={isCartMaximized ? 'تصغير السلة' : 'تكبير السلة'}
                   >
                     {isCartMaximized ? (
@@ -958,115 +1022,55 @@ export default function POSScreen({
                     )}
                   </button>
                 </div>
-
-                {mode === 'sale' && (
-                  <div className="flex items-center gap-2">
-                    {/* Labor Services Dropdown */}
-                    {laborCharges?.length > 0 && (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowLaborMenu(!showLaborMenu)}
-                          className="px-2.5 py-1 text-xs font-bold text-brand-700 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <span>+ أجور وخدمات</span>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                        </button>
-                        {showLaborMenu && (
-                          <div className="absolute left-0 top-full mt-1.5 w-56 bg-white border border-brand-200 rounded-xl shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-100">
-                            <p className="text-[10px] font-bold text-ink-400 px-2 py-1 border-b border-ink-100 mb-1">اختر خدمة لإضافتها:</p>
-                            {laborCharges.map((labor) => (
-                              <button
-                                key={labor.id}
-                                onClick={() => {
-                                  setCart((prev) => {
-                                    const existing = prev.find((i) => i.productId === `labor_${labor.id}`);
-                                    if (existing) {
-                                      return prev.map((i) =>
-                                        i.productId === `labor_${labor.id}`
-                                          ? { ...i, quantity: i.quantity + 1 }
-                                          : i
-                                      );
-                                    }
-                                    return [...prev, createLaborCartItem(labor)];
-                                  });
-                                  setShowLaborMenu(false);
-                                }}
-                                className="w-full text-right px-2.5 py-1.5 text-xs font-bold text-ink-800 hover:bg-brand-50 hover:text-brand-700 rounded-lg flex justify-between items-center transition-colors cursor-pointer"
-                              >
-                                <span>{labor.name}</span>
-                                <span className="font-mono text-[11px] text-brand-600">+{Number(labor.price || 0).toLocaleString()}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Cash / Mastercard / Debt Toggle */}
-                    <div className="flex gap-1 bg-ink-50 p-0.5 rounded-lg border border-ink-200">
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceType('cash')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
-                          invoiceType === 'cash'
-                            ? 'bg-emerald-600 text-white shadow-2xs'
-                            : 'text-ink-500 hover:text-ink-900'
-                        }`}
-                      >
-                        <span>💵</span>
-                        <span>نقد</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceType('mastercard')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
-                          invoiceType === 'mastercard'
-                            ? 'bg-indigo-600 text-white shadow-2xs'
-                            : 'text-ink-500 hover:text-ink-900'
-                        }`}
-                      >
-                        <span>💳</span>
-                        <span>ماستركارد</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceType('debt')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
-                          invoiceType === 'debt'
-                            ? 'bg-warn-500 text-white shadow-2xs'
-                            : 'text-ink-500 hover:text-ink-900'
-                        }`}
-                      >
-                        <span>⏳</span>
-                        <span>ديون</span>
-                      </button>
-                    </div>
-
-                    {/* Drafts Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowDraftsModal(true)}
-                      className="px-2.5 py-1 text-xs font-bold text-brand-700 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="عرض الفواتير المعلقة"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      <span>المعلقة</span>
-                      {drafts.length > 0 && (
-                        <span className="bg-brand-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
-                          {drafts.length}
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                )}
               </div>
 
-              {/* Customer / Offer Name Inputs */}
+              {/* Row 2: Full-Width Payment Method Segmented Tabs */}
+              {mode === 'sale' && (
+                <div className="grid grid-cols-3 gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('cash')}
+                    className={`py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      invoiceType === 'cash'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    <span>💵</span>
+                    <span>نقد</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('mastercard')}
+                    className={`py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      invoiceType === 'mastercard'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    <span>💳</span>
+                    <span>ماستركارد</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('debt')}
+                    className={`py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      invoiceType === 'debt'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    <span>⏳</span>
+                    <span>ديون</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Row 3: Customer & Stock Source Input Row */}
               {mode === 'offer' ? (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-ink-700 mb-1">اسم العرض / المشروع *</label>
+                    <label className="block text-[11px] font-bold text-ink-700 mb-0.5">اسم العرض / المشروع *</label>
                     <input
                       type="text"
                       value={offerName}
@@ -1080,6 +1084,7 @@ export default function POSScreen({
                     onChange={setCustomerName} 
                     label="العميل الموجه له العرض (اختياري)"
                     placeholder="اختر عميل أو اكتب اسماً جديداً..."
+                    compact={true}
                     onSelect={(c) => {
                       setCustomerName(c.name);
                       setPhone1(c.phone1 || '');
@@ -1087,63 +1092,37 @@ export default function POSScreen({
                     }}
                   />
                   <div>
-                    <label className="block text-[11px] font-bold text-ink-700 mb-1">ملاحظات العرض (شروط، فترة الضمان...)</label>
+                    <label className="block text-[11px] font-bold text-ink-700 mb-0.5">ملاحظات العرض (شروط، فترة الضمان...)</label>
                     <textarea
                       value={offerNotes}
                       onChange={(e) => setOfferNotes(e.target.value)}
                       placeholder="مثال: الأسعار شاملة التركيب، العرض نافذ لمدة 7 أيام..."
-                      rows={2}
-                      className="input py-1.5 text-xs w-full resize-none"
+                      rows={1}
+                      className="input py-1 text-xs w-full resize-none"
                     />
                   </div>
                 </div>
               ) : invoiceType === 'debt' ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <CustomerSelect 
-                    value={customerName} 
-                    onChange={setCustomerName} 
-                    label="اسم العميل (مطلوب) *"
-                    placeholder="اسم العميل..."
-                    onSelect={(c) => {
-                      setCustomerName(c.name);
-                      setPhone1(c.phone1 || '');
-                      setPhone2(c.phone2 || '');
-                    }}
-                  />
-                  <div className="relative">
-                    <label className="block text-xs text-ink-500 mb-1">رقم الهاتف (مطلوب) *</label>
-                    <input
-                      type="tel"
-                      placeholder="07XXXXXXXXX"
-                      value={phone1}
-                      onChange={(e) => setPhone1(e.target.value)}
-                      className="input"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <CustomerSelect 
-                  value={customerName} 
-                  onChange={setCustomerName} 
-                  label="العميل (اختياري)"
-                  placeholder="اسم العميل..."
-                  onSelect={(c) => {
-                    setCustomerName(c.name);
-                    setPhone1(c.phone1 || '');
-                    setPhone2(c.phone2 || '');
-                  }}
-                />
-              )}
-
-              {/* Stock Source Selector */}
-              {mode === 'sale' && (
-                <div className="mt-2.5 p-2 bg-slate-50 border border-slate-200 rounded-xl">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-600 shrink-0">
-                      📦 مصدر الصرف:
-                    </span>
-                    <div className="flex items-center gap-1.5 flex-1 justify-end">
+                <div className="space-y-1.5">
+                  <div className="grid grid-cols-12 gap-1.5 items-end">
+                    <div className="col-span-7">
+                      <CustomerSelect 
+                        value={customerName} 
+                        onChange={setCustomerName} 
+                        label="اسم العميل (مطلوب) *"
+                        placeholder="اسم العميل..."
+                        compact={true}
+                        onSelect={(c) => {
+                          setCustomerName(c.name);
+                          setPhone1(c.phone1 || '');
+                          setPhone2(c.phone2 || '');
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-5">
+                      <label className="block text-[11px] font-bold text-ink-700 mb-0.5">
+                        📦 مصدر الصرف
+                      </label>
                       <select
                         value={stockSource}
                         onChange={(e) => {
@@ -1157,61 +1136,138 @@ export default function POSScreen({
                             setSelectedTechnicianId('');
                           }
                         }}
-                        className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                        className="w-full bg-slate-50 border border-ink-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
                       >
-                        <option value="store">🏪 المحل (افتراضي)</option>
-                        <option value="warehouse">🏢 المخزن الرئيسي</option>
-                        <option value="custody">🚚 عهدة سيارة فني</option>
+                        <option value="store">🏪 المحل</option>
+                        <option value="warehouse">🏢 المخزن</option>
+                        <option value="custody">🚚 عهدة فني</option>
                       </select>
-
-                      {stockSource === 'custody' && (
-                        <select
-                          value={selectedTechnicianId}
-                          onChange={(e) => setSelectedTechnicianId(e.target.value)}
-                          className="bg-indigo-50 border border-indigo-300 text-indigo-900 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer animate-fade-in"
-                        >
-                          {technicians.length === 0 ? (
-                            <option value="">لا يوجد فنيين مسجلين</option>
-                          ) : (
-                            technicians.map(t => (
-                              <option key={t.id} value={t.id}>
-                                {t.name} {t.vehicleNumber ? `(${t.vehicleNumber})` : ''}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      )}
                     </div>
                   </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-amber-900 mb-0.5">رقم الهاتف (مطلوب للفاتورة الآجلة) *</label>
+                    <input
+                      type="tel"
+                      placeholder="07XXXXXXXXX"
+                      value={phone1}
+                      onChange={(e) => setPhone1(e.target.value)}
+                      className="input py-1.5 text-xs font-mono font-bold w-full border-amber-300 focus:border-amber-500"
+                      dir="ltr"
+                    />
+                  </div>
+
+                  {stockSource === 'custody' && (
+                    <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 p-1.5 rounded-lg animate-in fade-in duration-150">
+                      <span className="text-xs font-bold text-indigo-900 shrink-0">اختر الفني:</span>
+                      <select
+                        value={selectedTechnicianId}
+                        onChange={(e) => setSelectedTechnicianId(e.target.value)}
+                        className="flex-1 bg-white border border-indigo-300 text-indigo-900 rounded-md px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        {technicians.length === 0 ? (
+                          <option value="">لا يوجد فنيين مسجلين</option>
+                        ) : (
+                          technicians.map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} {t.vehicleNumber ? `(${t.vehicleNumber})` : ''}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-12 gap-1.5 items-end">
+                  <div className="col-span-7">
+                    <CustomerSelect 
+                      value={customerName} 
+                      onChange={setCustomerName} 
+                      label="العميل (اختياري)"
+                      placeholder="اسم العميل..."
+                      compact={true}
+                      onSelect={(c) => {
+                        setCustomerName(c.name);
+                        setPhone1(c.phone1 || '');
+                        setPhone2(c.phone2 || '');
+                      }}
+                    />
+                  </div>
+                  <div className="col-span-5">
+                    <label className="block text-[11px] font-bold text-ink-700 mb-0.5">
+                      📦 مصدر الصرف
+                    </label>
+                    <select
+                      value={stockSource}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStockSource(val);
+                        if (val === 'custody') {
+                          if (technicians.length > 0 && !selectedTechnicianId) {
+                            setSelectedTechnicianId(technicians[0].id);
+                          }
+                        } else {
+                          setSelectedTechnicianId('');
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-ink-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                    >
+                      <option value="store">🏪 المحل</option>
+                      <option value="warehouse">🏢 المخزن</option>
+                      <option value="custody">🚚 عهدة فني</option>
+                    </select>
+                  </div>
+
+                  {stockSource === 'custody' && (
+                    <div className="col-span-12 mt-1 flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 p-1.5 rounded-lg animate-in fade-in duration-150">
+                      <span className="text-xs font-bold text-indigo-900 shrink-0">اختر الفني:</span>
+                      <select
+                        value={selectedTechnicianId}
+                        onChange={(e) => setSelectedTechnicianId(e.target.value)}
+                        className="flex-1 bg-white border border-indigo-300 text-indigo-900 rounded-md px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        {technicians.length === 0 ? (
+                          <option value="">لا يوجد فنيين مسجلين</option>
+                        ) : (
+                          technicians.map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} {t.vehicleNumber ? `(${t.vehicleNumber})` : ''}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 
               {checkoutError && (
-                <div className="mt-2 bg-danger-50 border border-danger-500 text-danger-700 text-xs font-medium rounded-lg p-2">
+                <div className="bg-danger-50 border border-danger-500 text-danger-700 text-xs font-medium rounded-lg p-2">
                   {checkoutError}
                 </div>
               )}
               {draftError && (
-                <div className="mt-2 bg-orange-50 border border-orange-500 text-orange-700 text-xs font-medium rounded-lg p-2">
+                <div className="bg-orange-50 border border-orange-500 text-orange-700 text-xs font-medium rounded-lg p-2">
                   {draftError}
                 </div>
               )}
             </div>
 
             {/* Cart Items List - Ultra Robust & Responsive */}
-            <div className="flex-1 overflow-y-auto p-2.5 min-h-0 min-w-0 bg-ink-50/30">
+            <div className="flex-1 overflow-y-auto p-2 min-h-0 min-w-0 bg-ink-50/30">
               {cart.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-ink-400 min-h-[150px]">
-                  <svg className="w-12 h-12 mb-2 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                  <p className="text-sm font-bold text-ink-600">السلة فارغة</p>
-                  <p className="text-xs text-ink-400 mt-0.5">امسح باركود أو اختر من الشبكة</p>
+                <div className="h-full flex flex-col items-center justify-center text-ink-400 py-6 min-h-[100px]">
+                  <svg className="w-10 h-10 mb-1 opacity-25" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                  <p className="text-xs font-bold text-ink-600">السلة فارغة</p>
+                  <p className="text-[11px] text-ink-400 mt-0.5">امسح باركود أو اختر من الشبكة</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {cart.map((item) => (
                     <div 
                       key={item.productId} 
-                      className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-ink-200/80 shadow-2xs hover:border-brand-300 transition-colors gap-2 min-w-0"
+                      className="flex items-center justify-between p-2 bg-white rounded-xl border border-ink-200/80 shadow-2xs hover:border-brand-300 transition-colors gap-2 min-w-0"
                     >
                       {/* Name & Price */}
                       <div className="flex-1 min-w-0 pr-0.5">
@@ -1221,7 +1277,7 @@ export default function POSScreen({
                         >
                           {item.name}
                         </p>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] text-ink-400 font-medium">السعر:</span>
                           <button
                             type="button"
@@ -1248,12 +1304,12 @@ export default function POSScreen({
                             min="1"
                             value={item.quantity}
                             onChange={(e) => updateQuantity(item.productId, e.target.value)}
-                            className="w-12 border border-ink-200 rounded-lg py-1 px-1 text-center text-xs font-black font-mono focus:ring-2 focus:ring-brand-500 bg-ink-50/50"
+                            className="w-11 border border-ink-200 rounded-lg py-1 px-1 text-center text-xs font-black font-mono focus:ring-2 focus:ring-brand-500 bg-ink-50/50"
                           />
                         </div>
 
                         {/* Line Total */}
-                        <div className="text-left min-w-[65px] shrink-0">
+                        <div className="text-left min-w-[60px] shrink-0">
                           <span className="text-xs font-black text-ink-900 font-mono block">
                             {Number((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString()}
                           </span>
@@ -1264,10 +1320,10 @@ export default function POSScreen({
                         <button
                           type="button"
                           onClick={() => removeFromCart(item.productId)}
-                          className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors shrink-0 cursor-pointer"
+                          className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors shrink-0 cursor-pointer"
                           title="حذف من السلة"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                       </div>
                     </div>
@@ -1277,66 +1333,66 @@ export default function POSScreen({
             </div>
 
             {/* Footer: Summary & Checkout Actions */}
-            <div className="p-3 bg-white border-t border-ink-100">
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <div className={`flex items-center justify-between px-2.5 py-1 rounded-lg border transition-colors ${discount > 0 ? 'bg-danger-50/60 border-danger-200 text-danger-900' : 'bg-ink-50/60 border-ink-100'}`}>
-                  <label className="text-[11px] font-bold">الخصم (د.ع):</label>
+            <div className="p-2.5 bg-white border-t border-ink-100 shrink-0">
+              <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+                <div className={`flex items-center justify-between px-2 py-0.5 rounded-lg border transition-colors ${discount > 0 ? 'bg-danger-50/60 border-danger-200 text-danger-900' : 'bg-ink-50/60 border-ink-100'}`}>
+                  <label className="text-[10px] font-bold">الخصم (د.ع):</label>
                   <input
                     type="number"
                     min="0"
                     value={discount || ''}
                     onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-                    className={`w-20 py-0.5 px-1.5 text-xs text-left font-mono font-bold rounded border ${discount > 0 ? 'bg-white border-danger-300 text-danger-700' : 'bg-white border-ink-200'}`}
+                    className={`w-16 py-0.5 px-1 text-xs text-left font-mono font-bold rounded border ${discount > 0 ? 'bg-white border-danger-300 text-danger-700' : 'bg-white border-ink-200'}`}
                     placeholder="0"
                   />
                 </div>
-                <div className="flex items-center justify-between bg-ink-50/60 px-2.5 py-1 rounded-lg border border-ink-100">
-                  <label className="text-[11px] font-bold text-ink-600">الضريبة %:</label>
+                <div className="flex items-center justify-between bg-ink-50/60 px-2 py-0.5 rounded-lg border border-ink-100">
+                  <label className="text-[10px] font-bold text-ink-600">الضريبة %:</label>
                   <input
                     type="number"
                     min="0"
                     value={taxRate || ''}
                     onChange={(e) => setTaxRate(Number(e.target.value) || 0)}
-                    className="w-16 py-0.5 px-1.5 text-xs text-left font-mono font-bold bg-white border border-ink-200 rounded"
+                    className="w-14 py-0.5 px-1 text-xs text-left font-mono font-bold bg-white border border-ink-200 rounded"
                     placeholder="0"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1 mb-2 pt-1 border-t border-ink-100">
-                <div className="flex justify-between items-center text-xs text-ink-500 font-medium">
+              <div className="space-y-0.5 mb-1.5 pt-1 border-t border-ink-100">
+                <div className="flex justify-between items-center text-[11px] text-ink-500 font-medium">
                   <span>المجموع الفرعي:</span>
                   <span className="font-mono font-bold text-ink-700">{Number(summary.subtotal || 0).toLocaleString()} د.ع</span>
                 </div>
                 {summary.discount > 0 && (
-                  <div className="flex justify-between items-center text-xs font-bold text-danger-700 bg-danger-50 px-2 py-1 rounded-lg border border-danger-200 animate-in fade-in duration-150">
+                  <div className="flex justify-between items-center text-[11px] font-bold text-danger-700 bg-danger-50 px-1.5 py-0.5 rounded border border-danger-200">
                     <span className="flex items-center gap-1">
-                      <svg className="w-3.5 h-3.5 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                      <svg className="w-3 h-3 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
                       الخصم:
                     </span>
-                    <span className="font-mono text-sm font-black">-{Number(summary.discount || 0).toLocaleString()} د.ع</span>
+                    <span className="font-mono text-xs font-black">-{Number(summary.discount || 0).toLocaleString()} د.ع</span>
                   </div>
                 )}
                 {summary.taxRate > 0 && (
-                  <div className="flex justify-between items-center text-xs text-ink-600 font-medium">
+                  <div className="flex justify-between items-center text-[11px] text-ink-600 font-medium">
                     <span>الضريبة ({summary.taxRate}%):</span>
                     <span className="font-mono font-bold">+{Number(summary.taxAmount || 0).toLocaleString()} د.ع</span>
                   </div>
                 )}
-                <div className="flex justify-between items-baseline pt-1 border-t border-ink-100">
-                  <span className="text-xs text-ink-600 font-bold">المبلغ الإجمالي:</span>
+                <div className="flex justify-between items-baseline pt-0.5 border-t border-ink-100">
+                  <span className="text-xs text-ink-700 font-black">المبلغ الإجمالي:</span>
                   <div className="text-left">
-                    <span className="text-xl font-black text-brand-700 font-mono">{Number(summary.total || 0).toLocaleString()}</span>
-                    <span className="text-xs text-brand-700 font-bold mr-1">د.ع</span>
+                    <span className="text-lg font-black text-brand-700 font-mono">{Number(summary.total || 0).toLocaleString()}</span>
+                    <span className="text-[11px] text-brand-700 font-bold mr-1">د.ع</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 <button
                   onClick={handleCheckout}
                   disabled={checkingOut || cart.length === 0}
-                  className="flex-[2] bg-brand-600 hover:bg-brand-700 text-white font-black text-sm py-2.5 px-3 rounded-xl shadow-md transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-[2] bg-brand-600 hover:bg-brand-700 text-white font-black text-sm py-2 px-3 rounded-xl shadow-md transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {checkingOut ? (
                     'جارٍ الحفظ...'
@@ -1348,11 +1404,11 @@ export default function POSScreen({
                   )}
                 </button>
                 {mode === 'sale' && (
-                  <div className="flex-[1] flex gap-1.5">
+                  <div className="flex-[1] flex gap-1">
                     {editingDraftId && cart.length === 0 ? (
                       <button
                         onClick={() => handleDeleteDraft(editingDraftId)}
-                        className="flex-1 py-2 text-xs font-bold text-white bg-danger-600 hover:bg-danger-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+                        className="flex-1 py-1.5 text-xs font-bold text-white bg-danger-600 hover:bg-danger-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
                       >
                         حذف
                       </button>
@@ -1360,7 +1416,7 @@ export default function POSScreen({
                       <button
                         onClick={handleSaveDraft}
                         disabled={savingDraft || cart.length === 0}
-                        className="flex-1 py-2 text-xs font-bold text-ink-700 hover:text-ink-900 bg-ink-50 hover:bg-ink-100 border border-ink-200 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                        className="flex-1 py-1.5 text-xs font-bold text-ink-700 hover:text-ink-900 bg-ink-50 hover:bg-ink-100 border border-ink-200 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
                         title={editingDraftId ? 'تحديث الفاتورة المعلقة' : 'تعليق الفاتورة'}
                       >
                         {savingDraft ? '...' : 'تعليق'}
@@ -1369,7 +1425,7 @@ export default function POSScreen({
                     <button
                       onClick={() => setShowPrintOptionsModal(true)}
                       disabled={cart.length === 0}
-                      className="p-2 text-brand-700 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                      className="p-1.5 text-brand-700 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center cursor-pointer"
                       title="خيارات الطباعة وحفظ عرض السعر"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>

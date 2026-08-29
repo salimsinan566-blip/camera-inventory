@@ -21,7 +21,10 @@ export default function CustomerSelect({
   onChange, 
   onSelect, 
   label = 'العميل (اختياري)', 
-  placeholder = 'ابحث عن عميل أو اكتب اسماً جديداً...' 
+  placeholder = 'ابحث عن عميل أو اكتب اسماً جديداً...',
+  className = '',
+  inputClassName = '',
+  compact = false
 }) {
   const { customers } = useCustomers();
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -45,8 +48,12 @@ export default function CustomerSelect({
   const showNewCustomerOption = value && value.trim() && !exactMatch;
 
   return (
-    <div className="relative">
-      {label && <label className="block text-xs font-bold text-ink-700 mb-1">{label}</label>}
+    <div className={`relative ${className}`}>
+      {label && (
+        <label className={`block font-bold text-ink-700 ${compact ? 'text-[11px] mb-0.5' : 'text-xs mb-1'}`}>
+          {label}
+        </label>
+      )}
       <div className="relative">
         <input
           type="text"
@@ -58,7 +65,7 @@ export default function CustomerSelect({
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 250)}
           placeholder={placeholder}
-          className="input pl-8"
+          className={`input pl-8 ${compact ? 'py-1.5 text-xs' : ''} ${inputClassName}`}
         />
         {value && (
           <button
