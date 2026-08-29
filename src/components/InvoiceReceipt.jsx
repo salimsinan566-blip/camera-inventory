@@ -119,7 +119,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       <div 
         key={pageIndex} 
         className="invoice-page relative w-full flex flex-col justify-between bg-transparent print:break-after-page" 
-        style={{ minHeight: '255mm', maxHeight: '272mm', boxSizing: 'border-box' }}
+        style={{ minHeight: 'auto', boxSizing: 'border-box' }}
       >
         {/* القسم العلوي: الترويسة والمنتجات */}
         <div>
@@ -131,27 +131,27 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
               </h1>
               {settings?.address && (
-                <p className="text-xs sm:text-sm text-slate-500 font-bold mb-0.5">
-                  <svg style={{ display: 'inline-block', verticalAlign: 'middle', width: '16px', height: '16px', marginLeft: '4px' }} className="text-[#C89B3C]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <div className="text-xs sm:text-sm text-slate-500 font-bold flex items-center gap-1.5 mb-0.5">
+                  <svg style={{ width: '15px', height: '15px', minWidth: '15px', display: 'inline-block', verticalAlign: 'middle' }} className="text-[#C89B3C] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                   <span style={{ verticalAlign: 'middle' }}>{settings.address}</span>
-                </p>
+                </div>
               )}
             </div>
             
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-1.5 pr-2 relative">
               {settings?.logoUrl ? (
-                <div className="h-24 sm:h-28 flex items-center justify-end">
+                <div className="h-20 sm:h-24 flex items-center justify-end">
                   <img 
                     src={settings.logoUrl} 
-                    alt="الشعار" 
-                    className="h-24 sm:h-28 max-h-28 w-auto max-w-[280px] object-contain drop-shadow-xs" 
+                    alt="SAFE ZONE" 
+                    className="h-20 sm:h-24 max-h-24 w-auto max-w-[260px] object-contain drop-shadow-xs" 
                     crossOrigin="anonymous"
                   />
                 </div>
               ) : (
-                <div className="h-16 w-28 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-1 font-bold rounded text-center text-xs">
-                  [الشعار]
+                <div className="h-16 w-32 flex items-center justify-center text-amber-600 border-2 border-dashed border-amber-300 p-1 font-bold rounded text-center text-sm">
+                  SAFE ZONE
                 </div>
               )}
               
@@ -462,8 +462,8 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           display: none !important;
         }
         .invoice-page {
-          min-height: 1040px !important;
-          max-height: 1075px !important;
+          min-height: auto !important;
+          max-height: none !important;
           box-sizing: border-box !important;
           padding: 16px 20px 20px 20px !important;
           display: flex !important;
@@ -489,11 +489,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
 
     try {
       const opt = {
-        margin: 0,
+        margin: [4, 6, 4, 6],
         filename: `فاتورة_${sale.invoiceNumber || 'draft'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
-          scale: 2.5, 
+          scale: 2, 
           useCORS: true, 
           logging: false, 
           scrollY: 0, 
@@ -501,8 +501,8 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           letterRendering: false,
           allowTaint: true
         },
-        jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'] }
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
       const pdfBlob = await html2pdf().set(opt).from(container).output('blob');
@@ -1064,8 +1064,20 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                   </button>
                 )}
                 <button
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  className="p-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-full shadow-sm transition-colors border border-rose-200 cursor-pointer"
+                  title="تحميل كملف PDF مباشر"
+                >
+                  {isDownloadingPdf ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                  )}
+                </button>
+                <button
                   onClick={handlePrint}
-                  className="p-2.5 bg-brand-50 text-brand-600 hover:bg-brand-100 rounded-full shadow-sm transition-colors border border-brand-200"
+                  className="p-2.5 bg-brand-50 text-brand-600 hover:bg-brand-100 rounded-full shadow-sm transition-colors border border-brand-200 cursor-pointer"
                   title="طباعة الفاتورة"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
@@ -1074,7 +1086,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             )}
             <button 
               onClick={onClose} 
-              className="p-2.5 bg-slate-100 text-slate-600 hover:bg-danger-50 hover:text-danger-600 rounded-full shadow-sm transition-colors border border-slate-200"
+              className="p-2.5 bg-slate-100 text-slate-600 hover:bg-danger-50 hover:text-danger-600 rounded-full shadow-sm transition-colors border border-slate-200 cursor-pointer"
               title="إغلاق"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -1087,11 +1099,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <div key={idx} className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]">
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
-                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
+                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
                     <img 
                       src={settings.logoUrl} 
                       alt="" 
-                      className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" 
+                      className="w-[70%] max-w-[460px] h-auto object-contain filter grayscale" 
                       style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
                     />
                   </div>
@@ -1119,12 +1131,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full">
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
-                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
+                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
                   <img 
                     src={settings.logoUrl} 
                     alt="" 
-                    className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" 
-                    style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                    className="w-[70%] max-w-[460px] h-auto object-contain filter grayscale" 
+                    style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', opacity: 0.15 }}
                     crossOrigin="anonymous"
                   />
                 </div>
@@ -1165,8 +1177,8 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           .invoice-page {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            min-height: 255mm !important;
-            max-height: 275mm !important;
+            min-height: auto !important;
+            max-height: none !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
@@ -1179,7 +1191,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           }
           @page {
             size: A4 portrait;
-            margin: 6mm 8mm;
+            margin: 4mm 6mm;
           }
           tr {
             page-break-inside: avoid;

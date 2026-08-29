@@ -233,16 +233,16 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
     <!-- Watermark Logo in Background -->
     ${safeLogo ? `
-      <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; opacity: 0.2; overflow: hidden;">
+      <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; opacity: 0.15; overflow: hidden;">
         <img 
           src="${safeLogo}" 
           alt="" 
-          style="width: 75%; max-width: 500px; height: auto; object-fit: contain; filter: grayscale(100%); -webkit-print-color-adjust: exact; print-color-adjust: exact;" 
+          style="width: 70%; max-width: 460px; height: auto; object-fit: contain; filter: grayscale(100%); -webkit-print-color-adjust: exact; print-color-adjust: exact; opacity: 0.15;" 
         />
       </div>
     ` : ''}
 
-    <div style="position: relative; z-index: 10; min-height: 1040px; max-height: 1075px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+    <div style="position: relative; z-index: 10; min-height: auto; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
       
       <!-- Top Section: Header & Items -->
       <div>
@@ -264,11 +264,11 @@ export async function generateInvoicePdfBlob(sale, settings) {
           <!-- Logo & Badge (Left) -->
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-right: 8px;">
             ${safeLogo ? `
-              <div style="height: 100px; display: flex; align-items: center; justify-content: flex-end;">
-                <img src="${safeLogo}" alt="الشعار" style="height: 95px; max-height: 100px; width: auto; max-width: 280px; object-fit: contain;" />
+              <div style="height: 85px; display: flex; align-items: center; justify-content: flex-end;">
+                <img src="${safeLogo}" alt="SAFE ZONE" style="height: 80px; max-height: 85px; width: auto; max-width: 260px; object-fit: contain;" />
               </div>
             ` : `
-              <div style="height: 90px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+              <div style="height: 70px; width: 130px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
             `}
             ${isOffer ? `
               <span style="font-size: 12px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 3px 16px; border-radius: 9999px; text-transform: uppercase;">
