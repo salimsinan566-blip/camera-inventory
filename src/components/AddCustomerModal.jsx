@@ -4,6 +4,7 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../hooks/useSettings';
 import AppleSchedulePicker from './AppleSchedulePicker';
 import { renderWhatsAppTemplate, DEFAULT_WHATSAPP_TEMPLATES } from '../services/whatsappService';
+import { clearDebtorSessionLock } from '../services/debtReminderScheduler';
 
 export default function AddCustomerModal({ customer = null, onClose, onSaved }) {
   const { settings } = useSettings();
@@ -39,6 +40,7 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
           customerType,
           reminderSchedule,
         });
+        clearDebtorSessionLock(customer.id);
         toast('تم تحديث بيانات العميل وتفعيل الموعد بنجاح 💾', 'success');
       } else {
         savedCustId = await addCustomer({
@@ -50,6 +52,7 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
           customerType,
           reminderSchedule,
         });
+        clearDebtorSessionLock(savedCustId);
         toast('تمت إضافة العميل وتفعيل الموعد بنجاح 💾', 'success');
       }
 

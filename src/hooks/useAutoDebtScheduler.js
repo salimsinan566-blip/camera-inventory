@@ -3,16 +3,26 @@ import { useCustomers } from './useCustomers';
 import { useSales } from './useSales';
 import { useIncomes } from './useIncomes';
 import { useSettings } from './useSettings';
+import { processAutomatedDebtReminders } from '../services/debtReminderScheduler';
 
 export function useAutoDebtScheduler() {
-  // Restore global hooks to keep Firebase listeners alive and cache populated
-  // This prevents the app from being slow when navigating between tabs
-  useCustomers();
-  useSales();
-  useIncomes();
-  useSettings();
+  const { customers = [] } = useCustomers();
+  const { sales = [] } = useSales();
+  const { incomes = [] } = useIncomes();
+  const { settings = {} } = useSettings();
 
-  // تم تعطيل الإرسال من المتصفح والاعتماد كلياً على سيرفر EC2 لضمان العمل 24/7
-  // هذا يمنع مشكلة توقف الإرسال عند إغلاق المتصفح أو التبويب
-  return;
+  useEffect(() => {
+    if (settings?.whatsappAutoReminders === false) return;
+    if (!customers.length) return;
+
+    // Background interval check every 5 seconds for timely dispatch
+    const timer = setInterval(() => {
+      processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
+    }, 5000);
+
+    // Immediate check
+    processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
+
+    return () => clearInterval(timer);
+  }, [customers, sales, incomes, settings]);
 }

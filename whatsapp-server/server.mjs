@@ -49,8 +49,12 @@ const sentMessagesStore = new Map();
 function storeOutgoingMessage(result, content) {
   try {
     const msgId = result?.key?.id;
-    if (msgId && content) {
-      sentMessagesStore.set(msgId, content);
+    // We MUST store the actual WhatsApp protocol message (result.message) for E2E retries
+    // If we just store {text: ...}, the recipient's phone will drop the message on retry.
+    const messageToStore = result?.message || content; 
+    
+    if (msgId && messageToStore) {
+      sentMessagesStore.set(msgId, messageToStore);
       // Auto-cleanup: keep max 500 messages, remove oldest if exceeded
       if (sentMessagesStore.size > 500) {
         const firstKey = sentMessagesStore.keys().next().value;
@@ -339,7 +343,7 @@ async function generateNativePdfFromHtml(htmlContent) {
   ];
 
   await new Promise((resolve, reject) => {
-    execFile(browserPath, args, (err) => {
+    const child = execFile(browserPath, args, { timeout: 15000 }, (err) => {
       if (err) return reject(err);
       resolve();
     });

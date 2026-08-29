@@ -16,8 +16,20 @@ function normalizeArabic(text) {
     .replace(/[\u064B-\u065F]/g, '');
 }
 
+// In-flight mutex to prevent duplicate dispatches during network transmission
+const inFlightDebtorIds = new Set();
 // In-memory cache to prevent duplicate dispatches within the same session
 const sessionSentDebtors = new Map();
+
+/**
+ * Clears in-memory session lock for a debtor (e.g. when updating schedule/testing)
+ */
+export function clearDebtorSessionLock(customerId) {
+  if (customerId) {
+    sessionSentDebtors.delete(customerId);
+    inFlightDebtorIds.delete(customerId);
+  }
+}
 
 /**
  * Evaluates whether a customer is due for an automated WhatsApp debt reminder right now.
@@ -29,6 +41,10 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
 
   const schedule = customer?.reminderSchedule || 'default';
   if (schedule === 'disabled') return false;
+
+  if (customer.id && inFlightDebtorIds.has(customer.id)) {
+    return false;
+  }
 
   let schedCode = schedule;
   let targetTimeStr = settings?.whatsappReminderTime || '20:00';
@@ -51,7 +67,7 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     ? (parseInt(schedCode.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2)
     : 0;
 
-  // 1. In-memory session duplicate guard
+  // 1. In-memory session duplicate guard (prevents duplicate triggers within the active window)
   if (customer.id && sessionSentDebtors.has(customer.id)) {
     const lastSessionSent = sessionSentDebtors.get(customer.id);
     const minSessionGap = isMinutely
@@ -64,7 +80,7 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     }
   }
 
-  // 2. Persistent duplicate guard:
+  // 2. Persistent duplicate guard for Minutely / Hourly:
   if (isMinutely) {
     if (!customer.lastDebtReminderSent) return true;
     const lastSentDate = new Date(customer.lastDebtReminderSent);
@@ -84,19 +100,6 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
   const targetMinute = parseInt(targetMinStr || '0', 10);
   const targetSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
 
-  if (customer.lastDebtReminderSent) {
-    const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const isSameCalendarDay = 
-      lastSentDate.getFullYear() === now.getFullYear() &&
-      lastSentDate.getMonth() === now.getMonth() &&
-      lastSentDate.getDate() === now.getDate();
-    
-    // يعتبر مرسلاً إذا كان وقت الإرسال عند أو بعد موعد التذكير المحدد اليوم
-    if (isSameCalendarDay && lastSentDate.getTime() >= targetSlotTime.getTime() - 60000) {
-      return false;
-    }
-  }
-
   // Parse hours and minutes
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
@@ -108,6 +111,20 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
   const isTimeWindow = currentTotalMins >= targetTotalMins && currentTotalMins <= targetTotalMins + 59;
   if (!isTimeWindow) {
     return false;
+  }
+
+  // Persistent duplicate guard for Daily/Weekly/Monthly:
+  // Strictly prevent sending if a message has already been recorded today at or after the target slot time!
+  if (customer.lastDebtReminderSent) {
+    const lastSentDate = new Date(customer.lastDebtReminderSent);
+    const isSameCalendarDay = 
+      lastSentDate.getFullYear() === now.getFullYear() &&
+      lastSentDate.getMonth() === now.getMonth() &&
+      lastSentDate.getDate() === now.getDate();
+    
+    if (isSameCalendarDay && lastSentDate.getTime() >= targetSlotTime.getTime()) {
+      return false;
+    }
   }
 
   // Check day condition
@@ -205,15 +222,18 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
       lastSentDate.getMonth() === now.getMonth() &&
       lastSentDate.getDate() === now.getDate();
     
-    // يعتبر مرسلاً لموعد اليوم فقط إذا كان وقت الإرسال عند أو بعد موعد التذكير المحدد اليوم
-    if (isSameCalendarDay && lastSentDate.getTime() >= candidate.getTime() - 60000) {
+    if (isSameCalendarDay && lastSentDate.getTime() >= candidate.getTime()) {
       alreadySentForTodaySlot = true;
     }
   }
 
+  const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+  const targetTotalMins = targetHour * 60 + targetMinute;
+  const isPastActiveWindow = currentTotalMins > targetTotalMins + 59;
+
   // 1. Daily / Custom 1 Days
   if (schedCode === 'custom_1_days' || schedCode === 'daily' || schedCode.startsWith('custom_1_')) {
-    if (!alreadySentForTodaySlot && candidate.getTime() > now.getTime()) {
+    if (!alreadySentForTodaySlot && !isPastActiveWindow) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + 1);
@@ -226,8 +246,8 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
     const targetDayIndex = DAYS.indexOf(schedCode === 'default' ? (settings?.whatsappDefaultDay || 'thursday') : schedCode);
     let daysAhead = (targetDayIndex - now.getDay() + 7) % 7;
     if (daysAhead === 0) {
-      // نفس اليوم: إذا تم الإرسال لموعد اليوم بالفعل أو إذا كان الوقت الحالي قد تجاوز وقت الموعد
-      if (alreadySentForTodaySlot || candidate.getTime() <= now.getTime()) {
+      // نفس اليوم: إذا تم الإرسال لموعد اليوم بالفعل أو إذا تجاوزت نافذة وقت اليوم بالكامل
+      if (alreadySentForTodaySlot || isPastActiveWindow) {
         daysAhead = 7;
       }
     }
@@ -241,7 +261,7 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
     let targetYear = now.getFullYear();
     let targetMonth = now.getMonth();
 
-    if (now.getDate() > targetDay || (now.getDate() === targetDay && (alreadySentForTodaySlot || candidate.getTime() <= now.getTime()))) {
+    if (now.getDate() > targetDay || (now.getDate() === targetDay && (alreadySentForTodaySlot || isPastActiveWindow))) {
       targetMonth += 1;
       if (targetMonth > 11) {
         targetMonth = 0;
@@ -266,7 +286,7 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
         return nextDate.getTime();
       }
     }
-    if (!alreadySentForTodaySlot && candidate.getTime() > now.getTime()) {
+    if (!alreadySentForTodaySlot && !isPastActiveWindow) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + n);
@@ -356,7 +376,9 @@ export async function processAutomatedDebtReminders({
     }
 
     if (isCustomerDebtReminderDue(cust, totalDebt, settings, now)) {
-      sessionSentDebtors.set(cust.id, Date.now());
+      if (inFlightDebtorIds.has(cust.id)) continue;
+      inFlightDebtorIds.add(cust.id);
+
       try {
         const portalBaseUrl = settings.customerPortalUrl || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : 'https://camera-inventory-1qfh.vercel.app');
         let cleanPhone = String(cust.phone1 || '').replace(/[^\d]/g, '').trim();
@@ -393,17 +415,22 @@ export async function processAutomatedDebtReminders({
           settings
         });
 
+        const sentIso = new Date().toISOString();
+        sessionSentDebtors.set(cust.id, Date.now());
+
         await updateCustomer(cust.id, {
-          lastDebtReminderSent: new Date().toISOString()
+          lastDebtReminderSent: sentIso
         });
 
         dispatched.push(cust);
         if (onNotification) {
           onNotification(cust, totalDebt);
         }
-        console.log(`⏰ [AutoDebtReminder] تم إرسال تذكير الديون بنجاح للعميل «${cust.name}» (هاتف: +${cleanPhone})`);
+        console.log(`⏰ [AutoDebtReminder] تم إرسال تذكير الديون بنجاح وبشكل مؤكد للعميل «${cust.name}» (هاتف: +${cleanPhone})`);
       } catch (err) {
         console.warn(`⚠️ [AutoDebtReminder] تعذر إرسال تذكير تلقائي للعميل ${cust.name}:`, err.message);
+      } finally {
+        inFlightDebtorIds.delete(cust.id);
       }
     }
   }
