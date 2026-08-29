@@ -444,7 +444,7 @@ app.post('/scheduled/sync-debtors', (req, res) => {
   res.json({ success: true, count: 0, syncedDebtors: 0, message: 'Delegated to Vercel Engine' });
 });
 
-// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 30 seconds with strict mutex and deduplication)
+// Automated 24/7 Debt Reminder Cron Trigger on AWS Server (Runs every 60 seconds with strict mutex and deduplication)
 setInterval(async () => {
   if (isAwsCronRunning || !isConnected || !sock) return;
   isAwsCronRunning = true;
@@ -459,6 +459,7 @@ setInterval(async () => {
     if (data?.results && data.results.length > 0) {
       console.log(`⏰ [AWS 24/7 Cron] تم العثور على ${data.results.length} تذكيرات مستحقة للإرسال...`);
       const sentIds = [];
+      const nextDatesMap = {};
       const nowTs = Date.now();
       
       for (const item of data.results) {
@@ -481,8 +482,8 @@ setInterval(async () => {
         const lastSentByPhone = recentlySentCustomerMap.get(phoneKey);
         const lastSentLocal = lastSentById || lastSentByPhone;
         
-        // منع تكرار الإرسال الفوري لنفس العميل أو نفس الرقم خلال دقيقتين لمنع سباق الإرسال
-        if (lastSentLocal && (nowTs - lastSentLocal < 2 * 60 * 1000)) {
+        // منع تكرار الإرسال الفوري لنفس العميل أو نفس الرقم خلال ساعتين لمنع سباق الإرسال
+        if (lastSentLocal && (nowTs - lastSentLocal < 2 * 60 * 60 * 1000)) {
           console.log(`⏭️ [AWS 24/7 Cron] تخطي التذكير للعميل «${item.name}» لأنه أُرسل قبل قليل (${Math.round((nowTs - lastSentLocal) / 1000)} ثانية مضت)`);
           continue;
         }
@@ -494,21 +495,29 @@ setInterval(async () => {
           // تسجيل الإرسال بالمعرف وبالهاتف معاً
           recentlySentCustomerMap.set(dedupeKey, Date.now());
           recentlySentCustomerMap.set(phoneKey, Date.now());
-          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}» على الهاتف +${cleanPhone}`);
-          if (item.id) sentIds.push(item.id);
+          console.log(`🚀 [AWS 24/7 Cron] تم إرسال التذكير بنجاح للعميل «${item.name}» على الهاتف +${cleanPhone} | الموعد القادم: ${item.nextScheduledFormatted || 'غير محدد'}`);
+          if (item.id) {
+            sentIds.push(item.id);
+            if (item.nextScheduledTimestamp) {
+              nextDatesMap[item.id] = item.nextScheduledTimestamp;
+            }
+          }
         } catch (err) {
           console.error(`❌ [AWS 24/7 Cron] فشل إرسال التذكير للعميل «${item.name}»:`, err.message);
         }
         await new Promise(r => setTimeout(r, 1200));
       }
       
-      // Mark as sent in Firebase to confirm and prevent duplicates
+      // Mark as sent in Firebase to confirm, update nextReminderDate, and prevent duplicates
       if (sentIds.length > 0) {
         try {
           await fetch(baseUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ markSent: sentIds })
+            body: JSON.stringify({ 
+              markSent: sentIds,
+              nextDates: nextDatesMap
+            })
           });
         } catch (markErr) {
           console.error('Failed to mark sent in Firebase:', markErr);
@@ -516,9 +525,9 @@ setInterval(async () => {
       }
     }
 
-    // تنظيف الكاش المحلي للتذكيرات الأقدم من ساعة
+    // تنظيف الكاش المحلي للتذكيرات الأقدم من 12 ساعة
     for (const [key, timestamp] of recentlySentCustomerMap.entries()) {
-      if (Date.now() - timestamp > 60 * 60 * 1000) {
+      if (Date.now() - timestamp > 12 * 60 * 60 * 1000) {
         recentlySentCustomerMap.delete(key);
       }
     }
@@ -527,7 +536,7 @@ setInterval(async () => {
   } finally {
     isAwsCronRunning = false;
   }
-}, 30 * 1000);
+}, 60 * 1000);
 
 // Get scheduled queue
 app.get('/scheduled', (req, res) => {

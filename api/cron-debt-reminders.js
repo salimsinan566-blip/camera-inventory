@@ -41,52 +41,127 @@ function runSerialized(task) {
 // In-flight claimed debtor IDs cache (prevents duplicate dispatch across concurrent triggers)
 const inFlightDebtorClaims = new Map(); // customerId -> timestamp
 
-async function executeCronDebtReminders(req, res) {
-  // 1. جلب إعدادات المتجر والواتساب
+// ⚡ In-Memory Financial Cache (Reduces Firestore free quota consumption by >80%)
+let cachedFinancialState = null;
+let lastFinancialCacheTime = 0;
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL
+
+export function invalidateFinancialCache() {
+  cachedFinancialState = null;
+  lastFinancialCacheTime = 0;
+}
+
+// Calculate next scheduled occurrence timestamp
+function calculateNextScheduledTimestamp(rawSchedCode, timeStr = '20:00', now = new Date(), isRenewal = false) {
+  let schedCode = rawSchedCode || 'default';
+  if (schedCode.includes('@')) {
+    const parts = schedCode.split('@');
+    schedCode = parts[0];
+    if (parts[1] && parts[1].includes(':')) {
+      timeStr = parts[1];
+    }
+  }
+
+  // 0. Minute Schedules (e.g. minutely_15, minutely_30)
+  if (schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')))) {
+    const intervalMinutes = parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
+    return now.getTime() + intervalMinutes * 60 * 1000;
+  }
+
+  // 0.1 Hourly Schedules (e.g. hourly_1, hourly_2)
+  if (schedCode.startsWith('hourly_') || (schedCode.startsWith('custom_') && schedCode.includes('_hours'))) {
+    const intervalHours = parseInt(schedCode.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2;
+    return now.getTime() + intervalHours * 60 * 60 * 1000;
+  }
+
+  const [hStr, mStr] = String(timeStr).split(':');
+  const targetH = parseInt(hStr || '20', 10);
+  const targetM = parseInt(mStr || '0', 10);
+
+  const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetH, targetM, 0, 0);
+  const diffFromCandidate = now.getTime() - candidate.getTime();
+
+  // If NOT a renewal, and inside active window (current minute up to 10 minutes past), fire right now!
+  if (!isRenewal && diffFromCandidate >= 0 && diffFromCandidate <= 10 * 60 * 1000) {
+    return now.getTime();
+  }
+
+  // 1. Daily / Custom 1 Days
+  if (schedCode === 'custom_1_days' || schedCode === 'daily' || schedCode.startsWith('custom_1_') || schedCode === 'every_day') {
+    if (!isRenewal && candidate.getTime() > now.getTime()) {
+      return candidate.getTime();
+    }
+    candidate.setDate(candidate.getDate() + 1);
+    return candidate.getTime();
+  }
+
+  // 2. Day of week
+  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  if (DAYS.includes(schedCode) || schedCode === 'default') {
+    const targetDayIndex = DAYS.indexOf(schedCode === 'default' ? 'thursday' : schedCode);
+    let daysAhead = (targetDayIndex - now.getDay() + 7) % 7;
+    if (daysAhead === 0 && (isRenewal || candidate.getTime() <= now.getTime())) {
+      daysAhead = 7;
+    }
+    candidate.setDate(now.getDate() + daysAhead);
+    return candidate.getTime();
+  }
+
+  // 3. Monthly (e.g. monthly_8, monthly_31)
+  if (schedCode.startsWith('monthly_')) {
+    const targetDay = parseInt(schedCode.replace('monthly_', ''), 10) || 1;
+    let targetYear = now.getFullYear();
+    let targetMonth = now.getMonth();
+    
+    if (isRenewal || (now.getDate() > targetDay) || (now.getDate() === targetDay && (now.getHours() > targetH || (now.getHours() === targetH && now.getMinutes() >= targetM)))) {
+      targetMonth += 1;
+      if (targetMonth > 11) {
+        targetMonth = 0;
+        targetYear += 1;
+      }
+    }
+    
+    // Clamp to valid max days in target month (e.g. Day 31 clamped to 30 in April)
+    const maxDaysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const safeDay = Math.min(targetDay, maxDaysInMonth);
+    const monthlyCandidate = new Date(targetYear, targetMonth, safeDay, targetH, targetM, 0, 0);
+    return monthlyCandidate.getTime();
+  }
+
+  // 4. Custom N days
+  if (schedCode.startsWith('custom_')) {
+    const n = parseInt(schedCode.replace('custom_', '').replace('_days', ''), 10) || 7;
+    if (!isRenewal && candidate.getTime() > now.getTime()) {
+      return candidate.getTime();
+    }
+    candidate.setDate(candidate.getDate() + n);
+    return candidate.getTime();
+  }
+
+  // 5. Fallback
+  if (isRenewal || candidate.getTime() <= now.getTime()) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  return candidate.getTime();
+}
+
+async function getOrFetchFinancialData(force = false) {
+  const nowTs = Date.now();
+  if (!global._testDb && !force && cachedFinancialState && (nowTs - lastFinancialCacheTime < CACHE_TTL_MS)) {
+    return cachedFinancialState;
+  }
+
+  // 1. جلب إعدادات المتجر أولاً لتوفير الكوتا إذا كانت التذكيرات معطلة
   const settingsDoc = await db.collection('settings').doc('store_info').get();
   const settings = settingsDoc.exists ? settingsDoc.data() : {};
 
-  // فحص ما إذا كان التذكير التلقائي مفعلاً
-  const isAutoEnabled = settings.whatsappAutoReminders !== false;
-  const instanceId = settings.whatsappInstanceId?.trim();
-  const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
-
-  let apiUrl = settings.whatsappApiUrl?.trim();
-  if (!apiUrl || apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
-    apiUrl = `${defaultBase}/messages/chat`;
-  } else if (instanceId && !apiUrl.startsWith('http')) {
-    apiUrl = `https://api.ultramsg.com/${instanceId}/messages/chat`;
+  if (!global._testDb && !force && settings.whatsappAutoReminders === false) {
+    cachedFinancialState = { settings, customerFinancials: {}, customers: [] };
+    lastFinancialCacheTime = nowTs;
+    return cachedFinancialState;
   }
 
-  const force = req.query?.force === 'true';
-
-  if (!force && !isAutoEnabled) {
-    return res.status(200).json({ 
-      status: 'skipped', 
-      reason: 'WhatsApp auto-reminders disabled in settings.' 
-    });
-  }
-
-  // 2. فحص اليوم والتاريخ والوقت بتوقيت العراق (Asia/Baghdad) بدقة كاملة
-  const now = new Date();
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now); // 'YYYY-MM-DD'
-  
-  const iraqParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Baghdad',
-    hour: 'numeric',
-    minute: 'numeric',
-    hourCycle: 'h23',
-    weekday: 'long',
-    day: 'numeric'
-  }).formatToParts(now);
-
-  const currentHour = parseInt(iraqParts.find(p => p.type === 'hour')?.value || '0', 10);
-  const currentMinute = parseInt(iraqParts.find(p => p.type === 'minute')?.value || '0', 10);
-  const currentDayName = (iraqParts.find(p => p.type === 'weekday')?.value || '').toLowerCase(); // e.g. 'thursday'
-  const dayOfMonth = parseInt(todayStr.split('-')[2] || iraqParts.find(p => p.type === 'day')?.value || '1', 10);
-  const defaultReminderDay = (settings.whatsappDefaultDay || 'thursday').toLowerCase();
-
-  // 3. جلب وتجميع حسابات العملاء الدقيقة من المبيعات وسندات القبض بشكل طازج
+  // 2. جلب المبيعات وسندات القبض وقائمة الزبائن
   const [salesSnap, incomesSnap, custSnap] = await Promise.all([
     db.collection('sales').get(),
     db.collection('office_incomes').get(),
@@ -147,29 +222,90 @@ async function executeCronDebtReminders(req, res) {
     }
   });
 
-  // 4. مطابقة العملاء المستحقين للتذكير اليوم
+  const customers = [];
+  custSnap.forEach(doc => {
+    customers.push({ id: doc.id, ...doc.data() });
+  });
+
+  cachedFinancialState = {
+    settings,
+    customerFinancials,
+    customers
+  };
+  lastFinancialCacheTime = nowTs;
+
+  return cachedFinancialState;
+}
+
+async function executeCronDebtReminders(req, res) {
+  const force = req.query?.force === 'true';
+  const returnOnly = req.query?.returnOnly === 'true';
+
+  // 1. جلب البيانات المالية (مع استخدام الكاش لتوفير كوتا فايربيس)
+  const { settings, customerFinancials, customers } = await getOrFetchFinancialData(force);
+
+  // فحص ما إذا كان التذكير التلقائي مفعلاً
+  const isAutoEnabled = settings.whatsappAutoReminders !== false;
+  const instanceId = settings.whatsappInstanceId?.trim();
+  const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
+
+  let apiUrl = settings.whatsappApiUrl?.trim();
+  if (!apiUrl || apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
+    apiUrl = `${defaultBase}/messages/chat`;
+  } else if (instanceId && !apiUrl.startsWith('http')) {
+    apiUrl = `https://api.ultramsg.com/${instanceId}/messages/chat`;
+  }
+
+  if (!force && !isAutoEnabled) {
+    return res.status(200).json({ 
+      status: 'skipped', 
+      reason: 'WhatsApp auto-reminders disabled in settings.' 
+    });
+  }
+
+  // 2. فحص اليوم والتاريخ والوقت بتوقيت العراق (Asia/Baghdad)
+  const now = new Date();
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now); // 'YYYY-MM-DD'
+  
+  const iraqParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Baghdad',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+    weekday: 'long',
+    day: 'numeric'
+  }).formatToParts(now);
+
+  const currentHour = parseInt(iraqParts.find(p => p.type === 'hour')?.value || '0', 10);
+  const currentMinute = parseInt(iraqParts.find(p => p.type === 'minute')?.value || '0', 10);
+  const currentDayName = (iraqParts.find(p => p.type === 'weekday')?.value || '').toLowerCase(); // e.g. 'thursday'
+  const dayOfMonth = parseInt(todayStr.split('-')[2] || iraqParts.find(p => p.type === 'day')?.value || '1', 10);
+  const defaultReminderDay = (settings.whatsappDefaultDay || 'thursday').toLowerCase();
+
+  // 3. مطابقة العملاء المستحقين للتذكير اليوم
   const targetCustomers = [];
   const nowTs = now.getTime();
 
-  custSnap.forEach(doc => {
-    const c = doc.data();
+  for (const c of customers) {
     const rawName = (c.name || '').trim();
     const norm = rawName ? normalizeArabic(rawName) : null;
-    const cId = String(doc.id);
+    const cId = String(c.id);
 
     // فحص القفل السريع للطلبات المتزامنة (In-flight memory claim guard)
     const inFlightClaimTime = inFlightDebtorClaims.get(cId);
     if (inFlightClaimTime && (nowTs - inFlightClaimTime < 60 * 1000)) {
-      return; // تم حجز أو إرسال تذكير لهذا العميل خلال آخر 60 ثانية
+      continue; // تم حجز تذكير لهذا العميل خلال آخر 60 ثانية
     }
     
-    const finById = customerFinancials[`id_${cId}`] || { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0 };
-    const finByLegacyName = (norm && customerFinancials[`legacy_name_${norm}`]) || { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0 };
+    const finById = customerFinancials[`id_${cId}`] || { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0, oldInvoicesAmount: 0 };
+    const finByLegacyName = (norm && customerFinancials[`legacy_name_${norm}`]) || { totalPurchases: 0, totalPaid: 0, totalDebt: 0, unpaidInvoicesCount: 0, oldInvoicesAmount: 0 };
     
-    const totalDebt = Math.max(0, finById.totalDebt + finByLegacyName.totalDebt);
+    const grossDebt = finById.totalDebt + finByLegacyName.totalDebt;
+    const totalReceipts = (finById.oldInvoicesAmount || 0) + (finByLegacyName.oldInvoicesAmount || 0);
+    const totalDebt = Math.max(0, grossDebt - totalReceipts);
     const unpaidInvoicesCount = finById.unpaidInvoicesCount + finByLegacyName.unpaidInvoicesCount;
 
-    if (totalDebt <= 0) return; // لا يوجد عليه دين
+    if (totalDebt <= 0) continue; // لا يوجد عليه دين إطلاقاً -> تخطي فوري
 
     let cleanPhone = String(c.phone1 || c.phone || '').replace(/[^\d]/g, '').trim();
     if (cleanPhone.startsWith('07') && cleanPhone.length === 11) {
@@ -179,11 +315,11 @@ async function executeCronDebtReminders(req, res) {
     } else if (cleanPhone.startsWith('00964')) {
       cleanPhone = cleanPhone.substring(2);
     }
-    if (!cleanPhone) return; // لا يوجد هاتف صحيح
+    if (!cleanPhone) continue; // لا يوجد هاتف صحيح
     const phone = cleanPhone;
 
     const schedule = c.reminderSchedule || 'disabled';
-    if (!schedule || schedule === 'disabled') return; // معطل تماماً
+    if (!schedule || schedule === 'disabled') continue; // معطل تماماً
 
     const isHourly = schedule.startsWith('hourly_') || (schedule.startsWith('custom_') && schedule.includes('_hours'));
     const isMinutely = schedule.startsWith('minutely_') || (schedule.startsWith('custom_') && (schedule.includes('_mins') || schedule.includes('_min')));
@@ -201,8 +337,8 @@ async function executeCronDebtReminders(req, res) {
     const targetTotalMins = targetHour * 60 + targetMinute;
     const currentTotalMins = currentHour * 60 + currentMinute;
 
-    // نافذة الوقت: يبدأ من الدقيقة المحددة وحتى +10 دقائق فقط (لمنع التكرار المتعدد ضمن نفس الساعة)
-    const isTimeWindow = currentTotalMins >= targetTotalMins && currentTotalMins <= targetTotalMins + 10;
+    // يبدأ الاستحقاق بمجرد وصول الدقيقة المحددة (وحتى نهاية اليوم ما لم يُرسل بعد)
+    const isPastOrAtTargetTime = currentTotalMins >= targetTotalMins;
 
     let isDueToday = false;
 
@@ -231,7 +367,7 @@ async function executeCronDebtReminders(req, res) {
           isDueToday = true;
         }
       }
-    } else if (isTimeWindow) {
+    } else if (isPastOrAtTargetTime) {
       const schedCode = schedule.split('@')[0];
       if (schedCode === 'default' && currentDayName === defaultReminderDay) {
         isDueToday = true;
@@ -287,7 +423,7 @@ async function executeCronDebtReminders(req, res) {
         const isSameCalendarDay = lastSentDateStr === todayStr;
         const targetSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
         
-        // يعتبر مرسلاً لموعد اليوم إذا كان تاريخ الإرسال عند أو بعد موعد التذكير المحدد اليوم
+        // يعتبر مرسلاً لموعد اليوم إذا كان تاريخ الإرسال في نفس اليوم عند أو بعد موعد التذكير
         if (isSameCalendarDay && lastSentDateObj.getTime() >= targetSlotTime.getTime() - 60000) {
           alreadySentForTodaySlot = true;
         }
@@ -296,21 +432,28 @@ async function executeCronDebtReminders(req, res) {
       }
     }
 
-    // منع تكرار الإرسال إذا تم إرساله لهذا الموعد اليوم (أو خلال آخر 30 ثانية في حالة الـ force لمنع سباق التكرار)
+    // منع تكرار الإرسال إذا تم إرساله لهذا الموعد اليوم
     const isRecentForceDuplicate = force && diffSecondsSinceLastSent < 30;
     const canDispatch = isDueToday && !isRecentForceDuplicate && (isMinutely || isHourly || force || !alreadySentForTodaySlot);
 
     if (canDispatch) {
+      const nextTimestamp = calculateNextScheduledTimestamp(schedule, targetTimeStr, now, true);
+      const nextFormatted = new Date(nextTimestamp).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad' });
+
       targetCustomers.push({
-        id: doc.id,
+        id: c.id,
         name: rawName,
         phone: phone,
         totalDebt: totalDebt,
         unpaidInvoicesCount: unpaidInvoicesCount || 1,
-        customerType: c.customerType || 'client'
+        customerType: c.customerType || 'client',
+        pinCode: c.pinCode || c.passcode || '',
+        schedule,
+        nextScheduledTimestamp: nextTimestamp,
+        nextScheduledFormatted: nextFormatted
       });
     }
-  });
+  }
 
   if (targetCustomers.length === 0) {
     return res.status(200).json({ 
@@ -322,45 +465,26 @@ async function executeCronDebtReminders(req, res) {
     });
   }
 
-  // 5. إقفال ذري وتحديث حالة العملاء المستحقين في Firestore وكاش الذاكرة لمنع تكرار الإرسال نهائياً عبر الطلبات المتزامنة
-  const nowIso = now.toISOString();
+  // 4. حجز العملاء في الذاكرة لمنع أي سباق متزامن
   for (const cust of targetCustomers) {
     inFlightDebtorClaims.set(cust.id, Date.now());
   }
 
-  await Promise.all(
-    targetCustomers.map(cust => 
-      db.collection('customers').doc(cust.id).set({
-        lastDebtReminderSent: nowIso,
-        lastDebtReminderClaimedAt: nowIso
-      }, { merge: true }).catch(err => {
-        console.error(`Failed to claim customer ${cust.id}:`, err.message);
-      })
-    )
-  );
-
-  // تنظيف الكاش القديم للحجوزات التي تجاوزت 5 دقائق
-  for (const [id, timestamp] of inFlightDebtorClaims.entries()) {
-    if (Date.now() - timestamp > 5 * 60 * 1000) {
-      inFlightDebtorClaims.delete(id);
-    }
-  }
-
-  // إعادة ضبط الكاش المالي لضمان اتساق البيانات
-  global.cachedFinancials = null;
-
-  // 6. تجهيز رسائل التذكير
+  // 5. تجهيز رسائل التذكير
   const baseUrl = settings.customerPortalUrl || 'https://camera-inventory-1qfh.vercel.app';
   const storeName = settings.storeName || 'المحل';
-
-  let successCount = 0;
   const results = [];
 
   for (const cust of targetCustomers) {
     const intPhone = formatInternationalPhone(cust.phone);
     if (!intPhone) continue;
 
-    const portalUrl = `${baseUrl}?portal=customer&name=${encodeURIComponent(cust.name)}`;
+    const rawPhoneDigits = String(cust.phone || '').replace(/[^\d]/g, '');
+    const last4 = rawPhoneDigits.length >= 4 ? rawPhoneDigits.slice(-4) : rawPhoneDigits;
+    const password = cust.pinCode || last4 || 'آخر 4 أرقام من هاتفك';
+    const pinParam = (password && password !== 'آخر 4 أرقام من هاتفك') ? `&pin=${password}` : '';
+    const idParam = rawPhoneDigits ? `phone=${rawPhoneDigits}` : `name=${encodeURIComponent(cust.name)}`;
+    const portalUrl = `${baseUrl}?portal=customer&${idParam}${pinParam}`;
     
     let message = settings.whatsappDebtReminderTemplate || 
 `السلام عليكم أخي الكريم {customerName} 🌸
@@ -370,25 +494,92 @@ async function executeCronDebtReminders(req, res) {
 🔴 المبلغ المتبقي: {totalDebt} د.ع
 📋 عدد الفواتير غير المسددة: {unpaidInvoicesCount} فاتورة
 
-🔗 للاطلاع على كشف حسابك وفواتيرك بالتفصيل:
-{statementLink}
+🌐 للاطلاع على كشف حسابك وفواتيرك بالتفصيل عبر بوابة العملاء:
+🔗 الرابط: {statementLink}
+👤 اسم المستخدم: {username}
+🔑 رمز المرور (الباسورد): {password}
 
 شاكرين لكم حسن تعاونكم الدائم 🙏✨`;
 
     message = message
       .replace(/\{customerName\}/g, cust.name)
+      .replace(/\{username\}/g, cust.name)
       .replace(/\{storeName\}/g, storeName)
       .replace(/\{totalDebt\}/g, Math.round(cust.totalDebt).toLocaleString())
       .replace(/\{unpaidInvoicesCount\}/g, cust.unpaidInvoicesCount)
-      .replace(/\{statementLink\}/g, portalUrl);
+      .replace(/\{statementLink\}/g, portalUrl)
+      .replace(/\{password\}/g, password)
+      .replace(/\{pin\}/g, password)
+      .replace(/\{phone\}/g, cust.phone);
 
-    results.push({ id: cust.id, name: cust.name, phone: intPhone, message: message });
-    successCount++;
+    results.push({ 
+      id: cust.id, 
+      name: cust.name, 
+      phone: intPhone, 
+      message: message,
+      nextScheduledTimestamp: cust.nextScheduledTimestamp,
+      nextScheduledFormatted: cust.nextScheduledFormatted
+    });
+  }
+
+  // 6. إذا كان الطلب من خادم الواتساب (returnOnly=true)، أرجع القائمة وسيقوم السيرفر بالإرسال ثم التأكيد
+  if (returnOnly) {
+    return res.status(200).json({
+      status: 'success',
+      sentCount: results.length,
+      totalDue: targetCustomers.length,
+      results
+    });
+  }
+
+  // 7. إذا كان الطلب من Vercel Cron أو Trigger خارجي مباشر، قم بالإرسال الفعلي عبر الـ HTTP
+  let dispatchedCount = 0;
+  const successfullySentIds = [];
+  const token = settings.whatsappToken || 'SafeZone2026';
+
+  for (const item of results) {
+    try {
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          to: item.phone,
+          body: item.message,
+          message: item.message
+        })
+      });
+
+      const resData = await resp.json().catch(() => ({}));
+      if (resData.sent === 'true' || resData.status === 'success' || resp.ok) {
+        dispatchedCount++;
+        successfullySentIds.push(item.id);
+      }
+    } catch (sendErr) {
+      console.error(`Failed to send WhatsApp to ${item.phone}:`, sendErr.message);
+    }
+  }
+
+  // 8. تحديث Firestore فقط للعملاء الذين تم إرسال رسالتهم بنجاح
+  if (successfullySentIds.length > 0) {
+    const nowIso = now.toISOString();
+    await Promise.all(
+      successfullySentIds.map(id => {
+        const cObj = targetCustomers.find(t => t.id === id);
+        const nextIso = cObj?.nextScheduledTimestamp ? new Date(cObj.nextScheduledTimestamp).toISOString() : null;
+        return db.collection('customers').doc(id).set({
+          lastDebtReminderSent: nowIso,
+          nextDebtReminderDate: nextIso,
+          lastDebtReminderClaimedAt: nowIso
+        }, { merge: true }).catch(() => {});
+      })
+    );
+    invalidateFinancialCache();
   }
 
   return res.status(200).json({
     status: 'success',
-    sentCount: successCount,
+    sentCount: dispatchedCount,
     totalDue: targetCustomers.length,
     results
   });
@@ -405,22 +596,31 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 0. Handle mark as sent
+    // 0. Handle mark as sent (From WhatsApp Server after confirmed socket dispatch)
     if (req.method === 'POST' && req.body?.markSent) {
       const custIds = Array.isArray(req.body.markSent) ? req.body.markSent : [req.body.markSent];
+      const nextDates = req.body.nextDates || {};
       const nowIso = new Date().toISOString();
+      
       for (const id of custIds) {
         inFlightDebtorClaims.set(id, Date.now());
       }
-      const promises = custIds.map(id => 
-        db.collection('customers').doc(id).set({
-          lastDebtReminderSent: nowIso
-        }, { merge: true }).catch(err => {
+
+      const promises = custIds.map(id => {
+        const updateData = {
+          lastDebtReminderSent: nowIso,
+          lastDebtReminderClaimedAt: nowIso
+        };
+        if (nextDates[id]) {
+          updateData.nextDebtReminderDate = typeof nextDates[id] === 'number' ? new Date(nextDates[id]).toISOString() : nextDates[id];
+        }
+        return db.collection('customers').doc(id).set(updateData, { merge: true }).catch(err => {
           console.error(`Failed to update customer ${id}:`, err);
-        })
-      );
+        });
+      });
+
       await Promise.all(promises);
-      global.cachedFinancials = null;
+      invalidateFinancialCache();
       return res.status(200).json({ status: 'success', marked: custIds.length });
     }
 

@@ -185,6 +185,13 @@ async function test1_ConcurrencyRaceCondition() {
   assert.strictEqual(successfulRequests, 1, `Expected exactly 1 request to claim the debtor, got ${successfulRequests}`);
   assert.strictEqual(deduplicatedRequests, 9, `Expected 9 requests to be cleanly deduplicated, got ${deduplicatedRequests}`);
 
+  // Confirm markSent from server after dispatch
+  const claimedCustIds = results.flatMap(r => (r.data?.results || []).map(d => d.id));
+  if (claimedCustIds.length > 0) {
+    const { req: pReq, res: pRes } = createMockReqRes({ method: 'POST', body: { markSent: claimedCustIds } });
+    await cronHandler(pReq, pRes);
+  }
+
   // Verify Firestore state
   const updatedCustomer = mockDb._getStore().customers.cust_alpha;
   assert(updatedCustomer.lastDebtReminderSent, 'Customer lastDebtReminderSent should be recorded');

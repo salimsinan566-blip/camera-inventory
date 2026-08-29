@@ -118,49 +118,49 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     return (
       <div 
         key={pageIndex} 
-        className="relative w-full flex flex-col justify-between bg-transparent print:break-after-page overflow-hidden" 
-        style={{ minHeight: '265mm', height: 'auto', boxSizing: 'border-box' }}
+        className="invoice-page relative w-full flex flex-col justify-between bg-transparent print:break-after-page" 
+        style={{ minHeight: '255mm', maxHeight: '272mm', boxSizing: 'border-box' }}
       >
         {/* القسم العلوي: الترويسة والمنتجات */}
         <div>
           {/* الترويسة الفنية */}
-          <div className="flex items-center justify-between mb-4 border-b-2 border-[#C89B3C] pb-3">
+          <div className="flex items-center justify-between mb-2.5 border-b-2 border-[#C89B3C] pb-2">
             {/* اليمين: معلومات المتجر */}
             <div className="flex flex-col items-start text-right">
-              <h1 className="text-3xl font-extrabold text-slate-900 tracking-wide mb-1">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-wide mb-0.5">
                 {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
               </h1>
               {settings?.address && (
-                <p className="text-sm text-slate-500 flex items-center gap-1.5 font-bold mb-1">
-                  <svg className="w-5 h-5 text-[#C89B3C]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                  {settings.address}
+                <p className="text-xs sm:text-sm text-slate-500 flex items-center gap-1.5 font-bold mb-0.5">
+                  <svg className="w-4 h-4 text-[#C89B3C] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                  <span>{settings.address}</span>
                 </p>
               )}
             </div>
             
             {/* اليسار: الشعار وحالة الفاتورة */}
-            <div className="flex flex-col items-end gap-2 pr-4 relative">
+            <div className="flex flex-col items-end gap-1.5 pr-2 relative">
               {settings?.logoUrl ? (
-                <div className="h-28 sm:h-32 flex items-center justify-end">
+                <div className="h-16 sm:h-20 flex items-center justify-end">
                   <img 
                     src={settings.logoUrl} 
                     alt="الشعار" 
-                    className="h-28 sm:h-32 max-h-32 w-auto max-w-[280px] object-contain drop-shadow-xs" 
+                    className="h-16 sm:h-20 max-h-20 w-auto max-w-[240px] object-contain drop-shadow-xs" 
                     crossOrigin="anonymous"
                   />
                 </div>
               ) : (
-                <div className="h-28 w-36 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-2 font-bold rounded text-center text-xs">
+                <div className="h-16 w-28 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-1 font-bold rounded text-center text-xs">
                   [الشعار]
                 </div>
               )}
               
               {sale.isOffer ? (
-                <span className="text-[14px] font-bold text-brand-800 bg-brand-50 border border-brand-300 px-6 py-1.5 rounded-full shadow-sm mt-1 uppercase tracking-wider">
+                <span className="text-[12px] font-bold text-brand-800 bg-brand-50 border border-brand-300 px-4 py-1 rounded-full shadow-xs uppercase tracking-wider">
                   عرض سعر (Quotation)
                 </span>
               ) : sale.isDraft ? (
-                <span className="text-[11px] font-bold text-yellow-700 bg-yellow-50 border border-yellow-300 px-4 py-1 rounded-full shadow-sm mt-1">
+                <span className="text-[11px] font-bold text-yellow-700 bg-yellow-50 border border-yellow-300 px-3 py-0.5 rounded-full shadow-xs">
                   فاتورة غير مؤكدة
                 </span>
               ) : null}
@@ -171,33 +171,35 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="flex justify-between items-start mb-2">
             {/* يمين: فاتورة إلى */}
             <div className="text-sm">
-              <h3 className="font-bold text-slate-500 mb-1 text-xs uppercase tracking-wider">فاتورة إلى</h3>
-              <p className="text-slate-800 font-bold text-xl">{sale.customerName || 'زبون عام'}</p>
+              <h3 className="font-bold text-slate-500 mb-0.5 text-xs uppercase tracking-wider">فاتورة إلى</h3>
+              <p className="text-slate-800 font-extrabold text-lg sm:text-xl">
+                <bdi dir="auto">{sale.customerName || 'زبون عام'}</bdi>
+              </p>
             </div>
 
             {/* يسار: أرقام وتواريخ الفاتورة */}
-            <div className="text-sm border-r border-transparent pl-4">
+            <div className="text-xs sm:text-sm border-r border-transparent pl-2">
               <table className="text-right w-full">
                 <tbody>
                   <tr>
-                    <td className="py-0.5 pr-6 text-slate-500">
+                    <td className="py-0.5 pr-4 text-slate-500">
                       {sale.isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'} <span className="font-bold text-slate-900 mr-1">{sale.invoiceNumber || sale.offerNumber}</span>
                     </td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-6 text-slate-500">
+                    <td className="py-0.5 pr-4 text-slate-500">
                       تاريخ الإصدار: <span className="font-bold text-slate-900 mr-1">{dateLabel}</span>
                     </td>
                   </tr>
                   {sale.invoiceType === 'debt' && !sale.isOffer && (
                     <tr>
-                      <td className="py-0.5 pr-6 text-slate-500">
+                      <td className="py-0.5 pr-4 text-slate-500">
                         نوع الدفع: <span className="font-bold text-warn-600 mr-1">آجل (دين)</span>
                       </td>
                     </tr>
                   )}
                   <tr>
-                    <td className="py-0.5 pr-6 text-slate-500">
+                    <td className="py-0.5 pr-4 text-slate-500">
                       البائع: <span className="font-bold text-slate-900 mr-1">{getDisplayName(sale.cashierEmail)}</span>
                     </td>
                   </tr>
@@ -207,23 +209,25 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           </div>
           
           {/* جدول المنتجات */}
-          <table className="w-full border-collapse mt-4">
-            <thead className="bg-[#f2f2f2] text-slate-700 text-[13px] uppercase tracking-wider">
+          <table className="w-full border-collapse mt-2">
+            <thead className="bg-[#f2f2f2] text-slate-700 text-[12px] uppercase tracking-wider">
               <tr>
-                <th className="py-3 px-2 font-bold w-[50%] text-right">الوصف</th>
-                <th className="py-3 px-2 font-bold text-center">الكمية</th>
-                <th className="py-3 px-2 font-bold text-right">السعر</th>
-                <th className="py-3 px-2 font-bold text-left">المبلغ</th>
+                <th className="py-2 px-2 font-bold w-[48%] text-right">الوصف</th>
+                <th className="py-2 px-2 font-bold text-center w-[14%]">الكمية</th>
+                <th className="py-2 px-2 font-bold text-right w-[19%]">السعر</th>
+                <th className="py-2 px-2 font-bold text-left w-[19%]">المبلغ</th>
               </tr>
             </thead>
-            <tbody className="align-top text-sm text-right">
+            <tbody className="align-top text-xs sm:text-[13px] text-right">
               {pageItems.map((item, i) => (
-                <tr key={`${item.productId}-${i}`} className="border-b-2 border-slate-200">
-                  <td className="py-2 px-2 text-slate-800 font-bold break-words max-w-[260px] text-xs sm:text-sm leading-snug">
-                    {item.isService && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded font-normal ml-2">أجور/خدمة</span>}
-                    {item.name}
+                <tr key={`${item.productId}-${i}`} className="border-b border-slate-200">
+                  <td className="py-1.5 px-2 text-slate-800 font-bold break-words max-w-[280px] leading-snug text-right">
+                    {item.isService && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal ml-1.5 inline-block align-middle">أجور/خدمة</span>}
+                    <bdi dir="auto" className="inline-block text-right" style={{ unicodeBidi: 'plaintext' }}>
+                      {item.name}
+                    </bdi>
                   </td>
-                  <td className="py-2 px-2 text-center text-slate-800 font-bold">
+                  <td className="py-1.5 px-2 text-center text-slate-800 font-bold">
                     {item.quantity}
                     {!item.isService && item.sellMode && item.sellMode !== 'unit' && (
                       <span className="text-[9px] text-slate-500 mr-1 font-normal">
@@ -231,17 +235,19 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-2 text-slate-800 font-mono">
+                  <td className="py-1.5 px-2 text-slate-800 font-mono text-right">
                     {item.originalPrice && item.originalPrice > item.unitPrice ? (
-                      <div className="flex flex-col">
+                      <div className="flex flex-col items-end">
                         <span className="text-[10px] text-slate-400 line-through leading-none">{Number(item.originalPrice).toLocaleString()}</span>
-                        <span className="text-red-600 font-bold leading-none mt-1">{Number(item.unitPrice || 0).toLocaleString()}</span>
+                        <span className="text-red-600 font-bold leading-none mt-0.5">{Number(item.unitPrice || 0).toLocaleString()}</span>
                       </div>
                     ) : (
                       Number(item.unitPrice || 0).toLocaleString()
                     )}
                   </td>
-                  <td className="py-2 px-2 text-slate-800 font-mono font-bold text-left">{(Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()}</td>
+                  <td className="py-1.5 px-2 text-slate-800 font-mono font-bold text-left">
+                    {(Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -249,23 +255,23 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         </div>
 
         {/* القسم السفلي: المجاميع (في الصفحة الأخيرة فقط) + التذييل */}
-        <div className="mt-auto w-full">
+        <div className="mt-auto w-full pt-2">
           {isLastPage ? (
-            <div className="flex justify-between items-end mb-4 pt-2">
+            <div className="flex justify-between items-end mb-2 pt-1">
               {/* QR Code */}
               {settings?.qrCodeUrl ? (
-                <div className="w-24 h-24 rounded-lg flex items-center justify-center ml-4 bg-white border border-slate-200 p-1">
+                <div className="w-20 h-20 rounded-lg flex items-center justify-center ml-3 bg-white border border-slate-200 p-1 shrink-0">
                   <img src={settings.qrCodeUrl} alt="QR Code" className="w-full h-full object-contain" crossOrigin="anonymous" />
                 </div>
               ) : (
-                <div className="w-24 h-24 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center bg-slate-50/50 ml-4">
+                <div className="w-20 h-20 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center bg-slate-50/50 ml-3 shrink-0">
                   <span className="text-xs text-slate-400 font-medium">QR</span>
                 </div>
               )}
               
-              <div className="w-[55%] bg-white">
-                <div className="border border-slate-200 bg-white p-2 mb-1.5">
-                  <table className="w-full text-sm font-bold text-slate-600">
+              <div className="w-[58%] max-w-[340px] bg-white">
+                <div className="border border-slate-200 bg-white p-1.5 mb-1 rounded-t">
+                  <table className="w-full text-xs font-bold text-slate-600">
                     <tbody>
                       {Number(sale.discount) > 0 ? (
                         <>
@@ -273,27 +279,29 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                             <td className="text-right py-0.5 px-2">المجموع الفرعي:</td>
                             <td className="text-left py-0.5 px-2 font-mono">{Number(sale.subtotal || sale.total + sale.discount).toLocaleString()}</td>
                           </tr>
-                          <tr className="text-red-500 border-b border-slate-100 pb-1">
+                          <tr className="text-red-500 border-b border-slate-100 pb-0.5">
                             <td className="text-right py-0.5 px-2">الخصم:</td>
-                            <td className="text-left py-0.5 px-2 font-mono">-{Number(sale.discount).toLocaleString()}</td>
+                            <td className="text-left py-0.5 px-2">
+                              <span dir="ltr" className="font-mono font-bold text-red-600 inline-block">-{Number(sale.discount).toLocaleString()}</span>
+                            </td>
                           </tr>
                           <tr>
                             <td className="text-right py-0.5 px-2">الإجمالي بعد الخصم:</td>
-                            <td className="text-left py-0.5 px-2 font-mono">{Number(sale.total).toLocaleString()}</td>
+                            <td className="text-left py-0.5 px-2 font-mono text-slate-900">{Number(sale.total).toLocaleString()}</td>
                           </tr>
                         </>
                       ) : (
                         <tr>
                           <td className="text-right py-0.5 px-2">المجموع:</td>
-                          <td className="text-left py-0.5 px-2 font-mono">{Number(sale.total).toLocaleString()}</td>
+                          <td className="text-left py-0.5 px-2 font-mono text-slate-900">{Number(sale.total).toLocaleString()}</td>
                         </tr>
                       )}
 
                       {sale.invoiceType === 'debt' && (
                         <>
                           <tr className="text-emerald-700 border-t border-slate-200">
-                            <td className="text-right pt-1 px-2">المدفوع:</td>
-                            <td className="text-left pt-1 px-2 font-mono">{Number(sale.paidAmount || 0).toLocaleString()} د.ع</td>
+                            <td className="text-right pt-0.5 px-2">المدفوع:</td>
+                            <td className="text-left pt-0.5 px-2 font-mono">{Number(sale.paidAmount || 0).toLocaleString()} د.ع</td>
                           </tr>
                           <tr className="text-rose-700 font-black">
                             <td className="text-right py-0.5 px-2">المتبقي (الدين):</td>
@@ -310,13 +318,13 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                   </table>
                 </div>
                 
-                <table className="w-full bg-[#C89B3C] text-white p-2 print:bg-[#C89B3C] print:!text-white">
+                <table className="w-full bg-[#C89B3C] text-white p-1.5 print:bg-[#C89B3C] print:!text-white rounded-b">
                   <tbody>
                     <tr>
-                      <td className="text-right py-2 px-3 font-bold text-sm">
+                      <td className="text-right py-1.5 px-2.5 font-bold text-xs sm:text-sm">
                         {sale.invoiceType === 'debt' ? 'إجمالي الفاتورة' : 'المبلغ المستحق'}
                       </td>
-                      <td className="text-left py-2 px-3 font-bold text-lg font-mono">
+                      <td className="text-left py-1.5 px-2.5 font-bold text-base sm:text-lg font-mono">
                         {Number(sale.total).toLocaleString()} د.ع
                       </td>
                     </tr>
@@ -325,29 +333,30 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               </div>
             </div>
           ) : (
-            <div className="w-full flex justify-end items-center border-t border-slate-200 pt-3 mb-4">
-              <span className="text-sm text-[#C89B3C] font-bold">يتبع...</span>
+            <div className="w-full flex justify-end items-center border-t border-slate-200 pt-2 mb-2">
+              <span className="text-xs text-[#C89B3C] font-bold">يتبع...</span>
             </div>
           )}
 
           {/* التذييل */}
-          <div className={`pt-3 ${isLastPage ? "border-t border-slate-200" : ""}`}>
+          <div className={`pt-2 ${isLastPage ? "border-t border-slate-200" : ""}`}>
             {settings?.description && (
-              <div className="text-[10px] text-slate-500 whitespace-pre-wrap mb-2 w-2/3 font-medium">
+              <div className="text-[10px] text-slate-500 whitespace-pre-wrap mb-1.5 w-3/4 font-medium leading-tight">
                 <strong className="text-slate-700 block mb-0.5">ملاحظات هامة:</strong>
                 {settings.description}
               </div>
             )}
             
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 font-bold">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[10px] text-slate-500 font-bold">
               <span>{(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}</span>
-              {settings?.address && <span>{settings.address}</span>}
+              {settings?.address && <span>• {settings.address}</span>}
+              <span>• شكراً لتعاملكم معنا</span>
             </div>
             
             {isLastPage && sale.historyLogs && sale.historyLogs.length > 0 && (
-              <div className="mt-6 bg-slate-50 border border-slate-200 p-4 rounded text-right relative z-20 print:hidden">
-                <h4 className="text-xs font-bold text-slate-600 mb-2">سجل التعديلات السابقة (لا يُطبع):</h4>
-                <ul className="text-[10px] text-slate-500 space-y-1">
+              <div className="mt-4 bg-slate-50 border border-slate-200 p-3 rounded text-right relative z-20 print:hidden">
+                <h4 className="text-xs font-bold text-slate-600 mb-1.5">سجل التعديلات السابقة (لا يُطبع):</h4>
+                <ul className="text-[10px] text-slate-500 space-y-0.5">
                   {sale.historyLogs.map((log, idx) => (
                     <li key={idx} className="flex gap-2">
                       <span className="font-mono opacity-70">[{formatDate(log.date)}]</span>
@@ -406,7 +415,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     overlay.style.opacity = '0.005';
     overlay.style.pointerEvents = 'none';
     overlay.style.zIndex = '-99999';
-    overlay.style.overflow = 'hidden';
+    overlay.style.overflow = 'visible';
     overlay.dir = 'rtl';
 
     const container = document.createElement('div');
@@ -433,9 +442,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           -moz-osx-font-smoothing: grayscale !important;
           text-rendering: optimizeLegibility !important;
         }
-        body, div, p, span, h1, h2, h3, h4, table, th, td, strong, em {
+        body, div, p, span, h1, h2, h3, h4, table, th, td, strong, em, bdi {
           font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, sans-serif !important;
           letter-spacing: 0px !important;
+        }
+        bdi, [dir="auto"] {
+          unicode-bidi: plaintext !important;
         }
         .tracking-wide, .tracking-wider, .tracking-widest {
           letter-spacing: 0px !important;
@@ -449,8 +461,18 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         .print\\:hidden, [class*="print:hidden"] {
           display: none !important;
         }
+        .invoice-page {
+          min-height: 1040px !important;
+          max-height: 1075px !important;
+          box-sizing: border-box !important;
+          padding: 16px 20px 20px 20px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          background: #ffffff !important;
+        }
       </style>
-      <div style="width: 794px; background: #ffffff; padding: 20px;">
+      <div style="width: 794px; background: #ffffff; margin: 0; padding: 0;">
         ${clone.innerHTML}
       </div>
     `;
@@ -662,11 +684,14 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             body {
               font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, sans-serif !important;
               margin: 0 !important;
-              padding: 8mm 12mm !important;
+              padding: 6mm 8mm !important;
               background: #ffffff !important;
               direction: rtl !important;
               display: block !important;
               visibility: visible !important;
+            }
+            bdi, [dir="auto"] {
+              unicode-bidi: plaintext !important;
             }
             #print-portal {
               display: block !important;
@@ -676,6 +701,14 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             }
             .print\\:hidden, [class*="print:hidden"] {
               display: none !important;
+            }
+            .invoice-page {
+              min-height: 255mm !important;
+              max-height: 275mm !important;
+              box-sizing: border-box !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-between !important;
             }
             @page {
               size: A4 portrait;
@@ -733,12 +766,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     return (
       <div className="w-full relative m-0 p-0 bg-transparent print:break-before-page" dir="rtl">
         {invoiceContent.map((page, idx) => (
-          <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm]">
+          <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full">
             {settings?.logoUrl && (
               <img 
                 src={settings.logoUrl} 
                 alt="" 
-                className="fixed top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] w-[80%] max-w-[600px] h-auto object-contain filter grayscale opacity-25 z-0 pointer-events-none" 
+                className="fixed top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] w-[80%] max-w-[500px] h-auto object-contain filter grayscale opacity-20 z-0 pointer-events-none" 
               />
             )}
             <div className="relative z-10">
@@ -1078,14 +1111,14 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       {createPortal(
         <div id="print-portal" className="hidden print:block w-full relative m-0 p-0 bg-transparent" dir="rtl">
           {invoiceContent.map((page, idx) => (
-            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm]">
+            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full">
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
-                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
+                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
                   <img 
                     src={settings.logoUrl} 
                     alt="" 
-                    className="w-[80%] max-w-[600px] h-auto object-contain filter grayscale" 
+                    className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" 
                     crossOrigin="anonymous"
                   />
                 </div>
@@ -1105,31 +1138,48 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            box-sizing: border-box !important;
           }
           body > :not(#print-portal) {
             display: none !important;
           }
           body {
-            margin: 0;
-            padding: 0;
-            background: white;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            width: 100% !important;
           }
           #print-portal {
             display: block !important;
-            width: 100%;
-            min-height: 280mm;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
           }
-          #print-portal > div {
-            display: block;
-            min-height: 280mm;
+          .invoice-page {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            min-height: 255mm !important;
+            max-height: 275mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            box-sizing: border-box !important;
+            padding: 4mm 6mm !important;
+          }
+          .invoice-page:not(:last-child) {
+            page-break-after: always !important;
+            break-after: page !important;
           }
           @page {
-            size: A4;
-            margin: 5mm;
+            size: A4 portrait;
+            margin: 6mm 8mm;
           }
           tr {
             page-break-inside: avoid;
-            page-break-after: auto;
+          }
+          bdi, [dir="auto"] {
+            unicode-bidi: plaintext !important;
           }
         }
       `}</style>

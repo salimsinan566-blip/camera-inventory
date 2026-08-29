@@ -15,10 +15,10 @@ export function useAutoDebtScheduler() {
     if (settings?.whatsappAutoReminders === false) return;
     if (!customers.length) return;
 
-    // Background interval check every 5 seconds for timely dispatch
+    // Background interval check every 30 seconds for timely dispatch
     const timer = setInterval(() => {
       processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
-    }, 5000);
+    }, 30000);
 
     // Immediate check
     processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
