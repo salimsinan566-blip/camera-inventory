@@ -1014,7 +1014,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <div 
                 key={idx} 
                 id={idx === 0 ? "invoice-receipt-capture-area" : undefined}
-                className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]"
+                className="bg-white p-8 relative shadow-sm w-full max-w-[210mm] min-h-[297mm]"
               >
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
