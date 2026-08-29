@@ -137,8 +137,7 @@ async function executeCronDebtReminders(req, res) {
 
     const updateFin = (idKey) => {
       if (!idKey || !customerFinancials[idKey]) return;
-      customerFinancials[idKey].totalPaid += amt;
-      customerFinancials[idKey].totalDebt = Math.max(0, customerFinancials[idKey].totalDebt - amt);
+      customerFinancials[idKey].oldInvoicesAmount = (customerFinancials[idKey].oldInvoicesAmount || 0) + amt;
     };
 
     if (cId) {

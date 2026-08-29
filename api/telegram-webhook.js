@@ -161,8 +161,10 @@ async function getAllCustomersWithFinancials() {
       totalPurchases: 0,
       totalPaid: 0,
       totalDebt: 0,
+      oldInvoicesAmount: 0,
       invoicesCount: 0,
-      sales: []
+      sales: [],
+      incomes: []
     };
     customerMap.set(norm, cObj);
     idToCustomerMap.set(doc.id, cObj);
@@ -186,8 +188,10 @@ async function getAllCustomersWithFinancials() {
         totalPurchases: 0,
         totalPaid: 0,
         totalDebt: 0,
+        oldInvoicesAmount: 0,
         invoicesCount: 0,
-        sales: []
+        sales: [],
+        incomes: []
       };
       customerMap.set(norm, cObj);
       idToCustomerMap.set(doc.id, cObj);
@@ -213,7 +217,7 @@ async function getAllCustomersWithFinancials() {
     }
   });
 
-  // 3. Deduct repayments from office_incomes
+  // 3. Track pre-system payments & incomes from office_incomes (without deducting from current system sales debt)
   incomesSnap.forEach(doc => {
     const inc = doc.data();
     const rawName = (inc.customerName || inc.payerName || '').trim();
@@ -223,8 +227,8 @@ async function getAllCustomersWithFinancials() {
     if (customerMap.has(norm)) {
       const c = customerMap.get(norm);
       const amt = Number(inc.amount || 0);
-      c.totalPaid += amt;
-      c.totalDebt = Math.max(0, c.totalDebt - amt);
+      c.oldInvoicesAmount = (c.oldInvoicesAmount || 0) + amt;
+      c.incomes.push({ id: doc.id, ...inc });
     }
   });
 
@@ -1145,6 +1149,7 @@ async function handleCustomerSearch(chatId, query, sendNotFound = true) {
 async function sendCustomerDetails(chatId, customer) {
   const debt = Number(customer.totalDebt || 0);
   const purchases = Number(customer.totalPurchases || 0);
+  const oldInvoicesAmt = Number(customer.oldInvoicesAmount || 0);
   const customerSales = [...(customer.sales || [])];
 
   // Sort newest first
@@ -1162,6 +1167,7 @@ async function sendCustomerDetails(chatId, customer) {
             `💰 <b>إجمالي المشتريات:</b> ${purchases.toLocaleString()} د.ع\n` +
             `🔴 <b>المبلغ المتبقي المطلوب منه (الديون):</b>\n` +
             `👉 <b>${debt > 0 ? `${debt.toLocaleString()} د.ع ⚠️` : '0 د.ع (خالص الحساب ✅)'}</b>\n` +
+            (oldInvoicesAmt > 0 ? `📑 <b>سندات قبض وفواتير قديمة مسددة (قبل النظام):</b> ${oldInvoicesAmt.toLocaleString()} د.ع\n` : '') +
             `عدد الفواتير: ${customerSales.length} فاتورة\n\n`;
 
   if (customerSales.length > 0) {
