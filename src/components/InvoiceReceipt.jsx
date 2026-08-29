@@ -462,14 +462,18 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           display: none !important;
         }
         .invoice-page {
-          min-height: auto !important;
-          max-height: none !important;
+          width: 794px !important;
+          min-height: 1115px !important;
+          max-height: 1123px !important;
+          height: 1118px !important;
           box-sizing: border-box !important;
-          padding: 16px 20px 20px 20px !important;
+          padding: 30px 36px !important;
           display: flex !important;
           flex-direction: column !important;
           justify-content: space-between !important;
           background: #ffffff !important;
+          position: relative !important;
+          overflow: hidden !important;
         }
       </style>
       <div style="width: 794px; background: #ffffff; margin: 0; padding: 0;">
@@ -489,7 +493,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
 
     try {
       const opt = {
-        margin: [4, 6, 4, 6],
+        margin: 0,
         filename: `فاتورة_${sale.invoiceNumber || 'draft'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
@@ -501,7 +505,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           letterRendering: false,
           allowTaint: true
         },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
@@ -1096,19 +1100,18 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="bg-slate-100 w-full mx-auto p-4 md:p-8 flex flex-col gap-8 items-center rounded overflow-y-auto">
             {/* عرض الصفحات المقطعة بشكل متتالي */}
             {invoiceContent.map((page, idx) => (
-              <div key={idx} className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]">
+              <div key={idx} className="bg-white p-8 relative shadow-md rounded-lg w-full max-w-[210mm] min-h-[297mm] flex flex-col justify-between overflow-hidden">
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
-                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', maxWidth: '70%', height: 'auto', opacity: 0.14, zIndex: 0, pointerEvents: 'none' }}>
                     <img 
                       src={settings.logoUrl} 
                       alt="" 
-                      className="w-[70%] max-w-[460px] h-auto object-contain filter grayscale" 
-                      style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                      style={{ width: '100%', height: 'auto', display: 'block' }}
                     />
                   </div>
                 )}
-                <div className="relative z-10">
+                <div className="relative z-10 flex-1 flex flex-col justify-between">
                   {page}
                   {/* ملاحظات العرض */}
                   {sale.isOffer && sale.notes && (
@@ -1128,20 +1131,32 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       {createPortal(
         <div id="print-portal" className="hidden print:block w-full relative m-0 p-0 bg-transparent" dir="rtl">
           {invoiceContent.map((page, idx) => (
-            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full">
+            <div 
+              key={idx} 
+              className="invoice-page relative bg-white print:break-inside-avoid print:break-after-page flex flex-col justify-between"
+              style={{
+                width: '210mm',
+                minHeight: '290mm',
+                maxHeight: '295mm',
+                height: '292mm',
+                boxSizing: 'border-box',
+                padding: '10mm 12mm',
+                position: 'relative',
+                overflow: 'hidden'
+              }}
+            >
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
-                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', maxWidth: '70%', height: 'auto', opacity: 0.14, zIndex: 0, pointerEvents: 'none' }}>
                   <img 
                     src={settings.logoUrl} 
                     alt="" 
-                    className="w-[70%] max-w-[460px] h-auto object-contain filter grayscale" 
-                    style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', opacity: 0.15 }}
+                    style={{ width: '100%', height: 'auto', display: 'block', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', opacity: 0.14 }}
                     crossOrigin="anonymous"
                   />
                 </div>
               )}
-              <div className="relative z-10">
+              <div className="relative z-10 flex-1 flex flex-col justify-between w-full h-full">
                 {page}
               </div>
             </div>
@@ -1161,15 +1176,16 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           body > :not(#print-portal) {
             display: none !important;
           }
-          body {
+          html, body {
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
-            width: 100% !important;
+            width: 210mm !important;
+            height: 100% !important;
           }
           #print-portal {
             display: block !important;
-            width: 100% !important;
+            width: 210mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
@@ -1177,13 +1193,18 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           .invoice-page {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            min-height: auto !important;
-            max-height: none !important;
+            width: 210mm !important;
+            min-height: 290mm !important;
+            max-height: 295mm !important;
+            height: 292mm !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
             box-sizing: border-box !important;
-            padding: 4mm 6mm !important;
+            padding: 10mm 12mm !important;
+            background: #ffffff !important;
+            position: relative !important;
+            overflow: hidden !important;
           }
           .invoice-page:not(:last-child) {
             page-break-after: always !important;
@@ -1191,7 +1212,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           }
           @page {
             size: A4 portrait;
-            margin: 4mm 6mm;
+            margin: 0mm !important;
           }
           tr {
             page-break-inside: avoid;

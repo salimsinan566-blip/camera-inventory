@@ -233,16 +233,16 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
     <!-- Watermark Logo in Background -->
     ${safeLogo ? `
-      <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; opacity: 0.15; overflow: hidden;">
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; max-width: 70%; height: auto; opacity: 0.14; z-index: 0; pointer-events: none; overflow: hidden;">
         <img 
           src="${safeLogo}" 
           alt="" 
-          style="width: 70%; max-width: 460px; height: auto; object-fit: contain; filter: grayscale(100%); -webkit-print-color-adjust: exact; print-color-adjust: exact; opacity: 0.15;" 
+          style="width: 100%; height: auto; object-fit: contain; -webkit-print-color-adjust: exact; print-color-adjust: exact; display: block;" 
         />
       </div>
     ` : ''}
 
-    <div style="position: relative; z-index: 10; min-height: auto; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+    <div style="position: relative; z-index: 10; width: 794px; min-height: 1115px; max-height: 1123px; height: 1118px; padding: 30px 36px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; overflow: hidden;">
       
       <!-- Top Section: Header & Items -->
       <div>
