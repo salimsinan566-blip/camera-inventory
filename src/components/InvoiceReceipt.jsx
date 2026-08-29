@@ -133,17 +133,17 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-1.5 pr-2 relative">
               {settings?.logoUrl ? (
-                <div className="h-20 sm:h-24 flex items-center justify-end">
+                <div className="h-16 sm:h-20 flex items-center justify-end">
                   <img 
                     src={settings.logoUrl} 
-                    alt="SAFE ZONE" 
-                    className="h-20 sm:h-24 max-h-24 w-auto max-w-[260px] object-contain drop-shadow-xs" 
+                    alt="الشعار" 
+                    className="h-16 sm:h-20 max-h-20 w-auto max-w-[240px] object-contain drop-shadow-xs" 
                     crossOrigin="anonymous"
                   />
                 </div>
               ) : (
-                <div className="h-20 w-36 flex items-center justify-center text-amber-600 border-2 border-dashed border-amber-300 p-1 font-bold rounded text-center text-sm">
-                  SAFE ZONE
+                <div className="h-16 w-28 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-1 font-bold rounded text-center text-xs">
+                  [الشعار]
                 </div>
               )}
               
@@ -1019,7 +1019,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
                   <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
-                    <img src={settings.logoUrl} alt="" className="w-[65%] max-w-[450px] h-auto object-contain filter grayscale" />
+                    <img src={settings.logoUrl} alt="" className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" />
                   </div>
                 )}
                 <div className="relative z-10">
@@ -1081,11 +1081,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           #print-portal {
             display: block !important;
             width: 100%;
-            min-height: auto !important;
+            
           }
           #print-portal > div {
             display: block;
-            min-height: auto !important;
+            
           }
           @page {
             size: A4 portrait;
