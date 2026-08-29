@@ -25,7 +25,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
   const { customers } = useCustomers();
   const [isSending, setIsSending] = useState(false);
   const [isSavingOffer, setIsSavingOffer] = useState(false);
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  
   const printRef = useRef();
 
   // Find live customer by ID or Name
@@ -82,18 +82,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
   };
 
   const handlePrint = async () => {
-    const isMobileOrTelegram = /Mobi|Android|iPhone|iPad|Telegram/i.test(navigator.userAgent) || window.Telegram?.WebApp;
-    
-    if (!isMobileOrTelegram) {
-      const originalTitle = document.title;
-      document.title = `فاتورة_${sale.invoiceNumber || 'safe_zone'}_عميل_${sale.customerName || 'عام'}`;
-      window.print();
-      setTimeout(() => { document.title = originalTitle; }, 500);
-      return;
-    }
-
-    // Mobile / Telegram fallback to high quality PDF download
-    await handleDownloadPdf();
+    const originalTitle = document.title;
+    document.title = `فاتورة_${sale.invoiceNumber || 'safe_zone'}_عميل_${sale.customerName || 'عام'}`;
+    window.print();
+    setTimeout(() => { document.title = originalTitle; }, 500);
   };
 
   const dateLabel = formatDate(sale.createdAt);
@@ -950,22 +942,14 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="absolute top-4 left-4 z-20 flex items-center gap-2 sm:gap-3">
             {isCustomerPortalView ? (
               <>
-                <button
-                  onClick={handleDownloadPdf}
-                  disabled={isDownloadingPdf}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer hover:shadow-md active:scale-95"
-                  title="تحميل الفاتورة بصيغة PDF لجهازك"
-                >
-                  <span>{isDownloadingPdf ? '⏳' : '📥'}</span>
-                  <span>{isDownloadingPdf ? 'جارٍ التحميل...' : 'تحميل PDF'}</span>
-                </button>
+                
                 <button
                   onClick={handlePrint}
                   className="px-3.5 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl shadow-xs text-xs font-bold flex items-center gap-1.5 transition-all border border-brand-200 cursor-pointer hover:shadow-md active:scale-95"
-                  title="طباعة الفاتورة"
+                  title="طباعة / حفظ كـ PDF"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                  <span>طباعة</span>
+                  <span>طباعة / PDF</span>
                 </button>
               </>
             ) : (
@@ -1005,22 +989,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                     <span>{isSavingOffer ? 'جارٍ الحفظ...' : 'حفظ كعرض سعر'}</span>
                   </button>
                 )}
-                <button
-                  onClick={handleDownloadPdf}
-                  disabled={isDownloadingPdf}
-                  className="p-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-full shadow-sm transition-colors border border-rose-200 cursor-pointer"
-                  title="تحميل كملف PDF مباشر"
-                >
-                  {isDownloadingPdf ? (
-                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                  )}
-                </button>
+                
                 <button
                   onClick={handlePrint}
                   className="p-2.5 bg-brand-50 text-brand-600 hover:bg-brand-100 rounded-full shadow-sm transition-colors border border-brand-200 cursor-pointer"
-                  title="طباعة الفاتورة"
+                  title="طباعة / حفظ كـ PDF"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
                 </button>
