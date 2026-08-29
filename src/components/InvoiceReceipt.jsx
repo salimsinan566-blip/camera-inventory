@@ -141,11 +141,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-1.5 pr-2 relative">
               {settings?.logoUrl ? (
-                <div className="h-16 sm:h-20 flex items-center justify-end">
+                <div className="h-24 sm:h-28 flex items-center justify-end">
                   <img 
                     src={settings.logoUrl} 
                     alt="الشعار" 
-                    className="h-16 sm:h-20 max-h-20 w-auto max-w-[240px] object-contain drop-shadow-xs" 
+                    className="h-24 sm:h-28 max-h-28 w-auto max-w-[280px] object-contain drop-shadow-xs" 
                     crossOrigin="anonymous"
                   />
                 </div>
@@ -1087,8 +1087,13 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <div key={idx} className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]">
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
-                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-25 overflow-hidden">
-                    <img src={settings.logoUrl} alt="" className="w-[80%] max-w-[600px] h-auto object-contain filter grayscale" />
+                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
+                    <img 
+                      src={settings.logoUrl} 
+                      alt="" 
+                      className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" 
+                      style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                    />
                   </div>
                 )}
                 <div className="relative z-10">
@@ -1114,11 +1119,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page w-full">
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
-                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
+                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
                   <img 
                     src={settings.logoUrl} 
                     alt="" 
                     className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" 
+                    style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
                     crossOrigin="anonymous"
                   />
                 </div>
