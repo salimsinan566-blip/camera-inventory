@@ -87,6 +87,16 @@ export default function POSScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftToOpen, mode]);
 
+  // Auto-dismiss last invoice notification banner after 8s
+  useEffect(() => {
+    if (lastInvoice) {
+      const timer = setTimeout(() => {
+        setLastInvoice(null);
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastInvoice]);
+
   useEffect(() => {
     if (offerToOpen && mode === 'offer') {
       handleLoadOffer(offerToOpen);
@@ -231,6 +241,7 @@ export default function POSScreen({
 
   const addToCart = useCallback((product) => {
     startTransition(() => {
+      setLastInvoice(null);
       setCart((prev) => {
         const existing = prev.find((item) => item.productId === product.id);
         if (existing) {
@@ -902,51 +913,11 @@ export default function POSScreen({
           <div className="card flex-1 flex flex-col shadow-xl shadow-ink-200/40 border-ink-200 min-h-0 min-w-0 overflow-hidden rounded-2xl w-full">
             {/* Header: Organized 3-Tier Layout */}
             <div className="p-2.5 border-b border-ink-100 bg-white space-y-2 shrink-0">
-              {/* Row 1: Title + Badges + Header Actions */}
+              {/* Row 1: Title + Quick Toolbar Actions */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-base">🛒</span>
                   <h3 className="font-black text-ink-900 text-sm shrink-0">تفاصيل الفاتورة</h3>
-
-                  {/* شارة تعديل فاتورة مؤقتة */}
-                  {editingDraftId && (
-                    <div className="bg-warn-50 border border-warn-300 text-warn-900 text-xs px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-2xs animate-in fade-in duration-150">
-                      <span className="text-xs">✏️</span>
-                      <span className="font-bold text-[10px]">تعديل مؤقتة</span>
-                      <button 
-                        type="button"
-                        onClick={resetOrderState} 
-                        className="text-danger-600 hover:text-danger-800 underline text-[10px] font-black mr-0.5 cursor-pointer"
-                        title="إلغاء التعديل والعودة لسلة جديدة"
-                      >
-                        إلغاء
-                      </button>
-                    </div>
-                  )}
-
-                  {/* شارة تم البيع */}
-                  {lastInvoice && !editingDraftId && (
-                    <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs px-1.5 py-0.5 rounded-lg flex items-center gap-1 shadow-2xs animate-in fade-in duration-150">
-                      <span className="text-xs text-emerald-600">✓</span>
-                      <span className="font-bold text-[10px]">تم (#{lastInvoice.invoiceNumber})</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowReceipt(true)}
-                        className="text-emerald-700 hover:text-emerald-950 font-black text-[10px] underline cursor-pointer"
-                        title="عرض / طباعة الفاتورة"
-                      >
-                        عرض
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLastInvoice(null)}
-                        className="text-ink-400 hover:text-ink-700 text-[10px] cursor-pointer"
-                        title="إخفاء"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {/* Quick Toolbar Actions */}
@@ -1023,6 +994,57 @@ export default function POSScreen({
                   </button>
                 </div>
               </div>
+
+              {/* Notification Banner: Editing Draft Mode */}
+              {editingDraftId && (
+                <div className="bg-warn-50 border border-warn-300 text-warn-900 text-xs px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm">✏️</span>
+                    <span className="font-bold truncate text-[11px]">أنت تقوم بتعديل فاتورة معلقة</span>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={resetOrderState} 
+                    className="text-danger-600 hover:text-danger-800 bg-white hover:bg-danger-50 border border-danger-200 px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 transition-colors cursor-pointer shadow-2xs"
+                    title="إلغاء التعديل والعودة لسلة جديدة"
+                  >
+                    إلغاء والبدء بسلة جديدة
+                  </button>
+                </div>
+              )}
+
+              {/* Notification Banner: Completed Sale / Last Invoice */}
+              {lastInvoice && !editingDraftId && (
+                <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px] font-black shrink-0">✓</span>
+                    <span className="font-bold text-[11px] truncate">
+                      {lastInvoice.invoiceNumber && lastInvoice.invoiceNumber !== 'غير مؤكدة'
+                        ? `تم حفظ الفاتورة (#${lastInvoice.invoiceNumber})`
+                        : 'تم حفظ الفاتورة بنجاح'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowReceipt(true)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-0.5 rounded-lg font-black text-[10px] transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
+                      title="عرض / طباعة الفاتورة"
+                    >
+                      <span>📄</span>
+                      <span>عرض الوصل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLastInvoice(null)}
+                      className="text-emerald-700 hover:text-emerald-950 hover:bg-emerald-100/80 w-5 h-5 rounded-md flex items-center justify-center text-xs transition-colors cursor-pointer font-bold"
+                      title="إغلاق التنبيه"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Row 2: Full-Width Payment Method Segmented Tabs */}
               {mode === 'sale' && (
