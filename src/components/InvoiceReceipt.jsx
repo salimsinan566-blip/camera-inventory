@@ -118,32 +118,23 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     return (
       <div 
         key={pageIndex} 
-        className="invoice-page relative w-full flex flex-col justify-between bg-white print:break-after-page" 
-        style={{ minHeight: '265mm', padding: '24px 28px', boxSizing: 'border-box' }}
+        className="invoice-page relative w-full flex flex-col justify-between bg-transparent print:break-after-page" 
+        style={{ minHeight: '255mm', maxHeight: '272mm', boxSizing: 'border-box' }}
       >
         {/* القسم العلوي: الترويسة والمنتجات */}
         <div>
           {/* الترويسة الفنية */}
-          <div className="flex items-center justify-between mb-3 border-b-2 border-[#C89B3C] pb-2.5">
+          <div className="flex items-center justify-between mb-2.5 border-b-2 border-[#C89B3C] pb-2">
             {/* اليمين: معلومات المتجر */}
             <div className="flex flex-col items-start text-right">
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-wide mb-1">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-wide mb-0.5">
                 {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
               </h1>
               {settings?.address && (
-                <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-500 font-bold leading-normal">
-                  <svg 
-                    style={{ width: '15px', height: '15px', minWidth: '15px', display: 'inline-block', verticalAlign: 'middle' }} 
-                    className="text-[#C89B3C] shrink-0" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                  </svg>
-                  <span className="inline-block leading-normal">{settings.address}</span>
-                </div>
+                <p className="text-xs sm:text-sm text-slate-500 font-bold mb-0.5">
+                  <svg style={{ display: 'inline-block', verticalAlign: 'middle', width: '16px', height: '16px', marginLeft: '4px' }} className="text-[#C89B3C]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                  <span style={{ verticalAlign: 'middle' }}>{settings.address}</span>
+                </p>
               )}
             </div>
             
@@ -177,7 +168,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           </div>
 
           {/* قسم معلومات العميل ومعلومات الفاتورة */}
-          <div className="flex justify-between items-start mb-2.5">
+          <div className="flex justify-between items-start mb-2">
             {/* يمين: فاتورة إلى */}
             <div className="text-sm">
               <h3 className="font-bold text-slate-500 mb-0.5 text-xs uppercase tracking-wider">فاتورة إلى</h3>
@@ -474,7 +465,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           min-height: 1040px !important;
           max-height: 1075px !important;
           box-sizing: border-box !important;
-          padding: 24px 28px !important;
+          padding: 16px 20px 20px 20px !important;
           display: flex !important;
           flex-direction: column !important;
           justify-content: space-between !important;
@@ -1093,18 +1084,18 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="bg-slate-100 w-full mx-auto p-4 md:p-8 flex flex-col gap-8 items-center rounded overflow-y-auto">
             {/* عرض الصفحات المقطعة بشكل متتالي */}
             {invoiceContent.map((page, idx) => (
-              <div key={idx} className="bg-white relative shadow-lg rounded-xl border border-slate-200/80 w-full max-w-[210mm] overflow-hidden">
+              <div key={idx} className="bg-white p-8 relative shadow-sm w-full max-w-[210mm]">
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
-                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
-                    <img src={settings.logoUrl} alt="" className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" />
+                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-25 overflow-hidden">
+                    <img src={settings.logoUrl} alt="" className="w-[80%] max-w-[600px] h-auto object-contain filter grayscale" />
                   </div>
                 )}
                 <div className="relative z-10">
                   {page}
                   {/* ملاحظات العرض */}
                   {sale.isOffer && sale.notes && (
-                    <div className="mx-7 mb-6 pt-3 border-t border-slate-200">
+                    <div className="mt-4 pt-4 border-t border-slate-200">
                       <h4 className="text-[11px] font-bold text-slate-800 mb-1">ملاحظات العرض:</h4>
                       <p className="text-[10px] text-slate-600 leading-relaxed whitespace-pre-wrap">{sale.notes}</p>
                     </div>
@@ -1168,14 +1159,13 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           .invoice-page {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            min-height: 260mm !important;
+            min-height: 255mm !important;
             max-height: 275mm !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
             box-sizing: border-box !important;
-            padding: 24px 28px !important;
-            background: #ffffff !important;
+            padding: 4mm 6mm !important;
           }
           .invoice-page:not(:last-child) {
             page-break-after: always !important;
@@ -1183,7 +1173,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           }
           @page {
             size: A4 portrait;
-            margin: 4mm 6mm;
+            margin: 6mm 8mm;
           }
           tr {
             page-break-inside: avoid;

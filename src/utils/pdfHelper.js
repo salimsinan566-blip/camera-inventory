@@ -254,10 +254,10 @@ export async function generateInvoicePdfBlob(sale, settings) {
               ${storeName}
             </h1>
             ${address ? `
-              <div style="font-size: 12px; color: #64748b; font-weight: bold; display: flex; align-items: center; gap: 5px; line-height: 1.2;">
-                <svg style="width: 15px; height: 15px; min-width: 15px; color: #C89B3C; fill: none; stroke: currentColor; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                <span style="display: inline-block;">${address}</span>
-              </div>
+              <p style="font-size: 12px; color: #64748b; font-weight: bold; margin-bottom: 2px;">
+                <svg style="display: inline-block; vertical-align: middle; width: 16px; height: 16px; color: #C89B3C; fill: none; stroke: currentColor; margin-left: 4px;" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span style="vertical-align: middle;">${address}</span>
+              </p>
             ` : ''}
           </div>
 
