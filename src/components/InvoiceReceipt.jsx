@@ -1018,7 +1018,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               >
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
-                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
+                  <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
                     <img src={settings.logoUrl} alt="" className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" />
                   </div>
                 )}
@@ -1045,7 +1045,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm] p-8 flex flex-col">
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
-                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
+                <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
                   <img 
                     src={settings.logoUrl} 
                     alt="" 
@@ -1073,23 +1073,14 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           body > :not(#print-portal) {
             display: none !important;
           }
-          body {
-            margin: 0;
-            padding: 0;
-            background: white;
-          }
           #print-portal {
             display: block !important;
             width: 100%;
             
           }
-          #print-portal > div {
-            display: block;
-            
-          }
           @page {
             size: A4 portrait;
-            margin: 4mm 6mm;
+            margin: 0;
           }
           tr {
             page-break-inside: avoid;
