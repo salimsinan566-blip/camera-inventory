@@ -15,7 +15,11 @@ import { renameCategoryInProducts } from '../services/productsService';
 import { CATEGORIES } from '../models/product';
 import { 
   DEFAULT_WHATSAPP_TEMPLATES, 
-  testWhatsAppGatewayConnection 
+  testWhatsAppGatewayConnection,
+  checkEvolutionConnectionState,
+  getEvolutionQRCode,
+  logoutEvolutionInstance,
+  normalizeServerBaseUrl
 } from '../services/whatsappService';
 
 export default function SettingsScreen() {
@@ -28,51 +32,98 @@ export default function SettingsScreen() {
   
   // WhatsApp Settings state
   const [whatsappConfig, setWhatsappConfig] = useState({
+    whatsappProvider: 'evolution',
     whatsappAutoReminders: true,
     whatsappDefaultDay: 'thursday',
-    whatsappInstanceId: 'local',
+    whatsappReminderTime: '20:00',
+    whatsappInstanceId: 'SafeZone',
     whatsappToken: 'SafeZone2026',
-    whatsappApiUrl: 'http://localhost:3005/messages/chat',
+    whatsappApiUrl: 'http://13.61.182.143:8080',
     whatsappInvoiceTemplate: DEFAULT_WHATSAPP_TEMPLATES.invoice,
     whatsappDebtReminderTemplate: DEFAULT_WHATSAPP_TEMPLATES.debtReminder,
   });
   const [testPhone, setTestPhone] = useState('');
   const [testingWhatsApp, setTestingWhatsApp] = useState(false);
   const [savingWhatsApp, setSavingWhatsApp] = useState(false);
+  const [loggingOutWhatsApp, setLoggingOutWhatsApp] = useState(false);
+  
+  // Live Server & QR Code State
   const [localServerState, setLocalServerState] = useState({
     checking: false,
     connected: false,
     phone: '',
     name: '',
+    state: 'unknown',
+    serverUrl: 'http://13.61.182.143:8080'
   });
 
-  const checkLocalServer = async () => {
-    setLocalServerState(prev => ({ ...prev, checking: true }));
-    try {
-      let rawApiUrl = (whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '').trim().replace(/[,;\s]+$/, '');
-      let baseUrl = 'https://offerings-maybe-dem-representative.trycloudflare.com';
-      if (rawApiUrl.startsWith('http') && !rawApiUrl.includes('localhost') && !rawApiUrl.includes('127.0.0.1')) {
-        baseUrl = rawApiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/[,;\/\s]+$/, '');
-      }
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(`${baseUrl}/status`, { method: 'GET', signal: controller.signal });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-      
-      setLocalServerState({
-        checking: false,
-        connected: Boolean(data.connected),
-        phone: data.phone || '',
-        name: data.name || '',
-        serverUrl: baseUrl,
-      });
+  const [qrModal, setQrModal] = useState({
+    isOpen: false,
+    loading: false,
+    qrBase64: null,
+    pairingCode: null,
+    error: null,
+  });
 
-      if (data.connected) {
-        toast(`✅ سيرفر أمازون متصل بنجاح برقم: +${data.phone} (${data.name || 'Safe Zone'})`, 'success');
+  const checkLocalServer = async (silent = false) => {
+    if (!silent) setLocalServerState(prev => ({ ...prev, checking: true }));
+    try {
+      const rawApiUrl = (whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '').trim();
+      const baseUrl = normalizeServerBaseUrl(rawApiUrl) || 'http://13.61.182.143:8080';
+      const instance = whatsappConfig?.whatsappInstanceId || settings?.whatsappInstanceId || 'SafeZone';
+      const token = whatsappConfig?.whatsappToken || settings?.whatsappToken || 'SafeZone2026';
+      const provider = whatsappConfig?.whatsappProvider || settings?.whatsappProvider || 'evolution';
+
+      if (provider === 'evolution' || (!rawApiUrl.includes('/messages/chat') && !rawApiUrl.includes('ultramsg.com'))) {
+        const evoRes = await checkEvolutionConnectionState({
+          baseUrl,
+          instanceName: instance,
+          apiKey: token
+        });
+
+        setLocalServerState({
+          checking: false,
+          connected: Boolean(evoRes.connected),
+          phone: evoRes.phone || '',
+          name: evoRes.name || instance,
+          state: evoRes.state || 'unknown',
+          serverUrl: baseUrl,
+        });
+
+        if (evoRes.connected && qrModal.isOpen) {
+          setQrModal(prev => ({ ...prev, isOpen: false }));
+          toast(`✅ تم مسح الـ QR والاتصال بنجاح برقم: +${evoRes.phone}`, 'success');
+        } else if (!silent) {
+          if (evoRes.connected) {
+            toast(`✅ سيرفر Evolution متصل بنجاح برقم: +${evoRes.phone} (${evoRes.name || instance})`, 'success');
+          } else {
+            toast(`⚠️ سيرفر Evolution يعمل وبانتظار مسح رمز الـ QR Code`, 'info');
+          }
+        }
       } else {
-        toast(`⚠️ السيرفر يعمل وبانتظار مسح رمز الـ QR Code`, 'info');
+        // Fallback for custom / legacy gateway
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(`${baseUrl}/status`, { method: 'GET', signal: controller.signal });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        
+        setLocalServerState({
+          checking: false,
+          connected: Boolean(data.connected),
+          phone: data.phone || '',
+          name: data.name || '',
+          state: data.connected ? 'open' : 'close',
+          serverUrl: baseUrl,
+        });
+
+        if (!silent) {
+          if (data.connected) {
+            toast(`✅ سيرفر الواتساب متصل بنجاح برقم: +${data.phone}`, 'success');
+          } else {
+            toast(`⚠️ السيرفر يعمل وبانتظار مسح رمز الـ QR Code`, 'info');
+          }
+        }
       }
     } catch (e) {
       setLocalServerState({
@@ -80,9 +131,100 @@ export default function SettingsScreen() {
         connected: false,
         phone: '',
         name: '',
-        serverUrl: 'https://offerings-maybe-dem-representative.trycloudflare.com',
+        state: 'disconnected',
+        serverUrl: whatsappConfig?.whatsappApiUrl || 'http://13.61.182.143:8080',
       });
-      toast(`تعذر الوصول للسيرفر السحابي (${e.message})`, 'error');
+      if (!silent) {
+        toast(`تعذر الوصول لسيرفر الواتساب (${e.message})`, 'error');
+      }
+    }
+  };
+
+  // Live periodic polling when QR modal is open
+  useEffect(() => {
+    let timer = null;
+    if (qrModal.isOpen && !localServerState.connected) {
+      timer = setInterval(() => {
+        checkLocalServer(true);
+      }, 3500);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [qrModal.isOpen, localServerState.connected, whatsappConfig]);
+
+  // Request & Display Live QR Code
+  const handleOpenQRCodeModal = async () => {
+    setQrModal({ isOpen: true, loading: true, qrBase64: null, pairingCode: null, error: null });
+    try {
+      const rawApiUrl = (whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '').trim();
+      const baseUrl = normalizeServerBaseUrl(rawApiUrl) || 'http://13.61.182.143:8080';
+      const instance = whatsappConfig?.whatsappInstanceId || settings?.whatsappInstanceId || 'SafeZone';
+      const token = whatsappConfig?.whatsappToken || settings?.whatsappToken || 'SafeZone2026';
+
+      const qrResult = await getEvolutionQRCode({
+        baseUrl,
+        instanceName: instance,
+        apiKey: token
+      });
+
+      if (qrResult.base64 || qrResult.code) {
+        setQrModal({
+          isOpen: true,
+          loading: false,
+          qrBase64: qrResult.base64 || qrResult.code,
+          pairingCode: qrResult.pairingCode,
+          error: null,
+        });
+      } else {
+        // Maybe already connected or generating
+        await checkLocalServer(true);
+        setQrModal(prev => ({
+          ...prev,
+          loading: false,
+          error: 'تم إنشاء الجلسة، جاري فحص الاتصال...'
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to get QR code:', err);
+      setQrModal(prev => ({
+        ...prev,
+        loading: false,
+        error: err.message || 'فشل جلب رمز الـ QR Code. تأكد من تشغيل سيرفر Evolution API وعنوان الرابط.'
+      }));
+    }
+  };
+
+  // Logout / Disconnect Instance
+  const handleLogoutSession = async () => {
+    const confirmed = await confirm({
+      title: 'تسجيل الخروج من الواتساب',
+      message: 'هل أنت متأكد من رغبتك في تسجيل الخروج وفصل جلسة الواتساب الحالية؟ ستحتاج لمسح رمز الـ QR مرة أخرى لإعادة التوصيل.',
+      confirmText: 'نعم، افصل الجلسة',
+      cancelText: 'إلغاء',
+      isDanger: true,
+    });
+    if (!confirmed) return;
+
+    setLoggingOutWhatsApp(true);
+    try {
+      const rawApiUrl = (whatsappConfig?.whatsappApiUrl || settings?.whatsappApiUrl || '').trim();
+      const baseUrl = normalizeServerBaseUrl(rawApiUrl) || 'http://13.61.182.143:8080';
+      const instance = whatsappConfig?.whatsappInstanceId || settings?.whatsappInstanceId || 'SafeZone';
+      const token = whatsappConfig?.whatsappToken || settings?.whatsappToken || 'SafeZone2026';
+
+      await logoutEvolutionInstance({
+        baseUrl,
+        instanceName: instance,
+        apiKey: token
+      });
+
+      setLocalServerState(prev => ({ ...prev, connected: false, phone: '', name: '', state: 'close' }));
+      toast('تم فصل جلسة الواتساب وتسجيل الخروج بنجاح 👍', 'success');
+    } catch (err) {
+      toast(`فشل فصل الجلسة: ${err.message}`, 'error');
+    } finally {
+      setLoggingOutWhatsApp(false);
     }
   };
 
@@ -144,14 +286,13 @@ export default function SettingsScreen() {
       });
 
       setWhatsappConfig({
+        whatsappProvider: settings.whatsappProvider || 'evolution',
         whatsappAutoReminders: settings.whatsappAutoReminders !== false,
         whatsappDefaultDay: settings.whatsappDefaultDay || 'thursday',
         whatsappReminderTime: settings.whatsappReminderTime || '20:00',
-        whatsappInstanceId: settings.whatsappInstanceId || 'local',
+        whatsappInstanceId: settings.whatsappInstanceId || 'SafeZone',
         whatsappToken: settings.whatsappToken || 'SafeZone2026',
-        whatsappApiUrl: (settings.whatsappApiUrl && !settings.whatsappApiUrl.includes('@') && !settings.whatsappApiUrl.includes('ultramsg') && !settings.whatsappApiUrl.includes('localhost') && !settings.whatsappApiUrl.includes('127.0.0.1'))
-          ? settings.whatsappApiUrl
-          : 'https://offerings-maybe-dem-representative.trycloudflare.com/messages/chat',
+        whatsappApiUrl: settings.whatsappApiUrl || 'http://13.61.182.143:8080',
         whatsappInvoiceTemplate: settings.whatsappInvoiceTemplate || DEFAULT_WHATSAPP_TEMPLATES.invoice,
         whatsappDebtReminderTemplate: settings.whatsappDebtReminderTemplate || DEFAULT_WHATSAPP_TEMPLATES.debtReminder,
       });
@@ -300,7 +441,7 @@ export default function SettingsScreen() {
     setSavingWhatsApp(true);
     try {
       let cleanApiUrl = String(whatsappConfig.whatsappApiUrl || '').trim().replace(/[,;\s]+$/, '');
-      if (cleanApiUrl.startsWith('http') && !cleanApiUrl.includes('/messages/')) {
+      if (whatsappConfig.whatsappProvider === 'custom' && cleanApiUrl.startsWith('http') && !cleanApiUrl.includes('/messages/')) {
         cleanApiUrl = cleanApiUrl.replace(/\/+$/, '') + '/messages/chat';
       }
 
@@ -317,6 +458,8 @@ export default function SettingsScreen() {
       setStoreInfo(updatedStoreInfo);
       await updateStoreSettings(updatedStoreInfo);
       toast('تم حفظ إعدادات وقوالب الواتساب بنجاح! 📱✨', 'success');
+      // فحص فوري لحالة الاتصال بالسيرفر الجديد
+      checkLocalServer(true);
     } catch (err) {
       toast(`فشل الحفظ: ${err.message}`, 'error');
     } finally {
@@ -1084,6 +1227,7 @@ export default function SettingsScreen() {
         )}
 
         {/* Tab: WhatsApp & Debt Reminders */}
+        {/* Tab: WhatsApp & Debt Reminders */}
         {activeTab === 'whatsapp' && (
           <div className="max-w-4xl space-y-6">
             
@@ -1095,114 +1239,159 @@ export default function SettingsScreen() {
                     📱
                   </div>
                   <div>
-                    <h2 className="text-xl font-black">إدارة ربط الواتساب وجدولة تذكير الديون</h2>
+                    <h2 className="text-xl font-black">إدارة ربط الواتساب (Evolution API v2) وجدولة تذكير الديون</h2>
                     <p className="text-emerald-100 text-xs mt-0.5">
-                      ربط حساب واتساب المتجر (بمسح الـ QR Code) لإرسال الفواتير وتذكيرات الديون تلقائياً باسم ورقم المحل
+                      ربط حساب واتساب المتجر على سيرفر AWS لإرسال الفواتير ومستندات PDF وتذكيرات الديون تلقائياً بأعلى استقرار
                     </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Step-by-Step Linking Guide & Live Status Card */}
-            <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-2xs space-y-4">
+            {/* Evolution API v2 Live Connection & QR Code Card */}
+            <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-2xs space-y-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                   <span className="text-emerald-600 font-black">1️⃣</span>
-                  <span>حالة اتصال سيرفر الواتساب (WhatsApp Gateway)</span>
+                  <span>حالة اتصال خادم الواتساب (Evolution API Gateway)</span>
                 </h3>
                 <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200">
-                  خادم محلي مجاني 100% / AWS
+                  سيرفر AWS السحابي ☁️
                 </span>
+              </div>
+
+              {/* Provider Selector */}
+              <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl max-w-md">
+                <button
+                  type="button"
+                  onClick={() => setWhatsappConfig(prev => ({ ...prev, whatsappProvider: 'evolution' }))}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    whatsappConfig.whatsappProvider !== 'custom' 
+                      ? 'bg-emerald-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ⚡ Evolution API v2 (موصى به)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWhatsappConfig(prev => ({ ...prev, whatsappProvider: 'custom' }))}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    whatsappConfig.whatsappProvider === 'custom' 
+                      ? 'bg-emerald-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  🛠️ سيرفر مخصص / Gateway قديم
+                </button>
               </div>
 
               {/* Live Status Banner */}
               {localServerState.connected ? (
-                <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">🟢</span>
+                <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <span className="text-3xl animate-pulse">🟢</span>
                     <div>
                       <strong className="text-emerald-950 block text-sm font-black">
-                        سيرفر الواتساب متصل بنجاح وجاهز للإرسال! ✅
+                        خادم Evolution API متصل بنجاح وجاهز للإرسال! ✅
                       </strong>
-                      <span className="text-xs text-emerald-800 font-mono">
-                        الرقم المتصل: +{localServerState.phone} {localServerState.name ? `(${localServerState.name})` : ''}
-                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-emerald-800 font-mono font-bold bg-white/80 px-2 py-0.5 rounded border border-emerald-200">
+                          الرقم: +{localServerState.phone || 'متصل'}
+                        </span>
+                        <span className="text-xs text-emerald-700 font-bold">
+                          الجلسة: {whatsappConfig.whatsappInstanceId || 'SafeZone'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={checkLocalServer}
-                      className="text-xs bg-white border border-emerald-300 px-3 py-1.5 rounded-lg text-emerald-800 font-bold hover:bg-emerald-100 cursor-pointer"
+                      onClick={() => checkLocalServer(false)}
+                      disabled={localServerState.checking}
+                      className="text-xs bg-white border border-emerald-300 px-3.5 py-2 rounded-xl text-emerald-800 font-bold hover:bg-emerald-100 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                     >
-                      🔄 تحديث الحالة
+                      {localServerState.checking ? 'جارٍ الفحص...' : '🔄 فحص الاتصال'}
                     </button>
-                    <a
-                      href={localServerState.serverUrl || "https://offerings-maybe-dem-representative.trycloudflare.com"}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold hover:bg-emerald-800 flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={handleLogoutSession}
+                      disabled={loggingOutWhatsApp}
+                      className="text-xs bg-red-50 text-red-700 border border-red-200 px-3.5 py-2 rounded-xl font-bold hover:bg-red-100 transition-all cursor-pointer"
                     >
-                      <span>لوحة السيرفر (AWS)</span>
-                      <span>↗</span>
-                    </a>
+                      {loggingOutWhatsApp ? 'جارٍ الفصل...' : '🚪 قطع الاتصال'}
+                    </button>
                   </div>
                 </div>
               ) : (
-                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">⚠️</span>
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <span className="text-3xl">🟡</span>
                     <div>
                       <strong className="text-amber-950 block text-sm font-black">
-                        بانتظار تشغيل السيرفر أو مسح الـ QR Code
+                        بانتظار مسح رمز الـ QR Code لربط الواتساب
                       </strong>
-                      <span className="text-xs text-amber-800">
-                        افتح لوحة السيرفر السحابي وامسح رمز الـ QR بهاتفك
+                      <span className="text-xs text-amber-800 block mt-0.5">
+                        انقر على الزر لمسح رمز الـ QR Code مباشرة من هذه الشاشة بهاتفك
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={checkLocalServer}
-                      className="text-xs bg-white border border-amber-300 px-3 py-1.5 rounded-lg text-amber-800 font-bold hover:bg-amber-100 cursor-pointer"
+                      onClick={() => checkLocalServer(false)}
+                      disabled={localServerState.checking}
+                      className="text-xs bg-white border border-amber-300 px-3 py-2 rounded-xl text-amber-800 font-bold hover:bg-amber-100 cursor-pointer"
                     >
-                      🔄 فحص الاتصال
+                      {localServerState.checking ? 'جارٍ الفحص...' : '🔄 فحص الحالة'}
                     </button>
-                    <a
-                      href={localServerState.serverUrl || "https://offerings-maybe-dem-representative.trycloudflare.com"}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs bg-amber-600 text-white px-3.5 py-1.5 rounded-lg font-bold hover:bg-amber-700 flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={handleOpenQRCodeModal}
+                      className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                     >
-                      <span>فتح صفحة الـ QR Code (AWS) 📱</span>
-                      <span>↗</span>
-                    </a>
+                      <span>📱 مسح رمز الـ QR Code</span>
+                    </button>
                   </div>
                 </div>
               )}
 
               {/* API Credentials Inputs */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    رابط بوابة الواتساب (API Endpoint URL) *
+                    رابط سيرفر AWS (Server URL) *
                   </label>
                   <input
                     type="text"
                     value={whatsappConfig.whatsappApiUrl}
                     onChange={(e) => setWhatsappConfig({ ...whatsappConfig, whatsappApiUrl: e.target.value })}
-                    placeholder="http://localhost:3005/messages/chat"
+                    placeholder="http://13.61.182.143:8080"
                     className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-left focus:ring-2 focus:ring-emerald-500 outline-none"
                     dir="ltr"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">اتركه كما هو للسيرفر المحلي، أو ضع رابط سيرفر AWS عند الرفع.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">رابط سيرفر أمازون AWS أو النطاق السحابي</p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    رمز الأمان (Token / API Key) *
+                    اسم الجلسة (Instance Name) *
+                  </label>
+                  <input
+                    type="text"
+                    value={whatsappConfig.whatsappInstanceId}
+                    onChange={(e) => setWhatsappConfig({ ...whatsappConfig, whatsappInstanceId: e.target.value })}
+                    placeholder="SafeZone"
+                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-left focus:ring-2 focus:ring-emerald-500 outline-none"
+                    dir="ltr"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">اسم الجلسة في Evolution API (مثلاً: SafeZone)</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    مفتاح الأمان (API Key / Token) *
                   </label>
                   <input
                     type="text"
@@ -1212,12 +1401,12 @@ export default function SettingsScreen() {
                     className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-left focus:ring-2 focus:ring-emerald-500 outline-none"
                     dir="ltr"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">الرمز السري الافتراضي: SafeZone2026</p>
+                  <p className="text-[10px] text-slate-500 mt-1">الرمز السري المضبوط في الخادم</p>
                 </div>
               </div>
 
               {/* Test Message Box */}
-              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 mt-2">
+              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="w-full sm:w-auto flex-1">
                   <label className="block text-xs font-bold text-emerald-900 mb-1">
                     🧪 تجربة الاتصال وإرسال رسالة اختبار إلى هاتفك:
@@ -1226,7 +1415,7 @@ export default function SettingsScreen() {
                     type="tel"
                     value={testPhone}
                     onChange={(e) => setTestPhone(e.target.value)}
-                    placeholder="اكتب رقم هاتفك (مثال: 07717174125)..."
+                    placeholder="اكتب رقم هاتفك (مثال: 07701234567)..."
                     className="w-full sm:w-72 border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-mono text-left bg-white outline-none"
                     dir="ltr"
                   />
@@ -1241,6 +1430,91 @@ export default function SettingsScreen() {
                 </button>
               </div>
             </div>
+
+            {/* QR Code Scanner Interactive Modal */}
+            {qrModal.isOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 text-center space-y-5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">📱</span>
+                      <h3 className="font-black text-slate-900 text-base">مسح رمز الـ QR Code للواتساب</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQrModal({ ...qrModal, isOpen: false })}
+                      className="text-slate-400 hover:text-slate-600 text-lg cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-slate-600">
+                    افتح تطبيق الواتساب على هاتفك ⬅️ <strong>الأجهزة المرتبطة (Linked Devices)</strong> ⬅️ <strong>ربط جهاز</strong> ثم امسح الكود التالي:
+                  </p>
+
+                  {/* QR Image Box */}
+                  <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border-2 border-dashed border-emerald-300 rounded-2xl min-h-[260px]">
+                    {qrModal.loading ? (
+                      <div className="space-y-3">
+                        <div className="animate-spin text-3xl">⏳</div>
+                        <p className="text-xs text-slate-600 font-bold">جاري جلب رمز الـ QR Code من سيرفر AWS...</p>
+                      </div>
+                    ) : qrModal.error ? (
+                      <div className="p-4 bg-red-50 text-red-700 text-xs rounded-xl space-y-2">
+                        <span className="text-xl block">⚠️</span>
+                        <p className="font-bold">{qrModal.error}</p>
+                        <button
+                          type="button"
+                          onClick={handleOpenQRCodeModal}
+                          className="px-3 py-1.5 bg-red-600 text-white font-bold rounded-lg text-xs hover:bg-red-700 cursor-pointer"
+                        >
+                          إعادة المحاولة
+                        </button>
+                      </div>
+                    ) : qrModal.qrBase64 ? (
+                      <div className="space-y-3">
+                        <img 
+                          src={qrModal.qrBase64} 
+                          alt="WhatsApp QR Code" 
+                          className="w-56 h-56 mx-auto rounded-xl shadow-md border border-slate-200 bg-white p-2"
+                        />
+                        <div className="flex items-center justify-center gap-2 text-[11px] text-emerald-700 font-bold animate-pulse">
+                          <span>🔄</span>
+                          <span>بانتظار المسح من الهاتف... (فحص تلقائي)</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">لا يوجد رمز حالياً</p>
+                    )}
+                  </div>
+
+                  {qrModal.pairingCode && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <span className="text-[11px] text-slate-600 block mb-1">أو استخدم كود الاقتران (Pairing Code):</span>
+                      <strong className="text-base font-mono text-emerald-800 tracking-wider select-all">{qrModal.pairingCode}</strong>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenQRCodeModal}
+                      className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-4 py-2.5 rounded-xl cursor-pointer"
+                    >
+                      🔄 إعادة توليد الـ QR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrModal({ ...qrModal, isOpen: false })}
+                      className="text-xs bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-2.5 rounded-xl cursor-pointer"
+                    >
+                      إغلاق
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Scheduled Debt Reminders Settings Card */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-4">

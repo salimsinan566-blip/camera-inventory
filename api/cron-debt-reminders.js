@@ -246,15 +246,10 @@ async function executeCronDebtReminders(req, res) {
 
   // فحص ما إذا كان التذكير التلقائي مفعلاً
   const isAutoEnabled = settings.whatsappAutoReminders !== false;
-  const instanceId = settings.whatsappInstanceId?.trim();
-  const defaultBase = 'https://offerings-maybe-dem-representative.trycloudflare.com';
-
-  let apiUrl = settings.whatsappApiUrl?.trim();
-  if (!apiUrl || apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
-    apiUrl = `${defaultBase}/messages/chat`;
-  } else if (instanceId && !apiUrl.startsWith('http')) {
-    apiUrl = `https://api.ultramsg.com/${instanceId}/messages/chat`;
-  }
+  const instanceId = (settings.whatsappInstanceId || 'SafeZone').trim();
+  const token = (settings.whatsappToken || 'SafeZone2026').trim();
+  const rawApiUrl = (settings.whatsappApiUrl || '').trim();
+  const provider = settings.whatsappProvider || 'evolution';
 
   if (!force && !isAutoEnabled) {
     return res.status(200).json({ 
@@ -535,28 +530,58 @@ async function executeCronDebtReminders(req, res) {
   // 7. إذا كان الطلب من Vercel Cron أو Trigger خارجي مباشر، قم بالإرسال الفعلي عبر الـ HTTP
   let dispatchedCount = 0;
   const successfullySentIds = [];
-  const token = settings.whatsappToken || 'SafeZone2026';
+  const cleanBaseUrl = rawApiUrl.replace(/\/messages\/(chat|document).*/, '').replace(/\/message\/(sendText|sendMedia).*/, '').replace(/\/instance\/.*/, '').replace(/\/+$/, '');
+  const isEvolution = provider === 'evolution' || (!rawApiUrl.includes('/messages/chat') && !rawApiUrl.includes('ultramsg.com'));
 
-  for (const item of results) {
+  for (let i = 0; i < results.length; i++) {
+    const item = results[i];
+    
+    // فاصل زمني تسلسلي (Anti-ban rate limiter) بين كل رسالة وأخرى لحماية الرقم من الحظر
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+    }
+
     try {
-      const resp = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          to: item.phone,
-          body: item.message,
-          message: item.message
-        })
-      });
+      let resp;
+      if (isEvolution && cleanBaseUrl) {
+        const endpoint = `${cleanBaseUrl}/message/sendText/${encodeURIComponent(instanceId)}`;
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': token
+          },
+          body: JSON.stringify({
+            number: item.phone,
+            text: item.message,
+            delay: 1500,
+            linkPreview: true
+          })
+        });
+      } else {
+        const legacyEndpoint = rawApiUrl || 'http://13.61.182.143:3005/messages/chat';
+        resp = await fetch(legacyEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            to: item.phone,
+            body: item.message,
+            message: item.message
+          })
+        });
+      }
 
       const resData = await resp.json().catch(() => ({}));
-      if (resData.sent === 'true' || resData.status === 'success' || resp.ok) {
+      if (resp.ok && !resData.error && resData.status !== 'ERROR' && resData.sent !== 'false') {
         dispatchedCount++;
         successfullySentIds.push(item.id);
+        console.log(`✅ [Cron WhatsApp] Sent debt reminder to customer ${item.name} (${item.phone})`);
+      } else {
+        console.warn(`⚠️ [Cron WhatsApp] Gateway returned non-success for ${item.phone}:`, resData);
       }
     } catch (sendErr) {
-      console.error(`Failed to send WhatsApp to ${item.phone}:`, sendErr.message);
+      console.error(`❌ [Cron WhatsApp] Failed to send to ${item.phone}:`, sendErr.message);
     }
   }
 
