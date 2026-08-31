@@ -137,6 +137,12 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
     setLoginLoading(true);
     try {
       await login(email.trim(), password);
+      // حفظ بيانات الدخول محلياً للبقاء مسجلاً في تيليجرام حتى تسجيل الخروج يدوياً
+      localStorage.setItem('telegram_saved_staff_auth', JSON.stringify({
+        email: email.trim(),
+        password,
+        savedAt: Date.now()
+      }));
       toast('تم تسجيل الدخول بنجاح! 🚀', 'success');
     } catch (err) {
       console.error('Login error:', err);
@@ -146,6 +152,29 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
       setLoginLoading(false);
     }
   };
+
+  // Auto restore saved login session inside Telegram WebApp
+  useEffect(() => {
+    const tryAutoLogin = async () => {
+      if (!user && !authLoading) {
+        try {
+          const rawSaved = localStorage.getItem('telegram_saved_staff_auth');
+          if (rawSaved) {
+            const parsed = JSON.parse(rawSaved);
+            if (parsed.email && parsed.password) {
+              setLoginLoading(true);
+              await login(parsed.email, parsed.password);
+            }
+          }
+        } catch (e) {
+          console.warn('Auto restore login error:', e?.message);
+        } finally {
+          setLoginLoading(false);
+        }
+      }
+    };
+    tryAutoLogin();
+  }, [user, authLoading]);
 
   // Check for redirect result on mount
   useEffect(() => {
@@ -183,6 +212,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
   const handleLogout = async () => {
     try {
+      localStorage.removeItem('telegram_saved_staff_auth');
       await logout();
       toast('تم تسجيل الخروج', 'info');
     } catch (e) {}
@@ -1273,7 +1303,7 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
 
                   {/* Add / Stepper */}
                   {inCart ? (
-                    <div className="flex items-center justify-between bg-slate-50 border border-brand-300 rounded-xl p-1">
+                    <div className="flex items-center justify-between bg-slate-50 border border-brand-300 rounded-xl p-1 gap-1">
                       <button
                         type="button"
                         onClick={() => updateQuantity(p.id, inCart.quantity - 1)}
@@ -1281,9 +1311,21 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                       >
                         -
                       </button>
-                      <span className="font-bold text-xs text-brand-600 font-mono">
-                        {inCart.quantity}
-                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={activeTab === 'pos' ? (inCart.maxStock || 9999) : 9999}
+                        value={inCart.quantity === 0 ? '' : inCart.quantity}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                          if (!isNaN(val)) updateQuantity(p.id, Math.max(0, val));
+                        }}
+                        onBlur={() => {
+                          if (!inCart.quantity || inCart.quantity < 1) updateQuantity(p.id, 1);
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        className="w-12 text-center font-black text-xs text-brand-700 bg-white border border-slate-200 rounded-md py-0.5 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-mono shadow-2xs"
+                      />
                       <button
                         type="button"
                         onClick={() => updateQuantity(p.id, inCart.quantity + 1)}
@@ -1503,17 +1545,33 @@ export default function TelegramMiniApp({ onSwitchToStaffLogin }) {
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-                      <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
+                      <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs gap-1">
                         <button
+                          type="button"
                           onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                          className="w-6 h-6 rounded bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center hover:bg-slate-200"
+                          className="w-6 h-6 rounded bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center hover:bg-slate-200 cursor-pointer"
                         >
                           -
                         </button>
-                        <span className="px-2 text-xs font-bold text-slate-900 font-mono">{item.quantity}</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={activeTab === 'pos' ? (item.maxStock || 9999) : 9999}
+                          value={item.quantity === 0 ? '' : item.quantity}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                            if (!isNaN(val)) updateQuantity(item.productId, Math.max(0, val));
+                          }}
+                          onBlur={() => {
+                            if (!item.quantity || item.quantity < 1) updateQuantity(item.productId, 1);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-10 text-center font-bold text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded py-0.5 font-mono focus:border-brand-500 focus:bg-white"
+                        />
                         <button
+                          type="button"
                           onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                          className="w-6 h-6 rounded bg-brand-600 text-white text-xs font-bold flex items-center justify-center hover:bg-brand-700"
+                          className="w-6 h-6 rounded bg-brand-600 text-white text-xs font-bold flex items-center justify-center hover:bg-brand-700 cursor-pointer"
                         >
                           +
                         </button>

@@ -1,5 +1,7 @@
 import {
   getAuth,
+  setPersistence,
+  browserLocalPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
@@ -13,6 +15,11 @@ import {
 import { app } from './config';
 
 export const auth = getAuth(app);
+
+// ضمان ثبات واستمرار جلسة تسجيل الدخول في التخزين المحلي
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.warn('Auth persistence init note:', err?.message);
+});
 
 /** تسجيل الدخول بالإيميل وكلمة المرور */
 export function login(email, password) {
