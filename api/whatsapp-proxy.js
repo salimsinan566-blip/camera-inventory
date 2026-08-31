@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
     fetchOptions.signal = controller.signal;
 
     const response = await fetch(targetUrl, fetchOptions);

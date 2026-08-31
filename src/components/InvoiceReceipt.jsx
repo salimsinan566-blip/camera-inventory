@@ -541,6 +541,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       sendAt = new Date(customDateTime).toISOString();
     }
 
+    let text = generateInvoiceText(); // Default fallback text
     setIsSendingWhatsApp(true);
     try {
       // 1. Optionally save the updated phone number
@@ -577,7 +578,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       }
 
       const template = settings?.whatsappInvoiceTemplate || DEFAULT_WHATSAPP_TEMPLATES.invoice;
-      const text = renderWhatsAppTemplate(template, {
+      text = renderWhatsAppTemplate(template, {
         customerName: sale.customerName || 'عزيزي العميل',
         username: sale.customerName || 'عزيزي العميل',
         password: customerPin,
@@ -667,7 +668,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         reader.readAsDataURL(pdfBlob);
       });
 
-      // 4. Send or Schedule PDF document via local WhatsApp Gateway (with native Chrome print-to-pdf)
+      // 4. Send or Schedule PDF document via WhatsApp Gateway
       const result = await sendWhatsAppDocumentViaGateway({
         phone: rawPhone,
         html: invoiceHtml,
