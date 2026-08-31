@@ -415,20 +415,18 @@ async function executeCronDebtReminders(req, res) {
         const lastSentDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDateObj);
         diffSecondsSinceLastSent = (now.getTime() - lastSentDateObj.getTime()) / 1000;
         
-        const isSameCalendarDay = lastSentDateStr === todayStr;
-        
-        // يعتبر مرسلاً لموعد اليوم بشكل قطعي إذا كان قد أرسل في نفس اليوم (بتوقيت بغداد) أو خلال آخر 18 ساعة
-        if (isSameCalendarDay || diffSecondsSinceLastSent < 18 * 3600) {
+        // يعتبر مرسلاً إذا كان قد أرسل خلال آخر 10 دقائق (600 ثانية) لمنع التكرار
+        if (diffSecondsSinceLastSent < 10 * 60) {
           alreadySentForTodaySlot = true;
         }
       } catch (e) {
-        alreadySentForTodaySlot = c.lastDebtReminderSent.slice(0, 10) === todayStr;
+        alreadySentForTodaySlot = diffSecondsSinceLastSent < 10 * 60;
       }
     }
 
     // منع تكرار الإرسال إذا تم إرساله لهذا الموعد اليوم
     const isRecentForceDuplicate = force && diffSecondsSinceLastSent < 60;
-    const canDispatch = isDueToday && !isRecentForceDuplicate && (isMinutely || isHourly ? !alreadySentForTodaySlot : (!alreadySentForTodaySlot && !isRecentForceDuplicate));
+    const canDispatch = isDueToday && !isRecentForceDuplicate && !alreadySentForTodaySlot;
 
     if (canDispatch) {
       const nextTimestamp = calculateNextScheduledTimestamp(schedule, targetTimeStr, now, true);

@@ -76,7 +76,7 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
       ? (intervalMinutes * 60 * 1000 - 5000)
       : isHourly 
         ? (intervalHours * 60 * 60 * 1000 - 60000) 
-        : (18 * 60 * 60 * 1000);
+        : (10 * 60 * 1000); // قفل 10 دقائق
     if (Date.now() - lastSessionSent < minSessionGap) {
       return false;
     }
@@ -121,21 +121,13 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     return false;
   }
 
-  // Persistent duplicate guard for Daily/Weekly/Monthly:
-  // Strictly prevent sending if a message has already been sent today or within last 18 hours!
+  // Persistent duplicate guard:
+  // إذا أرسلت رسالة خلال آخر 10 دقائق، لا ترسل مرة أخرى
   if (customer.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
     const diffMs = now.getTime() - lastSentDate.getTime();
     
-    // إذا أرسلت رسالة خلال آخر 18 ساعة، لا ترسل مرة أخرى أبداً اليوم!
-    if (diffMs < 18 * 60 * 60 * 1000) {
-      return false;
-    }
-
-    // فحص التطابق مع تاريخ اليوم بتوقيت بغداد
-    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now);
-    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDate);
-    if (lastDateStr === todayStr) {
+    if (diffMs < 10 * 60 * 1000) {
       return false;
     }
   }
