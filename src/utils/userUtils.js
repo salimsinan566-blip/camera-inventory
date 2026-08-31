@@ -1,22 +1,24 @@
 export function getDisplayName(user) {
   if (!user) return 'سالم سنان';
   
-  if (typeof user === 'object' && user.displayName) {
-    return user.displayName;
+  if (typeof user === 'object') {
+    if (user.displayName && !user.displayName.includes('@')) {
+      return user.displayName;
+    }
+    user = user.email || user.name || '';
   }
 
-  const raw = typeof user === 'string' ? user : (user.email || user.name || '');
-  const trimmed = (raw || '').trim();
-  const lower = trimmed.toLowerCase();
+  const raw = String(user || '').trim();
+  const lower = raw.toLowerCase();
 
-  if (!trimmed) return 'سالم سنان';
+  if (!raw) return 'سالم سنان';
 
-  // If it's already a plain name without '@', return it directly
-  if (!trimmed.includes('@')) {
-    return trimmed;
+  // إذا كان اسماً عادياً وليس إيميل
+  if (!raw.includes('@') && !raw.includes('.com') && !raw.includes('.net')) {
+    return raw;
   }
 
-  // Predefined Staff Mappings
+  // مطابقة أسماء فريق العمل
   if (lower.startsWith('hamza') || lower.includes('hamza@')) return 'حمزة';
   if (lower.startsWith('ahmed') || lower.includes('ahmed@')) return 'أحمد';
   if (lower.startsWith('sarmad') || lower.includes('sarmad.')) return 'سرمد';
@@ -26,7 +28,6 @@ export function getDisplayName(user) {
   if (lower.startsWith('karrar') || lower.includes('karrar@')) return 'كرار';
   if (lower.startsWith('hussein') || lower.includes('hussein@')) return 'حسين';
 
-  // For any other email, extract username before '@' and format cleanly
-  const username = trimmed.split('@')[0].replace(/[._-]/g, ' ');
-  return username.charAt(0).toUpperCase() + username.slice(1);
+  // اسم البائع الافتراضي
+  return 'سالم سنان';
 }

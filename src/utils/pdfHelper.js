@@ -1,6 +1,7 @@
 import html2pdf from 'html2pdf.js';
 import { getStockStatus, STOCK_STATUS } from '../models/product';
 import defaultLogo from '../assets/logo.png';
+import { getDisplayName } from './userUtils';
 
 export async function generateAndSendShortagesPDF(products, toast) {
   const shortages = products.filter(
@@ -166,8 +167,8 @@ export async function generateInvoicePdfBlob(sale, settings) {
   const isDraft = Boolean(sale.isDraft || sale.invoiceNumber?.toString().includes('مسودة') || sale.id?.toString().includes('draft'));
   const isDebt = sale.invoiceType === 'debt';
   const isCard = sale.invoiceType === 'card';
-  const cashier = sale.cashierEmail || sale.cashier || 'المدير';
-  const cashierDisplayName = cashier.split('@')[0];
+  const cashier = sale.cashierName || sale.cashierEmail || sale.cashier || 'سالم سنان';
+  const cashierDisplayName = getDisplayName(cashier);
 
   const totalAmount = Number(sale.total || 0);
   const discountAmount = Number(sale.discount || 0);
@@ -262,11 +263,11 @@ export async function generateInvoicePdfBlob(sale, settings) {
           <!-- Logo & Badge (Left) -->
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-right: 16px;">
             ${safeLogo ? `
-              <div style="height: 110px; display: flex; align-items: center; justify-content: flex-end;">
-                <img src="${safeLogo}" alt="الشعار" style="height: 105px; max-height: 115px; width: auto; max-width: 280px; object-fit: contain;" />
+              <div style="height: 125px; display: flex; align-items: center; justify-content: flex-end;">
+                <img src="${safeLogo}" alt="الشعار" style="height: 120px; max-height: 130px; width: auto; max-width: 320px; object-fit: contain;" />
               </div>
             ` : `
-              <div style="height: 100px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+              <div style="height: 110px; width: 160px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
             `}
             ${isOffer ? `
               <span style="font-size: 13px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 4px 20px; border-radius: 9999px;">

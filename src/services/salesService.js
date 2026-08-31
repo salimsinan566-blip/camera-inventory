@@ -113,34 +113,41 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
     technicianName = ''
   } = orderOptions;
 
-  // إيجاد/إنشاء العميل يصير خارج الـ Transaction (مو حرج إذا صار تكرار نادر بالاسم)
-  const customerId = customerName ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
+  // إيجاد/إنشاء العميل للعملاء المسجلين والديون فقط (تجاوز الزبائن النقديين لتسريع العملية فوراً)
+  const isGeneric = !customerName || customerName.trim() === 'زبون عام' || customerName.trim() === 'زبون نقدي';
+  const customerId = !isGeneric ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
 
   const counterRef = doc(db, ...SALES_COUNTER_PATH);
   const salesRef = doc(collection(db, SALES_COLLECTION));
 
   const result = await runOfflineSafeTransaction(db, async (transaction) => {
-    // 1) قراءة كل منتجات السلة والعداد، ووثيقة عهدة الفني إذا كان مصدر الصرف عهدة
+    // 1) قراءة كل منتجات السلة والعداد بالتوازي المتزامن الفوري (Zero-latency parallel read)
     const productRefsMap = {};
     for (const item of cartItems) {
-      if (!item.isService) {
+      if (!item.isService && !productRefsMap[item.productId]) {
         productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
       }
     }
     
-    const productSnapsMap = {};
-    for (const [id, ref] of Object.entries(productRefsMap)) {
-      productSnapsMap[id] = await transaction.get(ref);
-    }
-    const counterSnap = await transaction.get(counterRef);
+    const productEntries = Object.entries(productRefsMap);
+    const custodyDocRef = (stockSource === 'custody' && technicianId) ? doc(db, 'custody_inventory', technicianId) : null;
 
-    let custodyRef = null;
-    let custodySnap = null;
+    // جلب كل المستندات بطلب شبكة واحد متزامن وسريع جداً
+    const [counterSnap, custodySnap, ...productSnaps] = await Promise.all([
+      transaction.get(counterRef),
+      custodyDocRef ? transaction.get(custodyDocRef) : Promise.resolve(null),
+      ...productEntries.map(([_, ref]) => transaction.get(ref))
+    ]);
+
+    const productSnapsMap = {};
+    productEntries.forEach(([id], index) => {
+      productSnapsMap[id] = productSnaps[index];
+    });
+
+    let custodyRef = custodyDocRef;
     let custodyItems = [];
     if (stockSource === 'custody' && technicianId) {
-      custodyRef = doc(db, 'custody_inventory', technicianId);
-      custodySnap = await transaction.get(custodyRef);
-      if (!custodySnap.exists()) {
+      if (!custodySnap || !custodySnap.exists()) {
         throw new Error(`لا توجد عهدة مسجلة للفني: ${technicianName || technicianId}`);
       }
       custodyItems = [...(custodySnap.data().items || [])];
