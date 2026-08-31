@@ -669,28 +669,47 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       });
 
       // 4. Send or Schedule PDF document via WhatsApp Gateway
-      const result = await sendWhatsAppDocumentViaGateway({
-        phone: rawPhone,
-        html: invoiceHtml,
-        documentBase64: pdfBase64,
-        filename: `فاتورة_${sale.invoiceNumber || sale.id}.pdf`,
-        caption: text,
-        delayMinutes,
-        sendAt,
-        settings
-      });
+      try {
+        const result = await sendWhatsAppDocumentViaGateway({
+          phone: rawPhone,
+          html: invoiceHtml,
+          documentBase64: pdfBase64,
+          filename: `فاتورة_${sale.invoiceNumber || sale.id}.pdf`,
+          caption: text,
+          delayMinutes,
+          sendAt,
+          settings
+        });
 
-      setShowWhatsAppModal(false);
-      
-      if (result?.scheduled) {
-        alert(`⏰ تم جدولة إرسال الفاتورة بنجاح!\n📱 المستلم: ${rawPhone}\n📅 الموعد: ${result.message || 'في الوقت المحدد'}\n\nسيقوم خادم الواتساب بإرسالها تلقائياً في الموعد المحدد.`);
-      } else {
-        alert(`تم إرسال الفاتورة كملف PDF عالي الوضوح عبر الواتساب إلى (${rawPhone}) بنجاح! 📄🚀`);
+        setShowWhatsAppModal(false);
+        
+        if (result?.scheduled) {
+          alert(`⏰ تم جدولة إرسال الفاتورة بنجاح!\n📱 المستلم: ${rawPhone}\n📅 الموعد: ${result.message || 'في الوقت المحدد'}\n\nسيقوم خادم الواتساب بإرسالها تلقائياً في الموعد المحدد.`);
+        } else {
+          alert(`تم إرسال الفاتورة كملف PDF عالي الوضوح عبر خادم الواتساب إلى (${rawPhone}) بنجاح! 📄🚀`);
+        }
+      } catch (pdfErr) {
+        console.warn('PDF document send failed, attempting direct text message via server:', pdfErr);
+        // المحاولة الثانية عبر السيرفر: إرسال تفاصيل الفاتورة ورابطها كنص فوري عبر السيرفر
+        try {
+          await sendWhatsAppMessageViaGateway({
+            phone: rawPhone,
+            message: text,
+            delayMinutes,
+            sendAt,
+            settings
+          });
+          setShowWhatsAppModal(false);
+          alert(`تم إرسال تفاصيل الفاتورة ورابط كشف الحساب بنجاح عبر خادم الواتساب إلى (${rawPhone})! 🚀`);
+        } catch (serverTextErr) {
+          console.error('Server text dispatch error:', serverTextErr);
+          alert(`تعذر الإرسال التلقائي عبر السيرفر: ${serverTextErr.message || pdfErr.message}\nيرجى التأكد من حالة اتصال خادم الواتساب في الإعدادات.`);
+          setShowWhatsAppModal(false);
+        }
       }
     } catch (err) {
-      console.warn('Direct PDF gateway send failed, falling back to manual wa.me:', err);
-      const url = getWhatsAppDirectUrl(rawPhone, text);
-      window.open(url, '_blank');
+      console.error('WhatsApp send error:', err);
+      alert(`حدث خطأ أثناء تجهيز الفاتورة: ${err.message}`);
       setShowWhatsAppModal(false);
     } finally {
       setIsSendingWhatsApp(false);

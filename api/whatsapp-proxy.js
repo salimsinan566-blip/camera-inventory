@@ -1,8 +1,11 @@
-/**
- * 🛡️ Vercel Serverless Reverse Proxy for WhatsApp Evolution API
- * يحل هذا البروكسي مشكلة Mixed Content (حجب طلبات HTTP من مواقع HTTPS في المتصفح)
- * ويضمن وصول الطلبات من المتصفح إلى خادم AWS بأمان تام وبدون أي أخطاء CORS أو Mixed Content.
- */
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '25mb'
+    },
+    responseLimit: false
+  }
+};
 
 export default async function handler(req, res) {
   // CORS Headers
