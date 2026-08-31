@@ -218,16 +218,12 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
 
   const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
 
-  // فحص ما إذا كان قد تم الإرسال بالفعل لهذا الموعد اليوم (عند أو بعد الوقت المحدد)
+  // فحص ما إذا كان قد تم الإرسال مؤخراً (خلال نافذة الـ 10 دقائق)
   let alreadySentForTodaySlot = false;
   if (customer?.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const isSameCalendarDay = 
-      lastSentDate.getFullYear() === now.getFullYear() &&
-      lastSentDate.getMonth() === now.getMonth() &&
-      lastSentDate.getDate() === now.getDate();
-    
-    if (isSameCalendarDay && lastSentDate.getTime() >= candidate.getTime()) {
+    const diffMs = now.getTime() - lastSentDate.getTime();
+    if (diffMs < 10 * 60 * 1000) {
       alreadySentForTodaySlot = true;
     }
   }
@@ -238,7 +234,7 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
 
   // 1. Daily / Custom 1 Days
   if (schedCode === 'custom_1_days' || schedCode === 'daily' || schedCode.startsWith('custom_1_')) {
-    if (!alreadySentForTodaySlot && !isPastActiveWindow) {
+    if (!alreadySentForTodaySlot && !isPastActiveWindow && currentTotalMins <= targetTotalMins + 59 && currentTotalMins >= targetTotalMins) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + 1);
