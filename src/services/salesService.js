@@ -22,6 +22,7 @@ import { writeBatch,
 import { db } from '../firebase/config';
 import { calculateOrderSummary } from '../models/sale';
 import { findOrCreateCustomer } from './customersService';
+import { moveToTrash } from './trashBinService';
 
 
 async function runOfflineSafeTransaction(dbInstance, callback) {
@@ -492,12 +493,27 @@ export async function updateDraftSale(draftId, cartItems, orderOptions = {}) {
   });
 }
 
-/** يحذف فاتورة (مؤقتة أو معلقة). إذا كانت معلقة، يُرجع المخزون المحجوز. */
-export async function deleteDraftSale(draftId) {
+/** يحذف فاتورة (مؤقتة أو معلقة). إذا كانت معلقة، يُرجع المخزون المحجوز، وينقلها لسلة المحذوفات. */
+export async function deleteDraftSale(draftId, userEmail = 'سالم سنان') {
   const draftRef = doc(db, SALES_COLLECTION, draftId);
   const draftSnap = await getDoc(draftRef);
   if (!draftSnap.exists()) return;
   const draftData = draftSnap.data();
+
+  // حفظ الفاتورة المعلقة في سلة المحذوفات تلقائياً
+  try {
+    await moveToTrash({
+      itemType: 'draft_sale',
+      originalCollection: SALES_COLLECTION,
+      docId: draftId,
+      data: draftData,
+      title: `فاتورة معلقة #${draftData.invoiceNumber || draftId.slice(-4)}`,
+      subtitle: `${draftData.customerName || 'زبون عام'} • ${Number(draftData.total || 0).toLocaleString()} د.ع`,
+      userEmail: userEmail || 'سالم سنان'
+    });
+  } catch (tErr) {
+    console.warn('Could not backup draft to trash bin:', tErr);
+  }
 
   if (draftData.status === 'suspended') {
     // إرجاع الكميات المحجوزة
@@ -952,18 +968,35 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
 }
 
 /**
- * حذف فاتورة مؤكدة نهائياً وإرجاع المنتجات إلى المحل.
+ * حذف فاتورة مؤكدة وإرجاع المنتجات إلى المحل ونقلها لسلة المحذوفات.
  */
-export async function deleteConfirmedSale(saleId) {
+export async function deleteConfirmedSale(saleId, userEmail = 'سالم سنان') {
   const saleRef = doc(db, SALES_COLLECTION, saleId);
+  const saleSnap = await getDoc(saleRef);
+  if (saleSnap.exists()) {
+    const saleData = saleSnap.data();
+    try {
+      await moveToTrash({
+        itemType: 'confirmed_sale',
+        originalCollection: SALES_COLLECTION,
+        docId: saleId,
+        data: saleData,
+        title: `فاتورة مبيعات #${saleData.invoiceNumber || saleId}`,
+        subtitle: `${saleData.customerName || 'زبون عام'} • ${Number(saleData.total || 0).toLocaleString()} د.ع`,
+        userEmail: userEmail || 'سالم سنان'
+      });
+    } catch (tErr) {
+      console.warn('Could not backup confirmed sale to trash bin:', tErr);
+    }
+  }
 
   await runOfflineSafeTransaction(db, async (transaction) => {
-    const saleSnap = await transaction.get(saleRef);
-    if (!saleSnap.exists()) {
+    const sSnap = await transaction.get(saleRef);
+    if (!sSnap.exists()) {
       throw new Error('الفاتورة غير موجودة');
     }
 
-    const saleData = saleSnap.data();
+    const saleData = sSnap.data();
     if (saleData.status !== 'confirmed') {
       throw new Error('هذه الفاتورة ليست فاتورة مؤكدة');
     }

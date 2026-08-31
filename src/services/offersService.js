@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { buildDraftItems } from './salesService'; // Reuse the same logic for converting cart items
+import { moveToTrash } from './trashBinService';
 
 const OFFERS_COLLECTION = 'offers';
 const OFFERS_COUNTER_PATH = ['counters', 'offers'];
@@ -150,10 +151,27 @@ export async function getOffers() {
 }
 
 /**
- * حذف عرض سعر
+ * حذف عرض سعر مع حفظه في سلة المحذوفات
  */
-export async function deleteOffer(offerId) {
+export async function deleteOffer(offerId, userEmail = 'سالم سنان') {
   const offerRef = doc(db, OFFERS_COLLECTION, offerId);
+  const offerSnap = await getDoc(offerRef);
+  if (offerSnap.exists()) {
+    const offerData = offerSnap.data();
+    try {
+      await moveToTrash({
+        itemType: 'offer',
+        originalCollection: OFFERS_COLLECTION,
+        docId: offerId,
+        data: offerData,
+        title: `عرض سعر #${offerData.offerNumber || offerId.slice(-4)}`,
+        subtitle: `${offerData.customerName || 'عميل'} • ${Number(offerData.total || 0).toLocaleString()} د.ع`,
+        userEmail: userEmail || 'سالم سنان'
+      });
+    } catch (tErr) {
+      console.warn('Could not backup offer to trash bin:', tErr);
+    }
+  }
   await deleteDoc(offerRef);
 }
 

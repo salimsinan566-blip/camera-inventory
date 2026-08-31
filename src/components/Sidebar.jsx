@@ -6,12 +6,16 @@ import { getDisplayName } from '../utils/userUtils';
 import { updateProfile } from 'firebase/auth';
 import { useSettings } from '../hooks/useSettings';
 import { auth } from '../firebase/auth';
+import TrashBinModal from './TrashBinModal';
+import { useTrashBin } from '../hooks/useTrashBin';
 
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onCloseMobile }) {
   const { toast, confirm } = useUI();
   const { settings } = useSettings();
+  const { count: trashCount } = useTrashBin();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [updatingName, setUpdatingName] = useState(false);
+  const [showTrashModal, setShowTrashModal] = useState(false);
 
   const handleChangeName = async () => {
     if (!user) return;
@@ -111,6 +115,23 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
             {!isCollapsed && <span className="whitespace-nowrap animate-fade-in">{tab.label}</span>}
           </button>
         ))}
+
+        {/* زر سلة المحذوفات المركزية */}
+        <button
+          onClick={() => setShowTrashModal(true)}
+          title={isCollapsed ? `سلة المحذوفات (${trashCount})` : ''}
+          className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold text-slate-300 hover:bg-slate-800 hover:text-white group border border-slate-800/80 bg-slate-800/20`}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-base">🗑️</span>
+            {!isCollapsed && <span className="whitespace-nowrap animate-fade-in">سلة المحذوفات</span>}
+          </div>
+          {!isCollapsed && trashCount > 0 && (
+            <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-xs animate-pulse">
+              {trashCount}
+            </span>
+          )}
+        </button>
         
         <div className={`pt-4 mt-4 border-t border-slate-800 space-y-2 ${isCollapsed ? 'hidden' : 'block'}`}>
           <a
@@ -195,6 +216,13 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
           </button>
         </div>
       )}
+
+      {/* نافذة سلة المحذوفات الشاملة */}
+      <TrashBinModal
+        isOpen={showTrashModal}
+        onClose={() => setShowTrashModal(false)}
+        currentUser={user}
+      />
     </aside>
   );
 }

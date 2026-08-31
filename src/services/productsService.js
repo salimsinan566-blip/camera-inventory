@@ -15,6 +15,7 @@ import {
 import { db } from '../firebase/config';
 import { LOCATIONS } from '../models/product';
 import { logInventoryChange, LOG_TYPES } from './inventoryLogsService';
+import { moveToTrash } from './trashBinService';
 
 const PRODUCTS_COLLECTION = 'products';
 
@@ -136,11 +137,27 @@ export async function updateProduct(id, productData, userEmail = '', reason = ''
   return result;
 }
 
-/** حذف منتج */
-export async function deleteProduct(id, userEmail = '') {
+/** حذف منتج مع حفظه في سلة المحذوفات */
+export async function deleteProduct(id, userEmail = 'سالم سنان') {
   const ref = doc(db, PRODUCTS_COLLECTION, id);
   const snap = await getDoc(ref);
   const prevData = snap.exists() ? snap.data() : {};
+
+  if (snap.exists()) {
+    try {
+      await moveToTrash({
+        itemType: 'product',
+        originalCollection: PRODUCTS_COLLECTION,
+        docId: id,
+        data: prevData,
+        title: prevData.name || 'منتج محذوف',
+        subtitle: `SKU: ${prevData.sku || '-'} • مخزون: ${(Number(prevData.storeQty) || 0) + (Number(prevData.warehouseQty) || 0)} قطعة`,
+        userEmail: userEmail || 'سالم سنان'
+      });
+    } catch (tErr) {
+      console.warn('Could not backup product to trash bin:', tErr);
+    }
+  }
 
   const result = await deleteDoc(ref);
 

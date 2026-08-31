@@ -4,6 +4,7 @@
 import { 
   collection, 
   addDoc, 
+  getDoc,
   getDocs, 
   doc, 
   updateDoc, 
@@ -14,6 +15,7 @@ import {
   where
 } from 'firebase/firestore';
 import { db } from '../firebase/config.js';
+import { moveToTrash } from './trashBinService';
 
 const CUSTOMERS_COLLECTION = 'customers';
 
@@ -89,11 +91,29 @@ export async function updateCustomer(customerId, updates = {}) {
 }
 
 /**
- * حذف عميل
+ * حذف عميل مع حفظه في سلة المحذوفات
  */
-export async function deleteCustomer(customerId) {
+export async function deleteCustomer(customerId, userEmail = 'سالم سنان') {
   if (!customerId) throw new Error('معرف العميل غير صالح');
-  await deleteDoc(doc(db, CUSTOMERS_COLLECTION, customerId));
+  const customerRef = doc(db, CUSTOMERS_COLLECTION, customerId);
+  const customerSnap = await getDoc(customerRef);
+  if (customerSnap.exists()) {
+    const customerData = customerSnap.data();
+    try {
+      await moveToTrash({
+        itemType: 'customer',
+        originalCollection: CUSTOMERS_COLLECTION,
+        docId: customerId,
+        data: customerData,
+        title: customerData.name || 'عميل محذوف',
+        subtitle: `هاتف: ${customerData.phone1 || '-'} • دين: ${Number(customerData.totalDebt || 0).toLocaleString()} د.ع`,
+        userEmail: userEmail || 'سالم سنان'
+      });
+    } catch (tErr) {
+      console.warn('Could not backup customer to trash bin:', tErr);
+    }
+  }
+  await deleteDoc(customerRef);
 }
 
 /**

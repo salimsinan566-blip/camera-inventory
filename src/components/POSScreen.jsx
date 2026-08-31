@@ -23,6 +23,8 @@ import { useCustody } from '../hooks/useCustody';
 import ProductGrid from './ProductGrid';
 import CustomerSelect from './CustomerSelect';
 import InvoiceReceipt from './InvoiceReceipt';
+import TrashBinModal from './TrashBinModal';
+import { useTrashBin } from '../hooks/useTrashBin';
 import { useUI } from '../contexts/UIContext';
 
 export default function POSScreen({ 
@@ -54,6 +56,8 @@ export default function POSScreen({
   const [selectedTechnicianId, setSelectedTechnicianId] = useState('');
   const [editingDraftId, setEditingDraftId] = useState(null);
   const [showPrintOptionsModal, setShowPrintOptionsModal] = useState(false);
+  const { count: trashCount } = useTrashBin();
+  const [showTrashModal, setShowTrashModal] = useState(false);
   
   // Offer mode state
   const [offerName, setOfferName] = useState('');
@@ -656,6 +660,21 @@ export default function POSScreen({
               </div>
             )}
           </div>
+          <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+            <span className="text-slate-500">الفواتير المحذوفة يتم حفظها تلقائياً في سلة المحذوفات لمدة 90 يوماً</span>
+            <button
+              onClick={() => {
+                setShowDraftsModal(false);
+                setShowTrashModal(true);
+              }}
+              className="font-bold text-brand-700 hover:text-brand-800 bg-white border border-brand-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            >
+              <span>🗑️ سلة المحذوفات لاسترجاع المسودات</span>
+              {trashCount > 0 && (
+                <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.2 rounded-full">{trashCount}</span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -965,20 +984,37 @@ export default function POSScreen({
                   )}
 
                   {mode === 'sale' && (
-                    <button
-                      type="button"
-                      onClick={() => setShowDraftsModal(true)}
-                      className="px-2 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
-                      title="عرض الفواتير المعلقة"
-                    >
-                      <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      <span className="hidden sm:inline text-xs">المعلقة</span>
-                      {drafts.length > 0 && (
-                        <span className="bg-brand-600 text-white text-[10px] min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center font-black font-mono">
-                          {drafts.length}
-                        </span>
-                      )}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowDraftsModal(true)}
+                        className="px-2 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        title="عرض الفواتير المعلقة"
+                      >
+                        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span className="hidden sm:inline text-xs">المعلقة</span>
+                        {drafts.length > 0 && (
+                          <span className="bg-brand-600 text-white text-[10px] min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center font-black font-mono">
+                            {drafts.length}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowTrashModal(true)}
+                        className="px-2 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        title="سلة المحذوفات (استرجاع الفواتير المحذوفة)"
+                      >
+                        <span className="text-xs">🗑️</span>
+                        <span className="hidden sm:inline text-xs">المحذوفات</span>
+                        {trashCount > 0 && (
+                          <span className="bg-red-500 text-white text-[10px] min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center font-black font-mono">
+                            {trashCount}
+                          </span>
+                        )}
+                      </button>
+                    </>
                   )}
 
                   <button
@@ -1459,6 +1495,13 @@ export default function POSScreen({
           </div>
         </div>
       </div>
+
+      {/* نافذة سلة المحذوفات لاسترجاع الفواتير المعلقة والمبيعات */}
+      <TrashBinModal
+        isOpen={showTrashModal}
+        onClose={() => setShowTrashModal(false)}
+        currentUser={cashierEmail}
+      />
     </div>
   );
 }
