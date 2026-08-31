@@ -125,15 +125,15 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     return false;
   }
 
-  // Persistent duplicate guard for Daily/Weekly/Monthly:
-  // إذا تم الإرسال لموعد اليوم ولم يقم المستخدم بتعديل الوقت بعد الإرسال -> مقفل تماماً حتى الموعد القادم!
+  // Persistent duplicate guard for this specific slot:
+  // إذا تم الإرسال بعد أو عند بداية موعد هذا السلوت -> مقفل!
   if (!isScheduleUpdated && customer.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now);
-    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDate);
+    const targetSlotToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
     
-    if (lastDateStr === todayStr) {
-      return false; // مقفل تماماً لليوم الحالي
+    // إذا أرسل عند أو بعد موعد هذا السلوت اليوم (مع سماح 30 ثانية)
+    if (lastSentDate.getTime() >= targetSlotToday.getTime() - 30000) {
+      return false;
     }
   }
 
@@ -226,39 +226,41 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
 
   const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
 
-  // فحص ما إذا كان قد تم الإرسال لموعد اليوم بالفعل
-  let alreadySentForTodaySlot = false;
+  // فحص هل أرسل لهذا السلوت اليوم:
+  let alreadySentForThisSlot = false;
   if (!isScheduleUpdated && customer?.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now);
-    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDate);
-    if (lastDateStr === todayStr) {
-      alreadySentForTodaySlot = true;
+    // يعتبر مرسلاً لهذا السلوت إذا كان تاريخ آخر إرسال عند أو بعد موعد السلوت اليوم (مع سماح 30 ثانية)
+    if (lastSentDate.getTime() >= candidate.getTime() - 30000) {
+      alreadySentForThisSlot = true;
     }
   }
 
   const currentTotalMins = now.getHours() * 60 + now.getMinutes();
   const targetTotalMins = targetHour * 60 + targetMinute;
   const isPastActiveWindow = currentTotalMins > targetTotalMins + 59;
+  const isSlotFutureToday = currentTotalMins < targetTotalMins; // الموعد قادم لاحقاً اليوم!
 
   // 1. Daily / Custom 1 Days
   if (schedCode === 'custom_1_days' || schedCode === 'daily' || schedCode.startsWith('custom_1_')) {
-    if (!alreadySentForTodaySlot && !isPastActiveWindow && currentTotalMins <= targetTotalMins + 59 && currentTotalMins >= targetTotalMins) {
+    if (isSlotFutureToday || (!alreadySentForThisSlot && !isPastActiveWindow)) {
       return candidate.getTime();
     }
     candidate.setDate(candidate.getDate() + 1);
     return candidate.getTime();
   }
 
-  // 2. Day of week
+  // 2. Day of week (e.g. monday)
   const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   if (DAYS.includes(schedCode) || schedCode === 'default') {
     const targetDayIndex = DAYS.indexOf(schedCode === 'default' ? (settings?.whatsappDefaultDay || 'thursday') : schedCode);
     let daysAhead = (targetDayIndex - now.getDay() + 7) % 7;
     if (daysAhead === 0) {
-      // نفس اليوم: إذا تم الإرسال لموعد اليوم بالفعل أو إذا تجاوزت نافذة وقت اليوم بالكامل
-      if (alreadySentForTodaySlot || isPastActiveWindow) {
-        daysAhead = 7;
+      // اليوم هو نفس اليوم المحدد (مثلاً اليوم الإثنين والمحدد هو الإثنين):
+      if (isSlotFutureToday || (!alreadySentForThisSlot && !isPastActiveWindow)) {
+        daysAhead = 0; // اليوم!
+      } else {
+        daysAhead = 7; // الأسبوع القادم
       }
     }
     candidate.setDate(now.getDate() + daysAhead);
@@ -271,7 +273,15 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
     let targetYear = now.getFullYear();
     let targetMonth = now.getMonth();
 
-    if (now.getDate() > targetDay || (now.getDate() === targetDay && (alreadySentForTodaySlot || isPastActiveWindow))) {
+    const isTodayTheDay = now.getDate() === targetDay;
+    if (isTodayTheDay) {
+      if (isSlotFutureToday || (!alreadySentForThisSlot && !isPastActiveWindow)) {
+        const monthlyCandidate = new Date(targetYear, targetMonth, targetDay, targetHour, targetMinute, 0, 0);
+        return monthlyCandidate.getTime();
+      }
+    }
+
+    if (now.getDate() > targetDay || (isTodayTheDay && (alreadySentForThisSlot || isPastActiveWindow))) {
       targetMonth += 1;
       if (targetMonth > 11) {
         targetMonth = 0;
