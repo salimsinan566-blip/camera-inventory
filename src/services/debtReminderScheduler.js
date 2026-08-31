@@ -67,9 +67,11 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     ? (parseInt(schedCode.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2)
     : 0;
 
+  const cId = String(customer.id || customer.phone1 || customer.name || '');
+
   // 1. In-memory session duplicate guard (prevents duplicate triggers within the active window)
-  if (customer.id && sessionSentDebtors.has(customer.id)) {
-    const lastSessionSent = sessionSentDebtors.get(customer.id);
+  if (cId && (sessionSentDebtors.has(cId) || (customer.phone1 && sessionSentDebtors.has(customer.phone1)))) {
+    const lastSessionSent = sessionSentDebtors.get(cId) || (customer.phone1 && sessionSentDebtors.get(customer.phone1)) || 0;
     const minSessionGap = isMinutely
       ? (intervalMinutes * 60 * 1000 - 5000)
       : isHourly 
@@ -98,11 +100,17 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
   const [targetHourStr, targetMinStr] = targetTimeStr.split(':');
   const targetHour = parseInt(targetHourStr || '20', 10);
   const targetMinute = parseInt(targetMinStr || '0', 10);
-  const targetSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
 
-  // Parse hours and minutes
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
+  // Parse hours and minutes (Iraq Time)
+  const iraqParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Baghdad',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23'
+  }).formatToParts(now);
+
+  const currentHour = parseInt(iraqParts.find(p => p.type === 'hour')?.value || '0', 10);
+  const currentMinute = parseInt(iraqParts.find(p => p.type === 'minute')?.value || '0', 10);
 
   const currentTotalMins = currentHour * 60 + currentMinute;
   const targetTotalMins = targetHour * 60 + targetMinute;
@@ -114,15 +122,20 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
   }
 
   // Persistent duplicate guard for Daily/Weekly/Monthly:
-  // Strictly prevent sending if a message has already been recorded today at or after the target slot time!
+  // Strictly prevent sending if a message has already been sent today or within last 18 hours!
   if (customer.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const isSameCalendarDay = 
-      lastSentDate.getFullYear() === now.getFullYear() &&
-      lastSentDate.getMonth() === now.getMonth() &&
-      lastSentDate.getDate() === now.getDate();
+    const diffMs = now.getTime() - lastSentDate.getTime();
     
-    if (isSameCalendarDay && lastSentDate.getTime() >= targetSlotTime.getTime()) {
+    // إذا أرسلت رسالة خلال آخر 18 ساعة، لا ترسل مرة أخرى أبداً اليوم!
+    if (diffMs < 18 * 60 * 60 * 1000) {
+      return false;
+    }
+
+    // فحص التطابق مع تاريخ اليوم بتوقيت بغداد
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now);
+    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDate);
+    if (lastDateStr === todayStr) {
       return false;
     }
   }
@@ -416,7 +429,10 @@ export async function processAutomatedDebtReminders({
         });
 
         const sentIso = new Date().toISOString();
-        sessionSentDebtors.set(cust.id, Date.now());
+        if (cust.id) sessionSentDebtors.set(String(cust.id), Date.now());
+        if (cust.phone1) sessionSentDebtors.set(String(cust.phone1), Date.now());
+        if (cleanPhone) sessionSentDebtors.set(cleanPhone, Date.now());
+        cust.lastDebtReminderSent = sentIso;
 
         await updateCustomer(cust.id, {
           lastDebtReminderSent: sentIso

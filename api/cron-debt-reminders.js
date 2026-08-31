@@ -416,10 +416,9 @@ async function executeCronDebtReminders(req, res) {
         diffSecondsSinceLastSent = (now.getTime() - lastSentDateObj.getTime()) / 1000;
         
         const isSameCalendarDay = lastSentDateStr === todayStr;
-        const targetSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
         
-        // يعتبر مرسلاً لموعد اليوم إذا كان تاريخ الإرسال في نفس اليوم عند أو بعد موعد التذكير
-        if (isSameCalendarDay && lastSentDateObj.getTime() >= targetSlotTime.getTime() - 60000) {
+        // يعتبر مرسلاً لموعد اليوم بشكل قطعي إذا كان قد أرسل في نفس اليوم (بتوقيت بغداد) أو خلال آخر 18 ساعة
+        if (isSameCalendarDay || diffSecondsSinceLastSent < 18 * 3600) {
           alreadySentForTodaySlot = true;
         }
       } catch (e) {
@@ -428,8 +427,8 @@ async function executeCronDebtReminders(req, res) {
     }
 
     // منع تكرار الإرسال إذا تم إرساله لهذا الموعد اليوم
-    const isRecentForceDuplicate = force && diffSecondsSinceLastSent < 30;
-    const canDispatch = isDueToday && !isRecentForceDuplicate && (isMinutely || isHourly || force || !alreadySentForTodaySlot);
+    const isRecentForceDuplicate = force && diffSecondsSinceLastSent < 60;
+    const canDispatch = isDueToday && !isRecentForceDuplicate && (isMinutely || isHourly ? !alreadySentForTodaySlot : (!alreadySentForTodaySlot && !isRecentForceDuplicate));
 
     if (canDispatch) {
       const nextTimestamp = calculateNextScheduledTimestamp(schedule, targetTimeStr, now, true);
