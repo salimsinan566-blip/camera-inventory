@@ -6,13 +6,16 @@ import {
   doc,
   addDoc,
   setDoc,
+  getDoc,
   getDocs,
   deleteDoc,
   serverTimestamp,
   onSnapshot,
   query,
+  where,
   orderBy,
-  writeBatch
+  writeBatch,
+  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase/config.js';
 
@@ -21,16 +24,35 @@ export const TRASH_COLLECTION = 'trash_bin';
 // مدة الاحتفاظ بالمحذوفات: 90 يوماً
 export const RETENTION_DAYS = 90;
 
-// فحص ونقل أي مسودة كانت قد استرجعت بالخطأ إلى draft_sales
+// فحص وتصحيح أي مسودة كانت قد استرجعت وضبط كمياتها المعلقة
 async function healOrphanDrafts() {
   try {
     const snap = await getDocs(collection(db, 'draft_sales'));
     if (!snap.empty) {
       for (const d of snap.docs) {
         const dData = d.data();
+        const items = (dData.items || []).filter(i => !i.isService && i.productId);
+        
+        // تحديث المنتج لزيادة المعلق وخصم المتوفر
+        for (const item of items) {
+          const pRef = doc(db, 'products', item.productId);
+          const pSnap = await getDoc(pRef);
+          if (pSnap.exists()) {
+            const pData = pSnap.data();
+            const curStore = Number(pData.storeQty) || 0;
+            const curPending = Number(pData.pendingQty) || 0;
+            const q = Number(item.quantity) || 1;
+            await setDoc(pRef, {
+              storeQty: Math.max(0, curStore - q),
+              pendingQty: curPending + q,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+        }
+
         await setDoc(doc(db, 'sales', d.id), {
           ...dData,
-          status: 'draft',
+          status: 'suspended',
           isDraft: true,
           updatedAt: serverTimestamp()
         }, { merge: true });
@@ -38,7 +60,7 @@ async function healOrphanDrafts() {
       }
     }
   } catch (e) {
-    // تجاهل إن لم توجد المجموعة
+    console.warn('healOrphanDrafts note:', e);
   }
 }
 healOrphanDrafts();
@@ -142,38 +164,96 @@ export async function restoreFromTrash(trashItem, restoreMode = 'original', user
   delete rawData.deletedBy;
   delete rawData.isDeleted;
 
-  if (restoreMode === 'to_draft' || itemType === 'draft_sale') {
-    // 1. الاسترجاع إلى قائمة الفواتير المعلقة داخل مجموعة 'sales' الصحيحة
-    const draftPayload = {
-      ...rawData,
-      isDraft: true,
-      status: 'draft',
-      restoredFromTrashAt: serverTimestamp(),
-      restoredBy: userEmail,
-      updatedAt: serverTimestamp(),
-      createdAt: rawData.createdAt || serverTimestamp()
-    };
+  const isSaleRestore = itemType === 'draft_sale' || itemType === 'confirmed_sale';
 
-    if (originalDocId) {
-      await setDoc(doc(db, 'sales', originalDocId), draftPayload, { merge: true });
-    } else {
-      await addDoc(collection(db, 'sales'), draftPayload);
-    }
+  if (isSaleRestore) {
+    // معالجة استرجاع الفواتير مع ضبط المخزون المحجوز أو المخصوم بدقة
+    const items = rawData.items || [];
+    const nonServiceItems = items.filter(i => !i.isService && i.productId);
+
+    await runTransaction(db, async (transaction) => {
+      // 1. قراءة وثائق المنتجات المتأثرة
+      const productRefs = nonServiceItems.map(item => doc(db, 'products', item.productId));
+      const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+
+      // 2. تحديث كميات المنتجات (حجز كمعلقة أو خصم كمبيعات)
+      if (restoreMode === 'to_draft' || itemType === 'draft_sale') {
+        // حجز الكميات كـ "معلقة" (خصم من المتوفر وزيادة في المعلق)
+        for (let i = 0; i < nonServiceItems.length; i++) {
+          const item = nonServiceItems[i];
+          const snap = productSnaps[i];
+          if (snap && snap.exists()) {
+            const pData = snap.data();
+            const currentStoreQty = Number(pData.storeQty) || 0;
+            const currentPendingQty = Number(pData.pendingQty) || 0;
+            const qtyToReserve = Number(item.quantity) || 1;
+
+            transaction.update(snap.ref, {
+              storeQty: Math.max(0, currentStoreQty - qtyToReserve),
+              pendingQty: currentPendingQty + qtyToReserve,
+            });
+          }
+        }
+
+        // حفظ الفاتورة كـ "معلقة ومحجوزة" (status: 'suspended') لتظهر كمعلقة في المخزون ونقطة البيع
+        const targetRef = originalDocId ? doc(db, 'sales', originalDocId) : doc(collection(db, 'sales'));
+        transaction.set(targetRef, {
+          ...rawData,
+          isDraft: true,
+          status: 'suspended',
+          restoredFromTrashAt: serverTimestamp(),
+          restoredBy: userEmail,
+          updatedAt: serverTimestamp(),
+          createdAt: rawData.createdAt || serverTimestamp()
+        }, { merge: true });
+
+      } else {
+        // استرجاع كـ فاتورة مؤكدة (status: 'confirmed') وخصمها من المحل
+        for (let i = 0; i < nonServiceItems.length; i++) {
+          const item = nonServiceItems[i];
+          const snap = productSnaps[i];
+          if (snap && snap.exists()) {
+            const pData = snap.data();
+            const currentStoreQty = Number(pData.storeQty) || 0;
+            const qtyToDeduct = Number(item.quantity) || 1;
+
+            transaction.update(snap.ref, {
+              storeQty: Math.max(0, currentStoreQty - qtyToDeduct),
+            });
+          }
+        }
+
+        const targetRef = originalDocId ? doc(db, 'sales', originalDocId) : doc(collection(db, 'sales'));
+        transaction.set(targetRef, {
+          ...rawData,
+          isDraft: false,
+          status: 'confirmed',
+          restoredFromTrashAt: serverTimestamp(),
+          restoredBy: userEmail,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
+
+      // حذف العنصر من سلة المحذوفات داخل المعاملة
+      transaction.delete(doc(db, TRASH_COLLECTION, trashItem.id));
+    });
+
+    return true;
+  }
+
+  // استرجاع العناصر الأخرى (منتجات، عملاء، عروض أسعار، مصاريف)
+  const targetCollection = originalCollection || 'products';
+  const restorePayload = {
+    ...rawData,
+    restoredFromTrashAt: serverTimestamp(),
+    restoredBy: userEmail,
+    updatedAt: serverTimestamp()
+  };
+
+  if (originalDocId) {
+    await setDoc(doc(db, targetCollection, originalDocId), restorePayload, { merge: true });
   } else {
-    // 2. الاسترجاع إلى المجموعة الأصلية (products / customers / offers / sales)
-    const targetCollection = originalCollection || 'sales';
-    const restorePayload = {
-      ...rawData,
-      restoredFromTrashAt: serverTimestamp(),
-      restoredBy: userEmail,
-      updatedAt: serverTimestamp()
-    };
-
-    if (originalDocId) {
-      await setDoc(doc(db, targetCollection, originalDocId), restorePayload, { merge: true });
-    } else {
-      await addDoc(collection(db, targetCollection), restorePayload);
-    }
+    await addDoc(collection(db, targetCollection), restorePayload);
   }
 
   // حذف العنصر من سلة المحذوفات بعد نجاح الاسترجاع
