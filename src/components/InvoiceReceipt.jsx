@@ -119,11 +119,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="flex items-center justify-between mb-4 border-b-2 border-[#C89B3C] pb-3">
             {/* اليمين: معلومات المتجر */}
             <div className="flex flex-col items-start text-right">
-              <h1 className="text-3xl font-extrabold text-slate-900 tracking-wide mb-1">
+              <h1 className="text-3xl font-extrabold text-slate-900 mb-1" style={{ letterSpacing: '0px' }}>
                 {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
               </h1>
               {settings?.address && (
-                <p className="text-sm text-slate-500 flex items-center gap-1.5 font-bold mb-1">
+                <p className="text-sm text-slate-500 flex items-center gap-1.5 font-bold mb-1" style={{ letterSpacing: '0px' }}>
                   <svg className="w-4 h-4 text-[#C89B3C] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                   <span>{settings.address}</span>
                 </p>
@@ -148,7 +148,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               )}
               
               {sale.isOffer ? (
-                <span className="text-[12px] font-bold text-brand-800 bg-brand-50 border border-brand-300 px-4 py-1 rounded-full shadow-xs uppercase tracking-wider">
+                <span className="text-[12px] font-bold text-brand-800 bg-brand-50 border border-brand-300 px-4 py-1 rounded-full shadow-xs">
                   عرض سعر (Quotation)
                 </span>
               ) : sale.isDraft ? (
@@ -163,8 +163,8 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="flex justify-between items-start mb-2.5">
             {/* يمين: فاتورة إلى */}
             <div className="text-sm text-right">
-              <h3 className="font-bold text-slate-500 mb-0.5 text-xs uppercase tracking-wider">فاتورة إلى</h3>
-              <p className="text-slate-900 font-extrabold text-xl sm:text-2xl">
+              <h3 className="font-bold text-slate-500 mb-0.5 text-xs" style={{ letterSpacing: '0px' }}>فاتورة إلى</h3>
+              <p className="text-slate-900 font-extrabold text-xl sm:text-2xl" style={{ letterSpacing: '0px' }}>
                 <bdi dir="auto">{sale.customerName || 'زبون عام'}</bdi>
               </p>
             </div>
@@ -174,24 +174,24 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <table className="text-right w-full">
                 <tbody>
                   <tr>
-                    <td className="py-0.5 pr-4 text-slate-500 font-medium">
+                    <td className="py-0.5 pr-4 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
                       {sale.isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'} <span className="font-bold text-slate-900 mr-1">{sale.invoiceNumber || sale.offerNumber}</span>
                     </td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-4 text-slate-500 font-medium">
+                    <td className="py-0.5 pr-4 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
                       تاريخ الإصدار: <span className="font-bold text-slate-900 mr-1">{dateLabel}</span>
                     </td>
                   </tr>
                   {sale.invoiceType === 'debt' && !sale.isOffer && (
                     <tr>
-                      <td className="py-0.5 pr-4 text-slate-500 font-medium">
+                      <td className="py-0.5 pr-4 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
                         نوع الدفع: <span className="font-bold text-warn-600 mr-1">آجل (دين)</span>
                       </td>
                     </tr>
                   )}
                   <tr>
-                    <td className="py-0.5 pr-4 text-slate-500 font-medium">
+                    <td className="py-0.5 pr-4 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
                       البائع: <span className="font-bold text-slate-900 mr-1">{getDisplayName(sale.cashierEmail)}</span>
                     </td>
                   </tr>
@@ -202,12 +202,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           
           {/* جدول المنتجات */}
           <table className="w-full border-collapse mt-2">
-            <thead className="bg-[#f8fafc] text-slate-700 text-xs font-bold uppercase tracking-wider border-b border-slate-200">
+            <thead className="bg-[#f8fafc] text-slate-700 text-xs font-bold border-b border-slate-200">
               <tr>
-                <th className="py-2.5 px-3 font-bold w-[48%] text-right">الوصف</th>
-                <th className="py-2.5 px-2 font-bold text-center w-[14%]">الكمية</th>
-                <th className="py-2.5 px-2 font-bold text-right w-[19%]">السعر</th>
-                <th className="py-2.5 px-3 font-bold text-left w-[19%]">المبلغ</th>
+                <th className="py-2.5 px-3 font-bold w-[48%] text-right" style={{ letterSpacing: '0px' }}>الوصف</th>
+                <th className="py-2.5 px-2 font-bold text-center w-[14%]" style={{ letterSpacing: '0px' }}>الكمية</th>
+                <th className="py-2.5 px-2 font-bold text-right w-[19%]" style={{ letterSpacing: '0px' }}>السعر</th>
+                <th className="py-2.5 px-3 font-bold text-left w-[19%]" style={{ letterSpacing: '0px' }}>المبلغ</th>
               </tr>
             </thead>
             <tbody className="align-top text-xs sm:text-[13px] text-right">
@@ -421,6 +421,16 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     const clone = portalEl.cloneNode(true);
     clone.classList.remove('hidden', 'print:block');
     clone.style.display = 'block';
+    clone.style.direction = 'rtl';
+    clone.style.fontFamily = "'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    
+    // إزالة أي تباعد بين الحروف لضمان اتصال الكلمات العربية بشكل سليم تماماً
+    clone.querySelectorAll('*').forEach(el => {
+      el.style.letterSpacing = '0px';
+      el.style.wordSpacing = 'normal';
+      el.style.textTransform = 'none';
+    });
+
     container.appendChild(clone);
     overlay.appendChild(container);
     document.body.appendChild(overlay);
@@ -430,7 +440,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         await document.fonts.ready;
       } catch (e) {}
     }
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     try {
       const opt = {
@@ -443,7 +453,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           logging: false, 
           scrollY: 0, 
           windowWidth: 794,
-          letterRendering: false,
+          letterRendering: true,
           allowTaint: true
         },
         jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' },
