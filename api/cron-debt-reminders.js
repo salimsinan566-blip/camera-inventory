@@ -416,21 +416,20 @@ async function executeCronDebtReminders(req, res) {
     if (!isScheduleUpdated && c.lastDebtReminderSent) {
       try {
         const lastSentDateObj = new Date(c.lastDebtReminderSent);
+        const lastSentBaghdadStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDateObj);
         diffSecondsSinceLastSent = (now.getTime() - lastSentDateObj.getTime()) / 1000;
         
-        const targetSlotToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
-        // يعتبر مرسلاً لهذا السلوت إذا كان تاريخ آخر إرسال عند أو بعد موعد السلوت اليوم (مع سماح 30 ثانية)
-        if (lastSentDateObj.getTime() >= targetSlotToday.getTime() - 30000) {
+        // إذا كان تاريخ الإرسال هو نفس تاريخ اليوم بتوقيت بغداد (أو خلال آخر دقيقتين)، يعتبر مرسلاً ومقفلاً تماماً لليوم!
+        if (lastSentBaghdadStr === todayStr || diffSecondsSinceLastSent < 120) {
           alreadySentForThisSlot = true;
         }
       } catch (e) {
-        alreadySentForThisSlot = diffSecondsSinceLastSent < 60;
+        alreadySentForThisSlot = c.lastDebtReminderSent.slice(0, 10) === todayStr;
       }
     }
 
     // منع تكرار الإرسال إذا تم إرساله لهذا الموعد اليوم
-    const isRecentForceDuplicate = force && diffSecondsSinceLastSent < 60;
-    const canDispatch = isDueToday && !isRecentForceDuplicate && !alreadySentForThisSlot;
+    const canDispatch = isDueToday && !alreadySentForThisSlot;
 
     if (canDispatch) {
       const nextTimestamp = calculateNextScheduledTimestamp(schedule, targetTimeStr, now, true);
