@@ -123,15 +123,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
               </h1>
               {settings?.address && (
-                <div className="text-sm text-slate-500 font-bold flex items-center gap-1.5 mt-1" style={{ letterSpacing: '0px', direction: 'rtl', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', minWidth: '16px' }}>
-                    <svg className="text-[#C89B3C]" style={{ width: '14px', height: '14px', display: 'block' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    </svg>
-                  </span>
-                  <span style={{ lineHeight: '1.4', display: 'inline-block' }}>{settings.address}</span>
-                </div>
+                <p className="text-sm text-slate-500 font-bold mt-1" style={{ letterSpacing: '0px', direction: 'rtl', margin: '4px 0 0 0', lineHeight: '1.5' }}>
+                  <span style={{ color: '#C89B3C', marginLeft: '6px', fontSize: '13px', display: 'inline' }}>📍</span>
+                  <span style={{ display: 'inline' }}>{settings.address}</span>
+                </p>
               )}
             </div>
             
