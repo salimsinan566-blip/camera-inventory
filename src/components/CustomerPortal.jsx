@@ -16,8 +16,9 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
   const { settings } = useSettings();
   const [session, setSession] = useState(() => getSavedCustomerSession());
 
-  const activeLogo = session?.storeSettings?.logoUrl || settings?.logoUrl || logo;
-  const storeName = session?.storeSettings?.storeName || settings?.storeName || 'Safe Zone';
+  // الأولوية دائماً للشعار المحدث في إعدادات المتجر ثم الشعار الافتراضي
+  const activeLogo = settings?.logoUrl || session?.storeSettings?.logoUrl || logo;
+  const storeName = settings?.storeName || session?.storeSettings?.storeName || 'Safe Zone';
   const [identifier, setIdentifier] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
