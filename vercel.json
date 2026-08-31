@@ -16,7 +16,7 @@
   "rewrites": [
     {
       "source": "/aws-whatsapp/:match*",
-      "destination": "http://13.61.182.143:3005/:match*"
+      "destination": "http://13.61.182.143:8080/:match*"
     },
     {
       "source": "/((?!api/|.*\\..*).*)",

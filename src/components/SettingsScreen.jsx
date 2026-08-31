@@ -19,7 +19,8 @@ import {
   checkEvolutionConnectionState,
   getEvolutionQRCode,
   logoutEvolutionInstance,
-  normalizeServerBaseUrl
+  normalizeServerBaseUrl,
+  smartFetch
 } from '../services/whatsappService';
 
 export default function SettingsScreen() {
@@ -104,7 +105,7 @@ export default function SettingsScreen() {
         // Fallback for custom / legacy gateway
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch(`${baseUrl}/status`, { method: 'GET', signal: controller.signal });
+        const res = await smartFetch(`${baseUrl}/status`, { method: 'GET', signal: controller.signal });
         clearTimeout(timeoutId);
         const data = await res.json();
         

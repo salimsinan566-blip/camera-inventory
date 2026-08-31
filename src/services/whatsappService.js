@@ -146,6 +146,20 @@ export function enqueueWhatsAppTask(taskFn, minDelayMs = 2500) {
    ========================================================================== */
 
 /**
+ * إرسال الطلب مع الدعم التلقائي للبروكسي الآمن في بيئة HTTPS لتجاوز Mixed Content
+ */
+export async function smartFetch(url, options = {}) {
+  const isHttpsPage = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
+  const isHttpTarget = typeof url === 'string' && url.startsWith('http://');
+
+  if (isHttpsPage && isHttpTarget) {
+    const proxyUrl = `/api/whatsapp-proxy?url=${encodeURIComponent(url)}`;
+    return await fetch(proxyUrl, options);
+  }
+  return await fetch(url, options);
+}
+
+/**
  * تنظيف رابط الخادم وحذف الشُرط المائلة الزائدة
  */
 export function normalizeServerBaseUrl(url) {
@@ -175,7 +189,7 @@ export async function checkEvolutionConnectionState({ baseUrl, instanceName, api
   const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await smartFetch(endpoint, {
       method: 'GET',
       headers: {
         'apikey': token,
@@ -225,7 +239,7 @@ export async function getEvolutionQRCode({ baseUrl, instanceName, apiKey }) {
   const connectEndpoint = `${base}/instance/connect/${encodeURIComponent(instance)}`;
   
   try {
-    const res = await fetch(connectEndpoint, {
+    const res = await smartFetch(connectEndpoint, {
       method: 'GET',
       headers: {
         'apikey': token,
@@ -250,7 +264,7 @@ export async function getEvolutionQRCode({ baseUrl, instanceName, apiKey }) {
     // إذا كانت الجلسة غير موجودة (404)، نقوم بإنشائها أولاً
     if (res.status === 404) {
       const createEndpoint = `${base}/instance/create`;
-      const createRes = await fetch(createEndpoint, {
+      const createRes = await smartFetch(createEndpoint, {
         method: 'POST',
         headers: {
           'apikey': token,
@@ -293,7 +307,7 @@ export async function logoutEvolutionInstance({ baseUrl, instanceName, apiKey })
   const token = (apiKey || 'SafeZone2026').trim();
 
   const endpoint = `${base}/instance/logout/${encodeURIComponent(instance)}`;
-  const res = await fetch(endpoint, {
+  const res = await smartFetch(endpoint, {
     method: 'DELETE',
     headers: {
       'apikey': token,
@@ -348,7 +362,7 @@ export async function sendWhatsAppMessageViaGateway({
         linkPreview: true
       };
 
-      const response = await fetch(endpoint, {
+      const response = await smartFetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -388,7 +402,7 @@ export async function sendWhatsAppMessageViaGateway({
     if (delayMinutes > 0) payload.delayMinutes = delayMinutes;
     if (delaySeconds > 0) payload.delaySeconds = delaySeconds;
 
-    const response = await fetch(endpoint, {
+    const response = await smartFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -460,7 +474,7 @@ export async function sendWhatsAppDocumentViaGateway({
         delay: Math.max(1200, (delaySeconds || 0) * 1000)
       };
 
-      const response = await fetch(endpoint, {
+      const response = await smartFetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -499,7 +513,7 @@ export async function sendWhatsAppDocumentViaGateway({
     if (delayMinutes > 0) payload.delayMinutes = delayMinutes;
     if (delaySeconds > 0) payload.delaySeconds = delaySeconds;
 
-    const response = await fetch(endpoint, {
+    const response = await smartFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
