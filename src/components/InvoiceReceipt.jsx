@@ -16,6 +16,7 @@ import {
 } from '../services/whatsappService';
 import { createOffer } from '../services/offersService';
 import { useUI } from '../contexts/UIContext';
+import defaultLogo from '../assets/logo.png';
 
 export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false, isCustomerPortalView = false }) {
   if (!sale) return null;
@@ -132,20 +133,14 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-1.5 pr-2 relative">
-              {settings?.logoUrl ? (
-                <div className="h-28 flex items-center justify-end">
-                  <img 
-                    src={settings.logoUrl} 
-                    alt="الشعار" 
-                    className="h-28 w-auto object-contain scale-[2.2] origin-left print:scale-[2]" 
-                    crossOrigin="anonymous"
-                  />
-                </div>
-              ) : (
-                <div className="h-28 w-36 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-1 font-bold rounded text-center text-xs">
-                  [الشعار]
-                </div>
-              )}
+              <div className="h-24 sm:h-28 flex items-center justify-end">
+                <img 
+                  src={settings?.logoUrl || defaultLogo} 
+                  alt="الشعار" 
+                  className="h-20 sm:h-24 w-auto max-w-[240px] object-contain" 
+                  crossOrigin="anonymous"
+                />
+              </div>
               
               {sale.isOffer ? (
                 <span className="text-[12px] font-bold text-brand-800 bg-brand-50 border border-brand-300 px-4 py-1 rounded-full shadow-xs">
@@ -331,15 +326,15 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           )}
 
           {/* التذييل */}
-          <div className={`pt-2 ${isLastPage ? "border-t border-slate-200" : ""}`}>
+          <div className={`pt-3 ${isLastPage ? "border-t border-slate-200" : ""}`} style={{ letterSpacing: '0px', direction: 'rtl' }}>
             {settings?.description && (
-              <div className="text-[10px] text-slate-500 whitespace-pre-wrap mb-1 w-3/4 font-medium leading-tight">
-                <strong className="text-slate-700 block mb-0.5">ملاحظات هامة:</strong>
-                {settings.description}
+              <div className="text-[11px] text-slate-600 mb-2 w-4/5 font-medium leading-relaxed" style={{ letterSpacing: '0px', wordSpacing: 'normal', lineHeight: '1.7' }}>
+                <strong className="text-slate-800 block mb-1 font-bold text-xs" style={{ letterSpacing: '0px' }}>ملاحظات هامة:</strong>
+                <p style={{ margin: 0, whiteSpace: 'pre-wrap', letterSpacing: '0px', lineHeight: '1.7' }}>{settings.description}</p>
               </div>
             )}
             
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[10px] text-slate-500 font-bold">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 font-bold" style={{ letterSpacing: '0px' }}>
               <span>{(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}</span>
               {settings?.address && <span>• {settings.address}</span>}
               <span>• شكراً لثقتكم بنا</span>

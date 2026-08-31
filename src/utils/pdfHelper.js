@@ -434,17 +434,18 @@ export async function generateInvoicePdfBlob(sale, settings) {
         </div>
 
         <!-- Footer Notes & Info -->
-        <div style="padding-top: 12px; border-top: 1px solid #e2e8f0;">
+        <div style="padding-top: 12px; border-top: 1px solid #e2e8f0; direction: rtl;">
           ${settings?.description ? `
-            <div style="font-size: 10px; color: #64748b; white-space: pre-wrap; margin-bottom: 8px; width: 66%; font-weight: 500; letter-spacing: 0px;">
-              <strong style="color: #334155; display: block; margin-bottom: 2px; letter-spacing: 0px;">ملاحظات هامة:</strong>
-              ${settings.description}
+            <div style="font-size: 11px; color: #475569; margin-bottom: 8px; width: 75%; font-weight: 500; letter-spacing: 0px; line-height: 1.7;">
+              <strong style="color: #1e293b; display: block; margin-bottom: 3px; letter-spacing: 0px; font-size: 11px;">ملاحظات هامة:</strong>
+              <p style="margin: 0; white-space: pre-wrap; letter-spacing: 0px; line-height: 1.7;">${settings.description}</p>
             </div>
           ` : ''}
 
-          <div style="display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 4px; font-size: 10px; color: #64748b; font-weight: bold; letter-spacing: 0px;">
+          <div style="display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 4px; font-size: 11px; color: #64748b; font-weight: bold; letter-spacing: 0px;">
             <span>${storeName}</span>
-            ${address ? `<span>${address}</span>` : ''}
+            ${address ? `<span>• ${address}</span>` : ''}
+            <span>• شكراً لثقتكم بنا</span>
           </div>
         </div>
 
