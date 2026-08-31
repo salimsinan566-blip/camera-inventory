@@ -409,18 +409,22 @@ async function executeCronDebtReminders(req, res) {
     // فحص عدم تكرار الإرسال لموعد اليوم المحدد للأنماط اليومية/الأسبوعية والشهرية
     let alreadySentForTodaySlot = false;
     let diffSecondsSinceLastSent = Infinity;
-    if (c.lastDebtReminderSent) {
+
+    const isScheduleUpdated = c.scheduleUpdatedAt && c.lastDebtReminderSent &&
+      new Date(c.scheduleUpdatedAt) > new Date(c.lastDebtReminderSent);
+
+    if (!isScheduleUpdated && c.lastDebtReminderSent) {
       try {
         const lastSentDateObj = new Date(c.lastDebtReminderSent);
         const lastSentDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDateObj);
         diffSecondsSinceLastSent = (now.getTime() - lastSentDateObj.getTime()) / 1000;
         
-        // يعتبر مرسلاً إذا كان قد أرسل خلال آخر 10 دقائق (600 ثانية) لمنع التكرار
-        if (diffSecondsSinceLastSent < 10 * 60) {
+        // يعتبر مرسلاً ومقفلاً إذا أرسل اليوم بتوقيت بغداد أو خلال آخر 60 ثانية
+        if (lastSentDateStr === todayStr || diffSecondsSinceLastSent < 60) {
           alreadySentForTodaySlot = true;
         }
       } catch (e) {
-        alreadySentForTodaySlot = diffSecondsSinceLastSent < 10 * 60;
+        alreadySentForTodaySlot = c.lastDebtReminderSent.slice(0, 10) === todayStr;
       }
     }
 

@@ -69,14 +69,18 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
 
   const cId = String(customer.id || customer.phone1 || customer.name || '');
 
+  // فحص ما إذا كان المستخدم قد عدّل وقت أو جدول العميل حديثاً (لفتح القفل فوراً)
+  const isScheduleUpdated = customer.scheduleUpdatedAt && customer.lastDebtReminderSent &&
+    new Date(customer.scheduleUpdatedAt) > new Date(customer.lastDebtReminderSent);
+
   // 1. In-memory session duplicate guard (prevents duplicate triggers within the active window)
-  if (cId && (sessionSentDebtors.has(cId) || (customer.phone1 && sessionSentDebtors.has(customer.phone1)))) {
+  if (!isScheduleUpdated && cId && (sessionSentDebtors.has(cId) || (customer.phone1 && sessionSentDebtors.has(customer.phone1)))) {
     const lastSessionSent = sessionSentDebtors.get(cId) || (customer.phone1 && sessionSentDebtors.get(customer.phone1)) || 0;
     const minSessionGap = isMinutely
       ? (intervalMinutes * 60 * 1000 - 5000)
       : isHourly 
         ? (intervalHours * 60 * 60 * 1000 - 60000) 
-        : (10 * 60 * 1000); // قفل 10 دقائق
+        : (18 * 60 * 60 * 1000); // مقفل حتى موعد الغد
     if (Date.now() - lastSessionSent < minSessionGap) {
       return false;
     }
@@ -84,14 +88,14 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
 
   // 2. Persistent duplicate guard for Minutely / Hourly:
   if (isMinutely) {
-    if (!customer.lastDebtReminderSent) return true;
+    if (isScheduleUpdated || !customer.lastDebtReminderSent) return true;
     const lastSentDate = new Date(customer.lastDebtReminderSent);
     const diffMinutes = (now.getTime() - lastSentDate.getTime()) / (1000 * 60);
     return diffMinutes >= (intervalMinutes - 0.05); // Allow slight clock variance
   }
 
   if (isHourly) {
-    if (!customer.lastDebtReminderSent) return true;
+    if (isScheduleUpdated || !customer.lastDebtReminderSent) return true;
     const lastSentDate = new Date(customer.lastDebtReminderSent);
     const diffHours = (now.getTime() - lastSentDate.getTime()) / (1000 * 60 * 60);
     return diffHours >= (intervalHours - 0.05); // Allow slight clock variance
@@ -121,14 +125,15 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
     return false;
   }
 
-  // Persistent duplicate guard:
-  // إذا أرسلت رسالة خلال آخر 10 دقائق، لا ترسل مرة أخرى
-  if (customer.lastDebtReminderSent) {
+  // Persistent duplicate guard for Daily/Weekly/Monthly:
+  // إذا تم الإرسال لموعد اليوم ولم يقم المستخدم بتعديل الوقت بعد الإرسال -> مقفل تماماً حتى الموعد القادم!
+  if (!isScheduleUpdated && customer.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const diffMs = now.getTime() - lastSentDate.getTime();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now);
+    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDate);
     
-    if (diffMs < 10 * 60 * 1000) {
-      return false;
+    if (lastDateStr === todayStr) {
+      return false; // مقفل تماماً لليوم الحالي
     }
   }
 
@@ -159,7 +164,7 @@ export function isCustomerDebtReminderDue(customer, totalDebt, settings, now = n
       // 'كل يوم': Runs once per day at the scheduled time!
       return true;
     }
-    if (!customer.lastDebtReminderSent) return true;
+    if (isScheduleUpdated || !customer.lastDebtReminderSent) return true;
     const lastSent = new Date(customer.lastDebtReminderSent);
     const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dLast = new Date(lastSent.getFullYear(), lastSent.getMonth(), lastSent.getDate());
@@ -188,9 +193,12 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
     }
   }
 
+  const isScheduleUpdated = customer?.scheduleUpdatedAt && customer?.lastDebtReminderSent &&
+    new Date(customer.scheduleUpdatedAt) > new Date(customer.lastDebtReminderSent);
+
   if (schedCode.startsWith('minutely_') || (schedCode.startsWith('custom_') && (schedCode.includes('_mins') || schedCode.includes('_min')))) {
     const intervalMinutes = parseInt(schedCode.replace('minutely_', '').replace('custom_', '').replace('_minutes', '').replace('_mins', '').replace('_min', ''), 10) || 15;
-    if (customer?.lastDebtReminderSent) {
+    if (!isScheduleUpdated && customer?.lastDebtReminderSent) {
       const lastSent = new Date(customer.lastDebtReminderSent);
       const nextDate = new Date(lastSent.getTime() + intervalMinutes * 60 * 1000);
       if (nextDate.getTime() > now.getTime()) {
@@ -202,7 +210,7 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
 
   if (schedCode.startsWith('hourly_') || (schedCode.startsWith('custom_') && schedCode.includes('_hours'))) {
     const intervalHours = parseInt(schedCode.replace('hourly_', '').replace('custom_', '').replace('_hours', ''), 10) || 2;
-    if (customer?.lastDebtReminderSent) {
+    if (!isScheduleUpdated && customer?.lastDebtReminderSent) {
       const lastSent = new Date(customer.lastDebtReminderSent);
       const nextDate = new Date(lastSent.getTime() + intervalHours * 60 * 60 * 1000);
       if (nextDate.getTime() > now.getTime()) {
@@ -218,12 +226,13 @@ export function calculateNextCustomerReminderTimestamp(customer, settings, now =
 
   const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMinute, 0, 0);
 
-  // فحص ما إذا كان قد تم الإرسال مؤخراً (خلال نافذة الـ 10 دقائق)
+  // فحص ما إذا كان قد تم الإرسال لموعد اليوم بالفعل
   let alreadySentForTodaySlot = false;
-  if (customer?.lastDebtReminderSent) {
+  if (!isScheduleUpdated && customer?.lastDebtReminderSent) {
     const lastSentDate = new Date(customer.lastDebtReminderSent);
-    const diffMs = now.getTime() - lastSentDate.getTime();
-    if (diffMs < 10 * 60 * 1000) {
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(now);
+    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(lastSentDate);
+    if (lastDateStr === todayStr) {
       alreadySentForTodaySlot = true;
     }
   }

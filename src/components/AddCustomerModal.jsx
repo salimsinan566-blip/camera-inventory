@@ -39,9 +39,11 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
           notes: notes.trim(),
           customerType,
           reminderSchedule,
+          lastDebtReminderSent: null, // فتح القفل فوراً عند تعديل الوقت
+          scheduleUpdatedAt: new Date().toISOString()
         });
         clearDebtorSessionLock(customer.id);
-        toast('تم تحديث بيانات العميل وتفعيل الموعد بنجاح 💾', 'success');
+        toast('تم تحديث بيانات العميل وتفعيل الموعد الجديد بنجاح 💾', 'success');
       } else {
         savedCustId = await addCustomer({
           name: trimmedName,
@@ -51,6 +53,8 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
           notes: notes.trim(),
           customerType,
           reminderSchedule,
+          lastDebtReminderSent: null,
+          scheduleUpdatedAt: new Date().toISOString()
         });
         clearDebtorSessionLock(savedCustId);
         toast('تمت إضافة العميل وتفعيل الموعد بنجاح 💾', 'success');

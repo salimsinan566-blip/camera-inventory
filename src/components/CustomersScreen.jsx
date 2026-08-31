@@ -14,8 +14,7 @@ import {
 import { useUI } from '../contexts/UIContext';
 import AddCustomerModal from './AddCustomerModal';
 import CustomerStatementModal from './CustomerStatementModal';
-import { formatAppleScheduleLabel } from './AppleSchedulePicker';
-import { processAutomatedDebtReminders } from '../services/debtReminderScheduler';
+import { processAutomatedDebtReminders, clearDebtorSessionLock } from '../services/debtReminderScheduler';
 import ScheduledMessagesModal from './ScheduledMessagesModal';
 
 function normalizeArabic(text) {
@@ -302,8 +301,11 @@ export default function CustomersScreen() {
     try {
       await updateCustomer(targetId, {
         reminderSchedule: newSched,
-        previousSchedule: isCurrentlyDisabled ? (cust.previousSchedule || 'default') : currentSched
+        previousSchedule: isCurrentlyDisabled ? (cust.previousSchedule || 'default') : currentSched,
+        lastDebtReminderSent: null,
+        scheduleUpdatedAt: new Date().toISOString()
       });
+      clearDebtorSessionLock(targetId);
 
       if (isCurrentlyDisabled && settings?.whatsappAutoReminders === false) {
         await updateStoreSettings({ whatsappAutoReminders: true });
