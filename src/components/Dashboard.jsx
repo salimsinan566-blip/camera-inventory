@@ -22,6 +22,7 @@ import SalesReports from './SalesReports';
 import CustomersScreen from './CustomersScreen';
 import HomeDashboard from './HomeDashboard';
 import SettingsScreen from './SettingsScreen';
+import TrashBinScreen from './TrashBinScreen';
 import ProductHistoryModal from './ProductHistoryModal';
 import InventoryHistoryView from './InventoryHistoryView';
 import CustodyScreen from './CustodyScreen';
@@ -334,6 +335,10 @@ export default function Dashboard({ user }) {
 
         <div className={activeTab === 'customers' ? 'block h-full' : 'hidden'}>
           <CustomersScreen />
+        </div>
+
+        <div className={activeTab === 'trash' ? 'block h-full' : 'hidden'}>
+          <TrashBinScreen currentUser={user} />
         </div>
 
         <div className={activeTab === 'settings' ? 'block h-full' : 'hidden'}>

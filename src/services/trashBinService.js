@@ -21,6 +21,28 @@ export const TRASH_COLLECTION = 'trash_bin';
 // مدة الاحتفاظ بالمحذوفات: 90 يوماً
 export const RETENTION_DAYS = 90;
 
+// فحص ونقل أي مسودة كانت قد استرجعت بالخطأ إلى draft_sales
+async function healOrphanDrafts() {
+  try {
+    const snap = await getDocs(collection(db, 'draft_sales'));
+    if (!snap.empty) {
+      for (const d of snap.docs) {
+        const dData = d.data();
+        await setDoc(doc(db, 'sales', d.id), {
+          ...dData,
+          status: 'draft',
+          isDraft: true,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+        await deleteDoc(d.ref);
+      }
+    }
+  } catch (e) {
+    // تجاهل إن لم توجد المجموعة
+  }
+}
+healOrphanDrafts();
+
 /**
  * نقل أي عنصر أو فاتورة إلى سلة المحذوفات
  * @param {Object} params
@@ -121,7 +143,7 @@ export async function restoreFromTrash(trashItem, restoreMode = 'original', user
   delete rawData.isDeleted;
 
   if (restoreMode === 'to_draft' || itemType === 'draft_sale') {
-    // 1. الاسترجاع إلى قائمة الفواتير المعلقة (draft_sales)
+    // 1. الاسترجاع إلى قائمة الفواتير المعلقة داخل مجموعة 'sales' الصحيحة
     const draftPayload = {
       ...rawData,
       isDraft: true,
@@ -132,13 +154,13 @@ export async function restoreFromTrash(trashItem, restoreMode = 'original', user
       createdAt: rawData.createdAt || serverTimestamp()
     };
 
-    if (originalDocId && itemType === 'draft_sale') {
-      await setDoc(doc(db, 'draft_sales', originalDocId), draftPayload, { merge: true });
+    if (originalDocId) {
+      await setDoc(doc(db, 'sales', originalDocId), draftPayload, { merge: true });
     } else {
-      await addDoc(collection(db, 'draft_sales'), draftPayload);
+      await addDoc(collection(db, 'sales'), draftPayload);
     }
   } else {
-    // 2. الاسترجاع إلى المجموعة الأصلية
+    // 2. الاسترجاع إلى المجموعة الأصلية (products / customers / offers / sales)
     const targetCollection = originalCollection || 'sales';
     const restorePayload = {
       ...rawData,

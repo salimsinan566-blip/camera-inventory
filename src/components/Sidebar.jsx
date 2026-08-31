@@ -6,7 +6,6 @@ import { getDisplayName } from '../utils/userUtils';
 import { updateProfile } from 'firebase/auth';
 import { useSettings } from '../hooks/useSettings';
 import { auth } from '../firebase/auth';
-import TrashBinModal from './TrashBinModal';
 import { useTrashBin } from '../hooks/useTrashBin';
 
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onCloseMobile }) {
@@ -15,7 +14,6 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
   const { count: trashCount } = useTrashBin();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [updatingName, setUpdatingName] = useState(false);
-  const [showTrashModal, setShowTrashModal] = useState(false);
 
   const handleChangeName = async () => {
     if (!user) return;
@@ -48,6 +46,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
     { id: 'inventory', label: 'المخزون', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
     { id: 'reports', label: 'الفواتير والتقارير', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
     { id: 'customers', label: 'دليل العملاء', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+    { id: 'trash', label: 'سلة المحذوفات', icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16', badge: trashCount },
     { id: 'settings', label: 'الإعدادات', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
   ];
 
@@ -103,35 +102,25 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             title={isCollapsed ? tab.label : ''}
-            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3.5 rounded-xl transition-all duration-200 text-sm font-bold ${
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-3.5 rounded-xl transition-all duration-200 text-sm font-bold ${
               activeTab === tab.id
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
-            <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={tab.icon}></path>
-            </svg>
-            {!isCollapsed && <span className="whitespace-nowrap animate-fade-in">{tab.label}</span>}
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={tab.icon}></path>
+              </svg>
+              {!isCollapsed && <span className="whitespace-nowrap animate-fade-in">{tab.label}</span>}
+            </div>
+            {!isCollapsed && tab.badge > 0 && (
+              <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-xs animate-pulse font-mono">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
-
-        {/* زر سلة المحذوفات المركزية */}
-        <button
-          onClick={() => setShowTrashModal(true)}
-          title={isCollapsed ? `سلة المحذوفات (${trashCount})` : ''}
-          className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold text-slate-300 hover:bg-slate-800 hover:text-white group border border-slate-800/80 bg-slate-800/20`}
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-base">🗑️</span>
-            {!isCollapsed && <span className="whitespace-nowrap animate-fade-in">سلة المحذوفات</span>}
-          </div>
-          {!isCollapsed && trashCount > 0 && (
-            <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-xs animate-pulse">
-              {trashCount}
-            </span>
-          )}
-        </button>
         
         <div className={`pt-4 mt-4 border-t border-slate-800 space-y-2 ${isCollapsed ? 'hidden' : 'block'}`}>
           <a
@@ -216,13 +205,6 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
           </button>
         </div>
       )}
-
-      {/* نافذة سلة المحذوفات الشاملة */}
-      <TrashBinModal
-        isOpen={showTrashModal}
-        onClose={() => setShowTrashModal(false)}
-        currentUser={user}
-      />
     </aside>
   );
 }

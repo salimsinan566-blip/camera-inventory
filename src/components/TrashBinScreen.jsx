@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useTrashBin } from '../hooks/useTrashBin';
 import { useUI } from '../contexts/UIContext';
 
-export default function TrashBinModal({ isOpen, onClose, currentUser }) {
+export default function TrashBinScreen({ currentUser }) {
   const { toast } = useUI();
   const { items, loading, restoreItem, deleteItemPermanently, clearAll } = useTrashBin();
   const [activeTab, setActiveTab] = useState('all');
@@ -55,8 +55,6 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
       others: items.filter((i) => !['draft_sale', 'confirmed_sale', 'offer', 'product', 'customer'].includes(i.itemType)).length,
     };
   }, [items]);
-
-  if (!isOpen) return null;
 
   // معالجة الاسترجاع
   const handleRestore = async (item, mode = 'original') => {
@@ -126,112 +124,106 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in" dir="rtl">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-200">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-xl shadow-xs">
-              🗑️
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                سلة المحذوفات المركزية
-                <span className="text-xs font-normal text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
-                  الاحتفاظ لمدة 90 يوماً
-                </span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                يمكنك استرجاع أي فاتورة معلقة، مبيعات، عروض أسعار، منتجات أو عملاء بنقرة واحدة
-              </p>
-            </div>
+    <div className="h-full flex flex-col p-4 md:p-6 bg-slate-100 overflow-y-auto" dir="rtl">
+      
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center text-2xl shadow-xs shrink-0">
+            🗑️
           </div>
-
-          <div className="flex items-center gap-2">
-            {items.length > 0 && (
-              <button
-                onClick={() => setConfirmClearAll(true)}
-                disabled={processingId !== null}
-                className="px-3 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <span>🧹 تفريغ السلة</span>
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors text-lg"
-            >
-              ✕
-            </button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              سلة المحذوفات المركزية
+              <span className="text-xs font-medium text-slate-500 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
+                الاحتفاظ التلقائي لمدة 90 يوماً
+              </span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              جميع الفواتير المعلقة، المبيعات، عروض الأسعار، المنتجات، والعملاء المحذوفة يتم حفظها هنا ويمكنك استرجاعها فوراً.
+            </p>
           </div>
         </div>
 
-        {/* Tabs & Search Filter */}
-        <div className="p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
+        {items.length > 0 && (
+          <button
+            onClick={() => setConfirmClearAll(true)}
+            disabled={processingId !== null}
+            className="px-4 py-2 text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-xl transition-colors flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+          >
+            <span>🧹 تفريغ السلة بالكامل</span>
+          </button>
+        )}
+      </div>
+
+      {/* Main Content Container */}
+      <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+        
+        {/* Tabs & Search Bar */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 scrollbar-thin">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
-                activeTab === 'all' ? 'bg-brand-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                activeTab === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
               الكل ({counts.all})
             </button>
             <button
               onClick={() => setActiveTab('draft_sale')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
-                activeTab === 'draft_sale' ? 'bg-amber-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'draft_sale' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              <span>⏳ المعلقة</span>
-              <span className="bg-amber-200/50 text-current px-1.5 py-0.2 rounded-full text-[10px]">{counts.draft_sale}</span>
+              <span>⏳ الفواتير المعلقة</span>
+              <span className="bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full text-[11px] font-mono">{counts.draft_sale}</span>
             </button>
             <button
               onClick={() => setActiveTab('confirmed_sale')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
-                activeTab === 'confirmed_sale' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'confirmed_sale' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              <span>🧾 المبيعات</span>
-              <span className="bg-emerald-200/50 text-current px-1.5 py-0.2 rounded-full text-[10px]">{counts.confirmed_sale}</span>
+              <span>🧾 فواتير المبيعات</span>
+              <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full text-[11px] font-mono">{counts.confirmed_sale}</span>
             </button>
             <button
               onClick={() => setActiveTab('offer')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
-                activeTab === 'offer' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'offer' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              <span>🏷️ العروض</span>
-              <span className="bg-blue-200/50 text-current px-1.5 py-0.2 rounded-full text-[10px]">{counts.offer}</span>
+              <span>🏷️ عروض الأسعار</span>
+              <span className="bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded-full text-[11px] font-mono">{counts.offer}</span>
             </button>
             <button
               onClick={() => setActiveTab('product')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
-                activeTab === 'product' ? 'bg-purple-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'product' ? 'bg-purple-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
               <span>📦 المنتجات</span>
-              <span className="bg-purple-200/50 text-current px-1.5 py-0.2 rounded-full text-[10px]">{counts.product}</span>
+              <span className="bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded-full text-[11px] font-mono">{counts.product}</span>
             </button>
             <button
               onClick={() => setActiveTab('customer')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
-                activeTab === 'customer' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'customer' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
               <span>👤 العملاء</span>
-              <span className="bg-indigo-200/50 text-current px-1.5 py-0.2 rounded-full text-[10px]">{counts.customer}</span>
+              <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded-full text-[11px] font-mono">{counts.customer}</span>
             </button>
           </div>
 
-          <div className="relative min-w-[220px]">
+          <div className="relative min-w-[280px]">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔍 بحث في المحذوفات..."
-              className="w-full pl-3 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"
+              placeholder="🔍 بحث في سلة المحذوفات..."
+              className="w-full pl-3 pr-9 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 transition-all"
             />
             {searchQuery && (
               <button
@@ -244,17 +236,17 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
           </div>
         </div>
 
-        {/* Content List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+        {/* List of Items */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/40">
           {loading ? (
-            <div className="py-16 text-center text-slate-400">
-              <div className="animate-spin w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full mx-auto mb-3" />
+            <div className="py-24 text-center text-slate-400">
+              <div className="animate-spin w-9 h-9 border-3 border-indigo-600 border-t-transparent rounded-full mx-auto mb-3" />
               <p className="text-sm font-medium">جاري تحميل عناصر سلة المحذوفات...</p>
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="py-16 text-center text-slate-400">
-              <div className="text-5xl mb-3">✨</div>
-              <h3 className="text-base font-bold text-slate-700 mb-1">سلة المحذوفات نظيفة تماماً</h3>
+            <div className="py-24 text-center text-slate-400">
+              <div className="text-6xl mb-3">✨</div>
+              <h3 className="text-lg font-bold text-slate-700 mb-1">سلة المحذوفات نظيفة تماماً</h3>
               <p className="text-xs text-slate-500">لا توجد أي عناصر محذوفة مطابقة حالياً</p>
             </div>
           ) : (
@@ -265,17 +257,17 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
               return (
                 <div
                   key={item.id}
-                  className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs hover:shadow-md transition-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                  className="bg-white rounded-xl p-4 md:p-5 border border-slate-200 shadow-2xs hover:shadow-md transition-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                 >
-                  <div className="flex items-start gap-3.5">
-                    <div className="mt-0.5">{getItemBadge(item.itemType)}</div>
+                  <div className="flex items-start gap-4">
+                    <div className="mt-1">{getItemBadge(item.itemType)}</div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 mb-0.5">{item.title}</h4>
+                      <h4 className="text-base font-bold text-slate-900 mb-1">{item.title}</h4>
                       {item.subtitle && <p className="text-xs text-slate-600 font-medium">{item.subtitle}</p>}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 mt-1.5">
-                        <span>👤 حذفها: <strong className="text-slate-600">{item.deletedBy}</strong></span>
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-400 mt-2">
+                        <span>👤 حذفها: <strong className="text-slate-700">{item.deletedBy}</strong></span>
                         <span>📅 تاريخ الحذف: {item.deletedDateFormatted} ({item.deletedTimeFormatted})</span>
-                        <span className="text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-sm">
+                        <span className="text-amber-700 font-bold bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-md">
                           ⏳ متبقي {item.daysRemaining} يوماً
                         </span>
                       </div>
@@ -284,12 +276,12 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 self-end sm:self-center">
-                    {/* زر الاسترجاع كـ فاتورة معلقة */}
+                    {/* زر الاسترجاع إلى الفواتير المعلقة */}
                     {isSaleOrDraft && (
                       <button
                         onClick={() => handleRestore(item, 'to_draft')}
                         disabled={isProcessing}
-                        className="px-3 py-1.5 text-xs font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center gap-1 shadow-xs disabled:opacity-50"
+                        className="px-3.5 py-2 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
                         title="إرجاع الفاتورة إلى قائمة الفواتير المعلقة في نقطة البيع"
                       >
                         <span>⏳ إرجاع للمعلق</span>
@@ -300,7 +292,7 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
                     <button
                       onClick={() => handleRestore(item, 'original')}
                       disabled={isProcessing}
-                      className="px-3.5 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition-colors flex items-center gap-1 shadow-xs disabled:opacity-50"
+                      className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
                       title="استرجاع العنصر لمكانه السابق"
                     >
                       <span>🔄 استرجاع</span>
@@ -310,8 +302,8 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
                     <button
                       onClick={() => handleDeletePermanently(item)}
                       disabled={isProcessing}
-                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                      title="حذف نهائي لا يمكن التراجع عنه"
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                      title="حذف نهائي"
                     >
                       <span className="text-base">❌</span>
                     </button>
@@ -323,32 +315,32 @@ export default function TrashBinModal({ isOpen, onClose, currentUser }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
-          <span>إجمالي العناصر المحذوفة: <strong>{items.length}</strong></span>
-          <span>يتم حذف العناصر تلقائياً بعد مرور 90 يوماً من تاريخ الحذف</span>
+        <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+          <span>إجمالي العناصر في السلة: <strong className="text-slate-800">{items.length}</strong></span>
+          <span>يتم الحذف النهائي التلقائي بعد مرور 90 يوماً من تاريخ الحذف</span>
         </div>
       </div>
 
-      {/* مودال تأكيد تفريغ السلة */}
+      {/* Confirmation Modal */}
       {confirmClearAll && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-center animate-scale-up">
-            <div className="text-4xl mb-3">⚠️</div>
-            <h3 className="text-base font-bold text-slate-900 mb-2">تفريغ سلة المحذوفات بالكامل؟</h3>
-            <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-              سيتم حذف جميع العناصر الموجودة في السلة بشكل نهائي ولا يمكن استرجاعها أبداً. هل أنت متأكد؟
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-center animate-scale-up">
+            <div className="text-5xl mb-3">⚠️</div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">تفريغ سلة المحذوفات بالكامل؟</h3>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              سيتم حذف جميع العناصر الموجودة في السلة بشكل نهائي من قاعدة البيانات ولا يمكن استرجاعها أبداً. هل أنت متأكد؟
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-2.5">
               <button
                 onClick={handleClearAll}
                 disabled={processingId === 'all'}
-                className="flex-1 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                className="flex-1 py-2.5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors cursor-pointer disabled:opacity-50"
               >
                 نعم، تفريغ السلة
               </button>
               <button
                 onClick={() => setConfirmClearAll(false)}
-                className="flex-1 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                className="flex-1 py-2.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
               >
                 إلغاء
               </button>
