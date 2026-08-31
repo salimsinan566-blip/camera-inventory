@@ -458,11 +458,13 @@ export async function sendWhatsAppDocumentViaGateway({
     if (isEvolution && base) {
       const endpoint = `${base}/message/sendMedia/${encodeURIComponent(instanceId)}`;
       
-      // تنظيف صيغة الـ Base64
+      // استخراج الـ Base64 الصافي لملف الـ PDF بدون أي بادئة data URI
       let cleanMedia = documentBase64;
-      if (cleanMedia && !cleanMedia.startsWith('http') && !cleanMedia.startsWith('data:')) {
-        cleanMedia = `data:application/pdf;base64,${cleanMedia}`;
+      if (cleanMedia && typeof cleanMedia === 'string' && cleanMedia.includes(',')) {
+        cleanMedia = cleanMedia.split(',')[1];
       }
+
+      const safeFileName = filename ? (filename.endsWith('.pdf') ? filename : `${filename}.pdf`) : 'Invoice.pdf';
 
       const payload = {
         number: intPhone,
@@ -470,7 +472,7 @@ export async function sendWhatsAppDocumentViaGateway({
         mimetype: 'application/pdf',
         caption: caption || '',
         media: cleanMedia,
-        fileName: filename || 'invoice.pdf',
+        fileName: safeFileName,
         delay: Math.max(1200, (delaySeconds || 0) * 1000)
       };
 
@@ -485,7 +487,7 @@ export async function sendWhatsAppDocumentViaGateway({
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.error || data.status === 'ERROR') {
-        throw new Error(data.message || data.error || `فشل إرسال ملف PDF عبر Evolution API (رمز: ${response.status})`);
+        throw new Error(data.message || data.error || (Array.isArray(data.response?.message) ? data.response.message.join(', ') : '') || `فشل إرسال ملف PDF عبر Evolution API (رمز: ${response.status})`);
       }
       return data;
     }
