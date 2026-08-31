@@ -263,11 +263,11 @@ export async function generateInvoicePdfBlob(sale, settings) {
           <!-- Logo & Badge (Left) -->
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-right: 16px;">
             ${safeLogo ? `
-              <div style="height: 246px; display: flex; align-items: center; justify-content: flex-end;">
-                <img src="${safeLogo}" alt="الشعار" style="height: 246px; max-height: 246px; width: auto; max-width: 340px; object-fit: contain;" />
+              <div style="width: 246.4px; height: 246.4px; display: flex; align-items: center; justify-content: flex-end;">
+                <img src="${safeLogo}" alt="الشعار" style="width: 246.4px; height: 246.4px; object-fit: contain; display: block;" />
               </div>
             ` : `
-              <div style="height: 180px; width: 246px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+              <div style="height: 246.4px; width: 246.4px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
             `}
             ${isOffer ? `
               <span style="font-size: 13px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 4px 20px; border-radius: 9999px;">
