@@ -46,15 +46,14 @@ export default function ScheduledMessagesModal({ isOpen, onClose }) {
     baseUrl = apiUrl.replace(/\/messages\/(chat|document).*/, '');
   }
 
-  // Live timer tick every second for smooth countdown and automated dispatch
+  // Live timer tick every second for smooth countdown
   useEffect(() => {
     if (!isOpen) return;
     const timer = setInterval(() => {
       setTick(t => t + 1);
-      processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
     }, 2000);
     return () => clearInterval(timer);
-  }, [isOpen, customers, sales, incomes, settings]);
+  }, [isOpen]);
 
   // Fetch server scheduled queue
   async function fetchQueue() {

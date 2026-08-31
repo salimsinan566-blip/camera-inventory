@@ -12,16 +12,17 @@ export function useAutoDebtScheduler() {
   const { settings = {} } = useSettings();
 
   useEffect(() => {
+    // إذا كان سيرفر AWS السحابي أو الـ Cron السحابي هو المشغل، نترك الإرسال التلقائي للسيرفر 24/7 لمنع التكرار
+    const isServerHandled = Boolean(settings?.whatsappApiUrl || settings?.whatsappProvider === 'evolution');
+    if (isServerHandled) return; // السيرفر هو المسؤول الحصري عن الإرسال التلقائي
+
     if (settings?.whatsappAutoReminders === false) return;
     if (!customers.length) return;
 
-    // Background interval check every 30 seconds for timely dispatch
+    // فحص دوري في خلفية المتصفح فقط في حال عدم وجود سيرفر سحابي
     const timer = setInterval(() => {
       processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
-    }, 30000);
-
-    // Immediate check
-    processAutomatedDebtReminders({ customers, sales, incomes, settings }).catch(() => {});
+    }, 60000);
 
     return () => clearInterval(timer);
   }, [customers, sales, incomes, settings]);
