@@ -111,12 +111,12 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       <div 
         key={pageIndex} 
         className="invoice-page relative w-full flex flex-col justify-between bg-white print:break-after-page" 
-        style={{ minHeight: 'auto', boxSizing: 'border-box' }}
+        style={{ minHeight: '100%', flexGrow: 1, boxSizing: 'border-box' }}
       >
         {/* القسم العلوي: الترويسة والمنتجات */}
         <div>
           {/* الترويسة الفنية */}
-          <div className="flex items-center justify-between mb-3 border-b-2 border-[#C89B3C] pb-3">
+          <div className="flex items-center justify-between mb-4 border-b-2 border-[#C89B3C] pb-3">
             {/* اليمين: معلومات المتجر */}
             <div className="flex flex-col items-start text-right">
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-wide mb-1">
@@ -133,16 +133,16 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-1.5 pr-2 relative">
               {settings?.logoUrl ? (
-                <div className="h-16 sm:h-20 flex items-center justify-end">
+                <div className="h-28 flex items-center justify-end">
                   <img 
                     src={settings.logoUrl} 
                     alt="الشعار" 
-                    className="h-16 sm:h-20 max-h-20 w-auto max-w-[240px] object-contain drop-shadow-xs" 
+                    className="h-28 w-auto object-contain scale-[2.2] origin-left print:scale-[2]" 
                     crossOrigin="anonymous"
                   />
                 </div>
               ) : (
-                <div className="h-16 w-28 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-1 font-bold rounded text-center text-xs">
+                <div className="h-28 w-36 flex items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 p-1 font-bold rounded text-center text-xs">
                   [الشعار]
                 </div>
               )}
@@ -249,7 +249,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         {/* القسم السفلي: المجاميع (في الصفحة الأخيرة فقط) + التذييل */}
         <div className="mt-auto w-full pt-4">
           {isLastPage ? (
-            <div className="flex justify-between items-end mb-3">
+            <div className="flex justify-between items-end mb-4 pt-2">
               {/* QR Code */}
               {settings?.qrCodeUrl ? (
                 <div className="w-20 h-20 rounded-lg flex items-center justify-center ml-3 bg-white border border-slate-200 p-1 shrink-0">
