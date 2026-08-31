@@ -110,7 +110,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     return (
       <div 
         key={pageIndex} 
-        className="invoice-page relative w-full flex flex-col justify-between bg-white print:break-after-page" 
+        className="invoice-page relative w-full flex flex-col justify-between bg-transparent print:break-after-page" 
         style={{ minHeight: '100%', flexGrow: 1, boxSizing: 'border-box' }}
       >
         {/* القسم العلوي: الترويسة والمنتجات */}
@@ -261,7 +261,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 </div>
               )}
               
-              <div className="w-[55%] max-w-[320px] bg-white">
+              <div className="w-[55%] max-w-[320px] bg-transparent">
                 <div className="border border-slate-200 bg-white p-2 mb-1.5 rounded-t">
                   <table className="w-full text-xs font-bold text-slate-600">
                     <tbody>
@@ -1014,7 +1014,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <div 
                 key={idx} 
                 id={idx === 0 ? "invoice-receipt-capture-area" : undefined}
-                className="bg-white p-8 relative shadow-sm w-full max-w-[210mm] min-h-[297mm]"
+                className="bg-white p-8 relative shadow-sm w-full max-w-[210mm] min-h-[297mm] flex flex-col"
               >
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
@@ -1022,7 +1022,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                     <img src={settings.logoUrl} alt="" className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" />
                   </div>
                 )}
-                <div className="relative z-10">
+                <div className="relative z-10 flex-grow flex flex-col">
                   {page}
                   {/* ملاحظات العرض */}
                   {sale.isOffer && sale.notes && (
@@ -1042,19 +1042,19 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       {createPortal(
         <div id="print-portal" className="hidden print:block w-full relative m-0 p-0 bg-transparent" dir="rtl">
           {invoiceContent.map((page, idx) => (
-            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm] p-8">
+            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm] p-8 flex flex-col">
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
                 <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-15 overflow-hidden">
                   <img 
                     src={settings.logoUrl} 
                     alt="" 
-                    className="w-[65%] max-w-[450px] h-auto object-contain filter grayscale" 
+                    className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" 
                     crossOrigin="anonymous"
                   />
                 </div>
               )}
-              <div className="relative z-10">
+              <div className="relative z-10 flex-grow flex flex-col">
                 {page}
               </div>
             </div>
