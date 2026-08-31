@@ -1,5 +1,6 @@
 import html2pdf from 'html2pdf.js';
 import { getStockStatus, STOCK_STATUS } from '../models/product';
+import defaultLogo from '../assets/logo.png';
 
 export async function generateAndSendShortagesPDF(products, toast) {
   const shortages = products.filter(
@@ -152,10 +153,10 @@ async function toSafeDataUrl(url) {
  */
 export async function generateInvoicePdfBlob(sale, settings) {
   const storeName = (!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName;
-  const address = settings?.address || 'العراق - بغداد';
-  const logoUrl = settings?.logoUrl;
+  const address = settings?.address || 'العراق - الموصل';
+  const logoUrl = settings?.logoUrl || defaultLogo;
   const qrCodeUrl = settings?.qrCodeUrl;
-  const safeLogo = await toSafeDataUrl(logoUrl);
+  const safeLogo = await toSafeDataUrl(logoUrl) || defaultLogo;
   const safeQr = await toSafeDataUrl(qrCodeUrl);
 
   const invoiceNumber = sale.invoiceNumber || sale.offerNumber || sale.id || '1001';
@@ -230,11 +231,11 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
     <!-- Watermark Logo in Background -->
     ${safeLogo ? `
-      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0.20; overflow: hidden; z-index: 0;">
+      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0.12; overflow: hidden; z-index: 0;">
         <img 
           src="${safeLogo}" 
           alt="" 
-          style="width: 80%; max-width: 600px; height: auto; object-fit: contain; filter: grayscale(100%);" 
+          style="width: 75%; max-width: 500px; height: auto; object-fit: contain; filter: grayscale(100%);" 
         />
       </div>
     ` : ''}
@@ -247,13 +248,13 @@ export async function generateInvoicePdfBlob(sale, settings) {
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #C89B3C; padding-bottom: 12px; margin-bottom: 16px;">
           <!-- Store Info (Right) -->
           <div style="text-align: right;">
-            <h1 style="font-size: 30px; font-weight: 800; color: #0f172a; margin-bottom: 4px;">
+            <h1 style="font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 4px; letter-spacing: 0px;">
               ${storeName}
             </h1>
             ${address ? `
-              <p style="font-size: 13px; color: #64748b; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-                <svg style="width: 18px; height: 18px; color: #C89B3C; fill: none; stroke: currentColor;" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                <span>${address}</span>
+              <p style="font-size: 13px; color: #64748b; font-weight: bold; margin: 4px 0 0 0; line-height: 1.5; letter-spacing: 0px;">
+                <span style="color: #C89B3C; margin-left: 6px; font-size: 13px; display: inline;">📍</span>
+                <span style="display: inline;">${address}</span>
               </p>
             ` : ''}
           </div>
@@ -268,7 +269,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
               <div style="height: 100px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
             `}
             ${isOffer ? `
-              <span style="font-size: 14px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 6px 24px; border-radius: 9999px; text-transform: uppercase;">
+              <span style="font-size: 13px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 4px 20px; border-radius: 9999px;">
                 عرض سعر (Quotation)
               </span>
             ` : isDraft ? `
@@ -283,8 +284,8 @@ export async function generateInvoicePdfBlob(sale, settings) {
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
           <!-- Customer (Right) -->
           <div style="text-align: right;">
-            <h3 style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">فاتورة إلى</h3>
-            <p style="font-size: 20px; font-weight: bold; color: #1e293b;">${customerName}</p>
+            <h3 style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px; letter-spacing: 0px;">فاتورة إلى</h3>
+            <p style="font-size: 22px; font-weight: bold; color: #1e293b; letter-spacing: 0px;">${customerName}</p>
           </div>
 
           <!-- Invoice Details Table (Left) -->
@@ -292,22 +293,22 @@ export async function generateInvoicePdfBlob(sale, settings) {
             <table style="font-size: 13px; width: auto;">
               <tbody>
                 <tr>
-                  <td style="padding: 2px 12px; color: #64748b;">${isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'}</td>
-                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${invoiceNumber}</td>
+                  <td style="padding: 2px 12px; color: #64748b; letter-spacing: 0px;">${isOffer ? 'رقم العرض:' : 'رقم الفاتورة:'}</td>
+                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a; letter-spacing: 0px;">${invoiceNumber}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 2px 12px; color: #64748b;">تاريخ الإصدار:</td>
-                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${dateLabel}</td>
+                  <td style="padding: 2px 12px; color: #64748b; letter-spacing: 0px;">تاريخ الإصدار:</td>
+                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a; letter-spacing: 0px;">${dateLabel}</td>
                 </tr>
                 ${isDebt && !isOffer ? `
                   <tr>
-                    <td style="padding: 2px 12px; color: #64748b;">نوع الدفع:</td>
-                    <td style="padding: 2px 4px; font-weight: bold; color: #d97706;">آجل (دين)</td>
+                    <td style="padding: 2px 12px; color: #64748b; letter-spacing: 0px;">نوع الدفع:</td>
+                    <td style="padding: 2px 4px; font-weight: bold; color: #d97706; letter-spacing: 0px;">آجل (دين)</td>
                   </tr>
                 ` : ''}
                 <tr>
-                  <td style="padding: 2px 12px; color: #64748b;">البائع:</td>
-                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a;">${cashierDisplayName}</td>
+                  <td style="padding: 2px 12px; color: #64748b; letter-spacing: 0px;">البائع:</td>
+                  <td style="padding: 2px 4px; font-weight: bold; color: #0f172a; letter-spacing: 0px;">${cashierDisplayName}</td>
                 </tr>
               </tbody>
             </table>
@@ -317,23 +318,23 @@ export async function generateInvoicePdfBlob(sale, settings) {
         <!-- Items Table -->
         <table style="width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 20px;">
           <thead>
-            <tr style="background-color: #f2f2f2; color: #334155; font-size: 13px; font-weight: bold; text-transform: uppercase;">
-              <th style="padding: 12px 8px; text-align: right; width: 50%; font-weight: bold;">الوصف</th>
-              <th style="padding: 12px 8px; text-align: center; width: 14%; font-weight: bold;">الكمية</th>
-              <th style="padding: 12px 8px; text-align: right; width: 18%; font-weight: bold;">السعر</th>
-              <th style="padding: 12px 8px; text-align: left; width: 18%; font-weight: bold;">المبلغ</th>
+            <tr style="background-color: #f8fafc; color: #334155; font-size: 13px; font-weight: bold; border-bottom: 2px solid #e2e8f0;">
+              <th style="padding: 10px 8px; text-align: right; width: 50%; font-weight: bold; letter-spacing: 0px;">الوصف</th>
+              <th style="padding: 10px 8px; text-align: center; width: 14%; font-weight: bold; letter-spacing: 0px;">الكمية</th>
+              <th style="padding: 10px 8px; text-align: right; width: 18%; font-weight: bold; letter-spacing: 0px;">السعر</th>
+              <th style="padding: 10px 8px; text-align: left; width: 18%; font-weight: bold; letter-spacing: 0px;">المبلغ</th>
             </tr>
           </thead>
           <tbody>
             ${items.map((item, idx) => {
               const lineTotal = Number(item.lineTotal || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0)));
               return `
-                <tr style="border-bottom: 2px solid #e2e8f0; font-size: 13px;">
-                  <td style="padding: 8px 8px; font-weight: bold; color: #1e293b; text-align: right; max-width: 260px; word-break: break-word; line-height: 1.35;">
+                <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
+                  <td style="padding: 8px 8px; font-weight: bold; color: #1e293b; text-align: right; max-width: 260px; word-break: break-word; line-height: 1.35; letter-spacing: 0px;">
                     ${item.isService ? '<span style="font-size: 9px; background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
                     <bdi dir="auto" style="unicode-bidi: plaintext !important;">${item.name || 'منتج'}</bdi>
                   </td>
-                  <td style="padding: 8px 8px; text-align: center; font-weight: bold; color: #1e293b;">
+                  <td style="padding: 8px 8px; text-align: center; font-weight: bold; color: #1e293b; letter-spacing: 0px;">
                     ${item.quantity || 1}
                     ${!item.isService && item.sellMode && item.sellMode !== 'unit' ? `
                       <span style="font-size: 9px; color: #64748b; margin-right: 4px; font-weight: normal;">
@@ -341,7 +342,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
                       </span>
                     ` : ''}
                   </td>
-                  <td style="padding: 8px 8px; text-align: right; color: #1e293b; font-family: monospace;">
+                  <td style="padding: 8px 8px; text-align: right; color: #1e293b; font-family: monospace; letter-spacing: 0px;">
                     ${item.originalPrice && item.originalPrice > item.unitPrice ? `
                       <div style="display: flex; flex-direction: column; align-items: flex-end;">
                         <span style="font-size: 10px; color: #94a3b8; text-decoration: line-through; line-height: 1;">${Number(item.originalPrice).toLocaleString()}</span>
@@ -349,7 +350,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
                       </div>
                     ` : Number(item.unitPrice || 0).toLocaleString()}
                   </td>
-                  <td style="padding: 8px 8px; text-align: left; font-weight: bold; color: #1e293b; font-family: monospace;">
+                  <td style="padding: 8px 8px; text-align: left; font-weight: bold; color: #1e293b; font-family: monospace; letter-spacing: 0px;">
                     ${lineTotal.toLocaleString()}
                   </td>
                 </tr>
@@ -382,33 +383,33 @@ export async function generateInvoicePdfBlob(sale, settings) {
                 <tbody>
                   ${discountAmount > 0 ? `
                     <tr>
-                      <td style="text-align: right; padding: 2px 8px;">المجموع الفرعي:</td>
+                      <td style="text-align: right; padding: 2px 8px; letter-spacing: 0px;">المجموع الفرعي:</td>
                       <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${subtotalAmount.toLocaleString()}</td>
                     </tr>
                     <tr style="color: #ef4444;">
-                      <td style="text-align: right; padding: 2px 8px;">الخصم:</td>
+                      <td style="text-align: right; padding: 2px 8px; letter-spacing: 0px;">الخصم:</td>
                       <td style="text-align: left; padding: 2px 8px;">
                         <span dir="ltr" style="font-family: monospace; font-weight: bold; color: #dc2626; display: inline-block;">-${discountAmount.toLocaleString()}</span>
                       </td>
                     </tr>
                     <tr>
-                      <td style="text-align: right; padding: 2px 8px;">الإجمالي بعد الخصم:</td>
+                      <td style="text-align: right; padding: 2px 8px; letter-spacing: 0px;">الإجمالي بعد الخصم:</td>
                       <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
                     </tr>
                   ` : `
                     <tr>
-                      <td style="text-align: right; padding: 2px 8px;">المجموع:</td>
+                      <td style="text-align: right; padding: 2px 8px; letter-spacing: 0px;">المجموع:</td>
                       <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${totalAmount.toLocaleString()}</td>
                     </tr>
                   `}
 
                   ${isDebt ? `
                     <tr style="color: #047857; border-top: 1px solid #e2e8f0;">
-                      <td style="text-align: right; padding: 4px 8px 2px 8px;">المدفوع:</td>
+                      <td style="text-align: right; padding: 4px 8px 2px 8px; letter-spacing: 0px;">المدفوع:</td>
                       <td style="text-align: left; padding: 4px 8px 2px 8px; font-family: monospace;">${paidAmount.toLocaleString()} د.ع</td>
                     </tr>
                     <tr style="color: #be123c; font-weight: 900;">
-                      <td style="text-align: right; padding: 2px 8px;">المتبقي (الدين):</td>
+                      <td style="text-align: right; padding: 2px 8px; letter-spacing: 0px;">المتبقي (الدين):</td>
                       <td style="text-align: left; padding: 2px 8px; font-family: monospace;">${remainingDebt.toLocaleString()} د.ع</td>
                     </tr>
                   ` : ''}
@@ -420,7 +421,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
             <table style="width: 100%; background-color: #C89B3C; color: #ffffff; padding: 8px 12px;">
               <tbody>
                 <tr>
-                  <td style="text-align: right; padding: 8px 12px; font-weight: bold; font-size: 14px;">
+                  <td style="text-align: right; padding: 8px 12px; font-weight: bold; font-size: 14px; letter-spacing: 0px;">
                     ${isDebt ? 'إجمالي الفاتورة' : 'المبلغ المستحق'}
                   </td>
                   <td style="text-align: left; padding: 8px 12px; font-weight: bold; font-size: 18px; font-family: monospace;">
@@ -435,13 +436,13 @@ export async function generateInvoicePdfBlob(sale, settings) {
         <!-- Footer Notes & Info -->
         <div style="padding-top: 12px; border-top: 1px solid #e2e8f0;">
           ${settings?.description ? `
-            <div style="font-size: 10px; color: #64748b; white-space: pre-wrap; margin-bottom: 8px; width: 66%; font-weight: 500;">
-              <strong style="color: #334155; display: block; margin-bottom: 2px;">ملاحظات هامة:</strong>
+            <div style="font-size: 10px; color: #64748b; white-space: pre-wrap; margin-bottom: 8px; width: 66%; font-weight: 500; letter-spacing: 0px;">
+              <strong style="color: #334155; display: block; margin-bottom: 2px; letter-spacing: 0px;">ملاحظات هامة:</strong>
               ${settings.description}
             </div>
           ` : ''}
 
-          <div style="display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 4px; font-size: 10px; color: #64748b; font-weight: bold;">
+          <div style="display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 4px; font-size: 10px; color: #64748b; font-weight: bold; letter-spacing: 0px;">
             <span>${storeName}</span>
             ${address ? `<span>${address}</span>` : ''}
           </div>
@@ -459,7 +460,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
       await document.fonts.ready;
     } catch (e) {}
   }
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  await new Promise((resolve) => setTimeout(resolve, 400));
 
   try {
     const opt = {
@@ -472,7 +473,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
         logging: false, 
         scrollY: 0, 
         windowWidth: 794,
-        letterRendering: false,
+        letterRendering: true,
         allowTaint: true
       },
       jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' },
