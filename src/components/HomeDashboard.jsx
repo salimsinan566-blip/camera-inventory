@@ -51,6 +51,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
   const [showIncomeExpensesModal, setShowIncomeExpensesModal] = useState(false);
   const [showCashReconciliationModal, setShowCashReconciliationModal] = useState(false);
+  const [cashModalInitialTab, setCashModalInitialTab] = useState('reconcile');
   const [showAddIncomeModal, setShowAddIncomeModal] = useState(false);
   const { toast } = useUI();
 
@@ -215,6 +216,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   const todaysNet = todaysInflow - todaysOutflows;
 
   // Live Actual Cash in the Office / Drawer (حساب النقد الفعلي الدقيق في المكتب بناءً على آخر تسوية أو تراكمياً)
+  // Live Actual Cash in the Office / Drawer (حساب النقد الفعلي الدقيق في المكتب بناءً على آخر تسوية أو تراكمياً)
   const actualOfficeCash = useMemo(() => {
     if (latestReconciliation && latestReconciliation.date) {
       const recDate = new Date(latestReconciliation.date);
@@ -224,19 +226,46 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       sales.forEach((s) => {
         const sDate = toDateSafe(s.createdAt);
         if (sDate && sDate > recDate) {
+          const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
           if (s.invoiceType === 'cash' || !s.invoiceType) {
-            inflowSince += Number(s.total || 0);
+            if (!isCard) inflowSince += Number(s.total || 0);
           } else if (s.invoiceType === 'debt') {
-            inflowSince += Number(s.paidAmount || 0);
+            if (s.payments && Array.isArray(s.payments) && s.payments.length > 0) {
+              s.payments.forEach((p) => {
+                const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+                if (!isPCard) inflowSince += Number(p.amount || 0);
+              });
+            } else {
+              inflowSince += Number(s.paidAmount || 0);
+            }
+          }
+        }
+      });
+
+      // دفعات الديون اللاحقة لفواتير مسجلة قبل تاريخ التسوية
+      sales.forEach((s) => {
+        const sDate = toDateSafe(s.createdAt);
+        if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
+          if (s.payments && Array.isArray(s.payments)) {
+            s.payments.forEach((p) => {
+              const pDate = p.date ? new Date(p.date) : null;
+              if (pDate && pDate > recDate) {
+                const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+                if (!isPCard) inflowSince += Number(p.amount || 0);
+              }
+            });
           }
         }
       });
 
       incomes.forEach((inc) => {
-        const createdDate = inc.createdAt ? new Date(inc.createdAt) : null;
-        const docDate = inc.date ? new Date(inc.date) : null;
-        if ((createdDate && createdDate > recDate) || (docDate && docDate > recDate)) {
-          inflowSince += Number(inc.amount || 0);
+        const isCard = inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card' || String(inc.paymentMethod || '').includes('ماستر');
+        if (!isCard) {
+          const createdDate = inc.createdAt ? new Date(inc.createdAt) : null;
+          const docDate = inc.date ? new Date(inc.date) : null;
+          if ((createdDate && createdDate > recDate) || (docDate && docDate > recDate)) {
+            inflowSince += Number(inc.amount || 0);
+          }
         }
       });
 
@@ -311,14 +340,23 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
     // If no reconciliation exists, calculate cumulative cash
     const allDirectCashSales = sales
-      .filter((s) => s.invoiceType === 'cash' || !s.invoiceType)
+      .filter((s) => (s.invoiceType === 'cash' || !s.invoiceType) && s.paymentMethod !== 'mastercard')
       .reduce((sum, s) => sum + Number(s.total || 0), 0);
 
     const allDebtPayments = sales
       .filter((s) => s.invoiceType === 'debt')
-      .reduce((sum, s) => sum + Number(s.paidAmount || 0), 0);
+      .reduce((sum, s) => {
+        if (s.payments && Array.isArray(s.payments) && s.payments.length > 0) {
+          return sum + s.payments
+            .filter((p) => p.paymentMethod !== 'mastercard' && !String(p.paymentMethod || '').includes('ماستر') && !String(p.paymentMethod || '').includes('مصرف'))
+            .reduce((pSum, p) => pSum + Number(p.amount || 0), 0);
+        }
+        return sum + Number(s.paidAmount || 0);
+      }, 0);
 
-    const allManualIncomes = incomes.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+    const allManualIncomes = incomes
+      .filter((inc) => inc.paymentMethod !== 'mastercard' && inc.paymentMethod !== 'card' && !String(inc.paymentMethod || '').includes('ماستر'))
+      .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
     
     // Repayments of employee advances into cash drawer
     let allAdvanceRepaymentsInCash = 0;
@@ -412,9 +450,12 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         
         {/* Card 1: Live Actual Cash in Office (الصندوق والقاصة) */}
         <div 
-          onClick={() => setShowCashReconciliationModal(true)}
+          onClick={() => {
+            setCashModalInitialTab('reconcile');
+            setShowCashReconciliationModal(true);
+          }}
           className="card p-4 sm:p-5 flex flex-col justify-between gap-2.5 bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-900 text-white rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500/80 transition-all duration-200 cursor-pointer group border border-emerald-700/50 relative overflow-hidden"
-          title="انقر لجرد وتسوية رصيد القاصة الفعلي"
+          title="انقر لجرد وتسوية رصيد القاصة الفعلي وعرض السجل التاريخي"
         >
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-500"></div>
           
@@ -447,12 +488,32 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
             </span>
           </div>
 
-          <div className="text-[10px] font-bold text-emerald-300 group-hover:text-white flex items-center justify-between pt-1.5 border-t border-dashed border-emerald-700/50">
-            <span className="flex items-center gap-1">
+          <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-dashed border-emerald-700/50 text-[10px] font-bold">
+            <span 
+              onClick={(e) => {
+                e.stopPropagation();
+                setCashModalInitialTab('reconcile');
+                setShowCashReconciliationModal(true);
+              }}
+              className="text-emerald-300 hover:text-white flex items-center gap-1 hover:underline cursor-pointer"
+            >
               <span>⚖️</span>
-              <span>تسوية وجرد القاصة</span>
+              <span>تسوية</span>
             </span>
-            <span className="text-emerald-400 group-hover:translate-x-[-2px] transition-transform">←</span>
+
+            <span className="text-emerald-600 font-normal">|</span>
+
+            <span 
+              onClick={(e) => {
+                e.stopPropagation();
+                setCashModalInitialTab('history');
+                setShowCashReconciliationModal(true);
+              }}
+              className="text-emerald-300 hover:text-white flex items-center gap-1 hover:underline cursor-pointer"
+            >
+              <span>📜</span>
+              <span>سجل وتاريخ الحركات</span>
+            </span>
           </div>
         </div>
 
@@ -772,6 +833,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       {showCashReconciliationModal && (
         <CashReconciliationModal
           currentCalculatedCash={actualOfficeCash}
+          initialTab={cashModalInitialTab}
           onClose={() => setShowCashReconciliationModal(false)}
         />
       )}

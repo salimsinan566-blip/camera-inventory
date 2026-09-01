@@ -7,12 +7,13 @@ import { useEmployeeAdvances } from '../hooks/useEmployeeAdvances';
 import { useAuth } from '../hooks/useAuth';
 import { useUI } from '../contexts/UIContext';
 import { useCashReconciliation } from '../hooks/useCashReconciliation';
+import CashHistoryTab from './CashHistoryTab';
 
 function formatIQD(num) {
   return Number(Math.round(num || 0)).toLocaleString('en-US');
 }
 
-export default function CashReconciliationModal({ currentCalculatedCash = 0, currentCalculatedMastercard = 0, onClose, onReconciliationSaved }) {
+export default function CashReconciliationModal({ currentCalculatedCash = 0, currentCalculatedMastercard = 0, initialTab = 'reconcile', onClose, onReconciliationSaved }) {
   const { user } = useAuth();
   const { toast, confirm } = useUI();
   const { reconciliations } = useCashReconciliation();
@@ -28,7 +29,7 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
     totalActiveAdvancesDebt
   } = useEmployeeAdvances();
 
-  const [activeTab, setActiveTab] = useState('reconcile'); // 'reconcile' | 'advances' | 'reimbursements'
+  const [activeTab, setActiveTab] = useState(initialTab || 'reconcile'); // 'reconcile' | 'history' | 'advances' | 'reimbursements'
 
   // 1. Reconciliation Form State (Cash & Mastercard)
   const [actualAmount, setActualAmount] = useState('');
@@ -246,7 +247,7 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs" dir="rtl">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92dvh] flex flex-col overflow-hidden border border-slate-300 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92dvh] flex flex-col overflow-hidden border border-slate-300 animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
         <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
@@ -255,8 +256,8 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
               ⚖️
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">إدارة الصندوق ومطابقة القاصة</h2>
-              <p className="text-xs text-slate-300">تسوية النقد الفعلي، سلف الموظفين من القاصة، ومستحقات الدفع من الجيب</p>
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">إدارة وتاريخ الصندوق ومطابقة القاصة</h2>
+              <p className="text-xs text-slate-300">سجل الحركات التاريخي، تسوية النقد الفعلي، سلف الموظفين، والمستحقات</p>
             </div>
           </div>
           <button
@@ -272,7 +273,7 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
           <button
             type="button"
             onClick={() => setActiveTab('reconcile')}
-            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
               activeTab === 'reconcile'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:bg-slate-200'
@@ -284,8 +285,21 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
 
           <button
             type="button"
+            onClick={() => setActiveTab('history')}
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
+              activeTab === 'history'
+                ? 'bg-white text-emerald-950 shadow-xs border-b-2 border-emerald-600'
+                : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>📜</span>
+            <span>سجل وتاريخ الصندوق اليومي</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('advances')}
-            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 ${
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 ${
               activeTab === 'advances'
                 ? 'bg-white text-indigo-950 shadow-xs'
                 : 'text-slate-600 hover:bg-slate-200'
@@ -303,7 +317,7 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
           <button
             type="button"
             onClick={() => setActiveTab('reimbursements')}
-            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 ${
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 ${
               activeTab === 'reimbursements'
                 ? 'bg-white text-indigo-950 shadow-xs'
                 : 'text-slate-600 hover:bg-slate-200'
@@ -737,6 +751,11 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
                 </div>
               )}
             </div>
+          )}
+
+          {/* TAB 4: CASH DRAWER HISTORY & DAILY LEDGER */}
+          {activeTab === 'history' && (
+            <CashHistoryTab />
           )}
 
         </div>

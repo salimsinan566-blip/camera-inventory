@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const { user } = useAuth();
   const { toast, confirm, backupTask, startBackgroundBackup } = useUI();
   const { settings, loading: settingsLoading } = useSettings();
-  const { laborCharges, loading: laborLoading } = useLaborCharges();
+  const { laborCharges = [], loading: laborLoading } = useLaborCharges();
 
   const [activeTab, setActiveTab] = useState('store'); // 'store' | 'users' | 'categories' | 'labor' | 'whatsapp' | 'backup'
   
@@ -268,6 +268,11 @@ export default function SettingsScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
   const [savingCategoryAction, setSavingCategoryAction] = useState(false);
+
+  // Labor charges state
+  const [newLabor, setNewLabor] = useState({ name: '', price: '' });
+  const [editingLaborId, setEditingLaborId] = useState(null);
+  const [editLabor, setEditLabor] = useState({ name: '', price: '' });
 
   useEffect(() => {
     if (settings) {
