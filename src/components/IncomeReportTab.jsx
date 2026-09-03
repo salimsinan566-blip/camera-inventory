@@ -109,15 +109,16 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
   // Filter Supplier Debt Payments
   const filteredSupplierPayments = useMemo(() => {
     return supplierDebtPayments.filter((p) => {
-      const dateStr = (p.date || '').slice(0, 10);
-      const monthStr = (p.date || '').slice(0, 7);
+      if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening') return false;
+      const dateStr = (p.paymentDate || p.date || p.createdAt || '').slice(0, 10);
+      const monthStr = (p.paymentDate || p.date || p.createdAt || '').slice(0, 7);
 
       if (period === 'today') return dateStr === todayStr;
       if (period === 'month') return monthStr === currentMonthStr;
       if (period === 'week') {
         const d = new Date();
         d.setDate(d.getDate() - 7);
-        const pDate = new Date(dateStr);
+        const pDate = new Date(p.paymentDate || p.date || p.createdAt);
         return pDate >= d;
       }
       if (period === 'custom') {
@@ -347,7 +348,8 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       });
 
       supplierDebtPayments.forEach((p) => {
-        const pDate = new Date(p.date);
+        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening') return;
+        const pDate = new Date(p.paymentDate || p.date || p.createdAt);
         if (pDate > recDate) {
           cashOutflowSince += Number(p.amount || 0);
         }
@@ -390,7 +392,9 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
 
     const allExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     const allCashPurchases = purchases.reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
-    const allSupplierDebtPayments = supplierDebtPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const allSupplierDebtPayments = supplierDebtPayments
+      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     return {
       liveDrawerCash: allDirectCash - (allExpenses + allCashPurchases + allSupplierDebtPayments),

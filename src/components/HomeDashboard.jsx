@@ -181,7 +181,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         return sum + actualFromDrawer;
       }, 0);
     const spCash = (supplierDebtPayments || [])
-      .filter((sp) => (sp.date || '').slice(0, 10) === todayStr)
+      .filter((sp) => sp.paymentSource !== 'management' && sp.paymentSource !== 'previous_opening' && (sp.paymentDate || sp.date || sp.createdAt || '').slice(0, 10) === todayStr)
       .reduce((sum, sp) => sum + (Number(sp.amount) || 0), 0);
     
     // Employee reimbursements settled from drawer today
@@ -312,7 +312,8 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       });
 
       (supplierDebtPayments || []).forEach((p) => {
-        const pDate = new Date(p.date);
+        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening') return;
+        const pDate = new Date(p.paymentDate || p.date || p.createdAt);
         if (pDate > recDate) {
           outflowSince += Number(p.amount || 0);
         }
@@ -387,7 +388,9 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         : Number(p.paidAmount || 0);
       return sum + actualDrawerPaid;
     }, 0);
-    const allSupplierDebtPayments = (supplierDebtPayments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const allSupplierDebtPayments = (supplierDebtPayments || [])
+      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const allReimbursementsFromDrawer = (reimbursements || [])
       .filter((r) => r.status === 'reimbursed' && r.reimbursementSource === 'cash_drawer')
       .reduce((sum, r) => sum + Number(r.reimbursedAmount || r.amount || 0), 0);

@@ -548,13 +548,162 @@ export async function createPurchaseInvoice({
 }
 
 /**
- * تسديد دفعة من ديون مورد
+ * تسجيل دين سابق / رصيد افتتاحي لمورد (قبل عمل النظام وبدون إدخال مواد)
+ */
+export async function recordSupplierOpeningDebt({
+  supplierName,
+  supplierPhone = '',
+  debtAmount,
+  paidAmount = 0,
+  invoiceNumber = '',
+  notes = '',
+  date = new Date().toISOString(),
+  invoiceImageUrl = null,
+  invoiceFileType = null,
+  invoiceFileName = '',
+  createdBy = 'المسؤول'
+}) {
+  const cleanSupplierName = (supplierName || '').trim();
+  if (!cleanSupplierName) {
+    throw new Error('يرجى إدخال اسم المورد أو الشركة الدائنة');
+  }
+  const numTotalDebt = Number(debtAmount);
+  if (isNaN(numTotalDebt) || numTotalDebt <= 0) {
+    throw new Error('يرجى إدخال مبلغ دين سابق صحيح أكبر من الصفر');
+  }
+
+  const numPaid = Math.max(0, Number(paidAmount) || 0);
+  const remainingAmount = Math.max(0, numTotalDebt - numPaid);
+  const paymentStatus = numPaid === 0 ? 'debt' : (numPaid >= numTotalDebt ? 'paid' : 'partial');
+
+  const generatedInvoiceNumber = (invoiceNumber || '').trim() || `PREV-DEBT-${Date.now().toString().slice(-6)}`;
+  const supplierDocId = cleanSupplierName.replace(/[\/\\]/g, '_');
+
+  let detectedFileType = invoiceFileType;
+  if (!detectedFileType && invoiceImageUrl) {
+    if (invoiceImageUrl.startsWith('data:application/pdf') || invoiceImageUrl.includes('.pdf')) {
+      detectedFileType = 'pdf';
+    } else {
+      detectedFileType = 'image';
+    }
+  }
+
+  return await runOfflineSafeTransaction(db, async (transaction) => {
+    // 1. Read supplier debt record if exists
+    const supplierRef = doc(db, SUPPLIER_DEBTS_COLLECTION, supplierDocId);
+    const supplierSnap = await transaction.get(supplierRef);
+
+    // 2. Create Purchase Document (without items)
+    const purchaseRef = doc(collection(db, PURCHASES_COLLECTION));
+    transaction.set(purchaseRef, {
+      invoiceNumber: generatedInvoiceNumber,
+      supplierName: cleanSupplierName,
+      supplierPhone: (supplierPhone || '').trim(),
+      items: [],
+      itemsTotalAmount: numTotalDebt,
+      shippingCost: 0,
+      distributeShippingToCost: false,
+      totalAmount: numTotalDebt,
+      paidAmount: numPaid,
+      remainingAmount,
+      paymentStatus,
+      isOpeningDebt: true,
+      paidOutOfPocket: false,
+      outOfPocketAmount: 0,
+      outOfPocketEmployeeName: '',
+      paidFromCashDrawerAmount: 0, // Opening debt itself is not paid from current drawer
+      invoiceImageUrl: invoiceImageUrl || null,
+      invoiceFileType: detectedFileType || null,
+      invoiceFileName: invoiceFileName || '',
+      notes: (notes || '').trim() || 'دين سابق مرحل قبل تشغيل النظام (رصيد افتتاحي)',
+      date: date || new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      createdBy: createdBy || 'المسؤول'
+    });
+
+    // 3. Update / Create Supplier Debt Record
+    const prevDebtData = supplierSnap.exists() ? supplierSnap.data() : {
+      supplierName: cleanSupplierName,
+      supplierPhone: (supplierPhone || '').trim(),
+      totalPurchases: 0,
+      totalPaid: 0,
+      remainingDebt: 0,
+      invoicesCount: 0
+    };
+
+    const newTotalPurchases = (Number(prevDebtData.totalPurchases) || 0) + numTotalDebt;
+    const newTotalPaid = (Number(prevDebtData.totalPaid) || 0) + numPaid;
+    const newRemainingDebt = Math.max(0, newTotalPurchases - newTotalPaid);
+
+    transaction.set(supplierRef, {
+      supplierName: cleanSupplierName,
+      supplierPhone: (supplierPhone || '').trim() || prevDebtData.supplierPhone || '',
+      totalPurchases: newTotalPurchases,
+      totalPaid: newTotalPaid,
+      remainingDebt: newRemainingDebt,
+      invoicesCount: (Number(prevDebtData.invoicesCount) || 0) + 1,
+      hasOpeningDebt: true,
+      lastPurchaseDate: date || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // 4. Save/update in suppliers collection for quick dropdown list
+    const savedSupplierRef = doc(db, SUPPLIERS_COLLECTION, supplierDocId);
+    transaction.set(savedSupplierRef, {
+      name: cleanSupplierName,
+      phone: (supplierPhone || '').trim() || prevDebtData.supplierPhone || '',
+      lastPurchaseDate: date || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // 5. If there was an initial partial payment recorded with it
+    if (numPaid > 0) {
+      const paymentRef = doc(collection(db, DEBT_PAYMENTS_COLLECTION));
+      const payIso = date || new Date().toISOString();
+      transaction.set(paymentRef, {
+        supplierId: supplierDocId,
+        supplierName: cleanSupplierName,
+        purchaseId: purchaseRef.id,
+        invoiceNumber: generatedInvoiceNumber,
+        amount: numPaid,
+        date: payIso,
+        paymentDate: payIso,
+        paymentMethod: 'نقدي',
+        paymentSource: 'previous_opening', // Not from current live cash drawer
+        notes: 'دفعة سابقة مسددة قبل بدء النظام',
+        createdAt: new Date().toISOString(),
+        createdBy: createdBy || 'المسؤول'
+      });
+    }
+
+    // 6. Audit Log
+    const invLogRef = doc(collection(db, 'inventory_logs'));
+    transaction.set(invLogRef, {
+      action: 'supplier_opening_debt_recorded',
+      supplierName: cleanSupplierName,
+      invoiceNumber: generatedInvoiceNumber,
+      debtAmount: numTotalDebt,
+      paidAmount: numPaid,
+      remainingAmount,
+      notes: `تسجيل دين سابق / رصيد افتتاحي للمورد: ${cleanSupplierName} بمبلغ (${numTotalDebt.toLocaleString()} د.ع) بدون مواد مخزنية`,
+      performedBy: createdBy || 'المسؤول',
+      timestamp: new Date().toISOString()
+    });
+
+    return purchaseRef.id;
+  });
+}
+
+/**
+ * تسديد دفعة من ديون مورد مع الخصم الفعلي من الصندوق / القاصة
  */
 export async function recordSupplierDebtPayment({
   supplierName,
   amount,
   paymentMethod = 'نقدي',
+  paymentSource = 'cash_drawer', // 'cash_drawer' | 'management'
   notes = '',
+  date = null,
   purchaseInvoiceId = null,
   createdBy = ''
 }) {
@@ -564,6 +713,7 @@ export async function recordSupplierDebtPayment({
 
   const cleanSupplierName = supplierName.trim();
   const supplierDocId = cleanSupplierName.replace(/[\/\\]/g, '_');
+  const paymentIsoDate = date ? (typeof date === 'string' && date.includes('T') ? date : new Date(date).toISOString()) : new Date().toISOString();
 
   return await runOfflineSafeTransaction(db, async (transaction) => {
     const supplierRef = doc(db, SUPPLIER_DEBTS_COLLECTION, supplierDocId);
@@ -585,11 +735,11 @@ export async function recordSupplierDebtPayment({
     transaction.update(supplierRef, {
       totalPaid: newTotalPaid,
       remainingDebt: newRemainingDebt,
-      lastPaymentDate: new Date().toISOString(),
+      lastPaymentDate: paymentIsoDate,
       updatedAt: new Date().toISOString()
     });
 
-    // Record in debt_payments collection
+    // Record in debt_payments collection with date and paymentDate populated
     const paymentRef = doc(collection(db, DEBT_PAYMENTS_COLLECTION));
     transaction.set(paymentRef, {
       supplierId: supplierDocId,

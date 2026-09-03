@@ -4,6 +4,7 @@ import {
   createPurchaseInvoice,
   updatePurchaseInvoice,
   recordSupplierDebtPayment,
+  recordSupplierOpeningDebt,
   deletePurchaseInvoice,
   deleteSupplierDebtRecord,
   deleteSavedSupplier,
@@ -125,11 +126,31 @@ export default function PurchasesScreen({ products = [], user }) {
     location: 'store'
   });
 
+  // Supplier Opening Debt Modal State (دين سابق / رصيد افتتاحي قبل النظام)
+  const [showOpeningDebtModal, setShowOpeningDebtModal] = useState(false);
+  const [openingSupplierName, setOpeningSupplierName] = useState('');
+  const [openingSupplierPhone, setOpeningSupplierPhone] = useState('');
+  const [showOpeningSupplierDropdown, setShowOpeningSupplierDropdown] = useState(false);
+  const [openingDebtAmount, setOpeningDebtAmount] = useState('');
+  const [openingPaidAmount, setOpeningPaidAmount] = useState('');
+  const [openingInvoiceNumber, setOpeningInvoiceNumber] = useState('');
+  const [openingDate, setOpeningDate] = useState(new Date().toISOString().slice(0, 10));
+  const [openingNotes, setOpeningNotes] = useState('');
+  const [openingImageUrl, setOpeningImageUrl] = useState(null);
+  const [openingFileType, setOpeningFileType] = useState(null); // 'image' | 'pdf'
+  const [openingFileName, setOpeningFileName] = useState('');
+  const [openingImagePreview, setOpeningImagePreview] = useState(null);
+  const [savingOpeningDebt, setSavingOpeningDebt] = useState(false);
+  const openingFileInputRef = useRef(null);
+  const openingCameraInputRef = useRef(null);
+
   // Debt Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedSupplierForPayment, setSelectedSupplierForPayment] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('نقدي');
+  const [paymentSource, setPaymentSource] = useState('cash_drawer'); // 'cash_drawer' | 'management'
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentNotes, setPaymentNotes] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
@@ -175,6 +196,14 @@ export default function PurchasesScreen({ products = [], user }) {
       s.name.toLowerCase().includes(term) || (s.phone && s.phone.includes(term))
     );
   }, [knownSuppliers, supplierName]);
+
+  const filteredOpeningSuppliers = useMemo(() => {
+    if (!openingSupplierName.trim()) return knownSuppliers;
+    const term = openingSupplierName.toLowerCase().trim();
+    return knownSuppliers.filter(s =>
+      s.name.toLowerCase().includes(term) || (s.phone && s.phone.includes(term))
+    );
+  }, [knownSuppliers, openingSupplierName]);
 
   const handleSelectSupplier = (s) => {
     setSupplierName(s.name);
@@ -736,11 +765,119 @@ export default function PurchasesScreen({ products = [], user }) {
     }
   };
 
+  // Handle Opening Debt Reset
+  const handleResetOpeningDebtForm = () => {
+    setOpeningSupplierName('');
+    setOpeningSupplierPhone('');
+    setShowOpeningSupplierDropdown(false);
+    setOpeningDebtAmount('');
+    setOpeningPaidAmount('');
+    setOpeningInvoiceNumber('');
+    setOpeningDate(new Date().toISOString().slice(0, 10));
+    setOpeningNotes('');
+    setOpeningImageUrl(null);
+    setOpeningFileType(null);
+    setOpeningFileName('');
+    setOpeningImagePreview(null);
+  };
+
+  // Handle Opening Debt Submit
+  const handleSubmitOpeningDebt = async (e) => {
+    e.preventDefault();
+    if (!openingSupplierName.trim()) {
+      toast('يرجى إدخال اسم المورد أو الشركة الدائنة', 'error');
+      return;
+    }
+    const numDebt = Number(openingDebtAmount);
+    if (!numDebt || numDebt <= 0) {
+      toast('يرجى إدخال مبلغ الدين السابق بشكل صحيح (أكبر من 0)', 'error');
+      return;
+    }
+
+    const numPaid = openingPaidAmount ? Number(openingPaidAmount) : 0;
+    if (numPaid < 0 || numPaid > numDebt) {
+      toast(`المبلغ المسدد (${formatIQD(numPaid)}) لا يمكن أن يتجاوز مبلغ الدين الإجمالي (${formatIQD(numDebt)})`, 'error');
+      return;
+    }
+
+    setSavingOpeningDebt(true);
+    try {
+      await recordSupplierOpeningDebt({
+        supplierName: openingSupplierName.trim(),
+        supplierPhone: openingSupplierPhone.trim(),
+        debtAmount: numDebt,
+        paidAmount: numPaid,
+        invoiceNumber: openingInvoiceNumber.trim(),
+        notes: openingNotes.trim(),
+        date: openingDate ? new Date(openingDate).toISOString() : new Date().toISOString(),
+        invoiceImageUrl: openingImageUrl,
+        invoiceFileType: openingFileType,
+        invoiceFileName: openingFileName,
+        createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
+      });
+
+      toast(`تم تسجيل الدين السابق للمورد (${openingSupplierName.trim()}) بمبلغ ${formatIQD(numDebt)} د.ع بنجاح! 📑✨`, 'success');
+      handleResetOpeningDebtForm();
+      setShowOpeningDebtModal(false);
+      setActiveTab('debts');
+    } catch (err) {
+      console.error(err);
+      toast(`فشل تسجيل الدين السابق: ${err.message}`, 'error');
+    } finally {
+      setSavingOpeningDebt(false);
+    }
+  };
+
+  // Handle Opening Debt File Upload
+  const handleOpeningFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    if (isPdf) {
+      try {
+        toast('جاري قراءة ملف PDF لكشف الحساب / الوصل...', 'info');
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+          const base64Result = reader.result;
+          setOpeningImageUrl(base64Result);
+          setOpeningImagePreview(base64Result);
+          setOpeningFileType('pdf');
+          setOpeningFileName(file.name);
+          toast(`تم إرفاق ملف PDF (${file.name}) بنجاح! 📑`, 'success');
+        };
+        reader.onerror = (err) => {
+          toast('فشل قراءة ملف الـ PDF: ' + err.message, 'error');
+        };
+      } catch (err) {
+        console.error(err);
+        toast('فشل إرفاق ملف الـ PDF: ' + err.message, 'error');
+      }
+    } else {
+      try {
+        toast('جاري ضغط ومعالجة صورة الوصل أو كشف الحساب...', 'info');
+        const compressedBase64 = await compressImage(file);
+        setOpeningImageUrl(compressedBase64);
+        setOpeningImagePreview(compressedBase64);
+        setOpeningFileType('image');
+        setOpeningFileName(file.name);
+        toast('تم إرفاق صورة المستند بنجاح! 📷', 'success');
+      } catch (err) {
+        console.error(err);
+        toast('فشل معالجة الصورة: ' + err.message, 'error');
+      }
+    }
+  };
+
   // Open Debt Payment Modal
   const handleOpenPayment = (supplier) => {
     setSelectedSupplierForPayment(supplier);
     setPaymentAmount(supplier.remainingDebt || '');
     setPaymentMethod('نقدي');
+    setPaymentSource('cash_drawer');
+    setPaymentDate(new Date().toISOString().slice(0, 10));
     setPaymentNotes('');
     setShowPaymentModal(true);
   };
@@ -760,11 +897,14 @@ export default function PurchasesScreen({ products = [], user }) {
         supplierName: selectedSupplierForPayment.supplierName,
         amount,
         paymentMethod,
+        paymentSource,
+        date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString(),
         notes: paymentNotes,
         createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
       });
 
-      toast(`تم تسجيل سداد دفعة بمبلغ ${formatIQD(amount)} د.ع للمورد (${selectedSupplierForPayment.supplierName}) بنجاح! 💵✨`, 'success');
+      const isDrawer = paymentSource === 'cash_drawer' || paymentMethod === 'نقدي';
+      toast(`تم تسجيل سداد دفعة بمبلغ ${formatIQD(amount)} د.ع للمورد (${selectedSupplierForPayment.supplierName})${isDrawer ? ' (تم الخصم من القاصة 💵)' : ''} بنجاح! ✨`, 'success');
       setShowPaymentModal(false);
       setSelectedSupplierForPayment(null);
     } catch (err) {
@@ -807,7 +947,20 @@ export default function PurchasesScreen({ products = [], user }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              handleResetOpeningDebtForm();
+              setShowOpeningDebtModal(true);
+            }}
+            className="px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
+            title="تسجيل رصيد دين سابق لمورد يطلبك ياه قبل بدء العمل بالنظام بدون إدخال مواد مخزنية"
+          >
+            <span>📝</span>
+            <span>تسجيل دين سابق لمورد (رصيد افتتاحي)</span>
+          </button>
+
           <button
             onClick={() => {
               if (currentDraftId) handleResetForm();
@@ -998,10 +1151,25 @@ export default function PurchasesScreen({ products = [], user }) {
 
           {/* Supplier & Invoice Header Card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100">
-              <span>🏢</span>
-              <span>بيانات المورد وحالة السداد والتاريخ</span>
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <span>🏢</span>
+                <span>بيانات المورد وحالة السداد والتاريخ</span>
+              </h3>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetOpeningDebtForm();
+                  setShowOpeningDebtModal(true);
+                }}
+                className="text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3 py-1 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs self-start sm:self-auto"
+                title="تسجيل دين قديم سابق للمورد بدون إدخال مواد"
+              >
+                <span>📝</span>
+                <span>تسجيل دين سابق لمورد (بدون مواد) 👈</span>
+              </button>
+            </div>
 
             {/* Quick Supplier Chips */}
             {knownSuppliers.length > 0 && (
@@ -1911,14 +2079,35 @@ export default function PurchasesScreen({ products = [], user }) {
       {activeTab === 'debts' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <span>📑</span>
-                <span>كشف حساب الموردين والجهات الدائنة</span>
-              </h3>
-              <span className="text-xs text-slate-500 font-bold">
-                إجمالي الديون المتبقية: <strong className="text-rose-700 font-mono">{formatIQD(stats.totalRemainingDebt)} د.ع</strong>
-              </span>
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <span>📑</span>
+                  <span>كشف حساب الموردين والجهات الدائنة</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  متابعة وتصفية ديون الموردين، وإجراء دفعات السداد النقدية مع خصمها التلقائي من القاصة.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs text-slate-600 font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                  إجمالي الديون المتبقية: <strong className="text-rose-700 font-mono text-sm">{formatIQD(stats.totalRemainingDebt)} د.ع</strong>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResetOpeningDebtForm();
+                    setShowOpeningDebtModal(true);
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="تسجيل دين سابق لمورد بدون إدخال مواد"
+                >
+                  <span>➕</span>
+                  <span>تسجيل دين سابق / رصيد افتتاحي</span>
+                </button>
+              </div>
             </div>
 
             {supplierDebts.length === 0 ? (
@@ -1933,8 +2122,8 @@ export default function PurchasesScreen({ products = [], user }) {
                     <tr>
                       <th className="p-3">المورد / الدائن</th>
                       <th className="p-3">رقم الهاتف</th>
-                      <th className="p-3">عدد الفواتير</th>
-                      <th className="p-3">إجمالي المشتريات</th>
+                      <th className="p-3">عدد الفواتير / السجلات</th>
+                      <th className="p-3">إجمالي المطالبات</th>
                       <th className="p-3">المسدد له</th>
                       <th className="p-3">الدين المتبقي عليه</th>
                       <th className="p-3 text-center">إجراءات</th>
@@ -1945,8 +2134,15 @@ export default function PurchasesScreen({ products = [], user }) {
                       const hasDebt = Number(s.remainingDebt) > 0;
                       return (
                         <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-3 font-bold text-slate-900 text-sm">
-                            {s.supplierName}
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-sm">{s.supplierName}</span>
+                              {s.hasOpeningDebt && (
+                                <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-1.5 py-0.2 rounded" title="يشمل رصيد دين سابق تم ترحيله">
+                                  رصيد سابق
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-slate-500 font-mono">
                             {s.supplierPhone || '—'}
@@ -2139,8 +2335,17 @@ export default function PurchasesScreen({ products = [], user }) {
                         <td className="p-3 font-bold text-slate-900">
                           {p.supplierName}
                         </td>
-                        <td className="p-3 max-w-xs truncate text-slate-600" title={(p.items || []).map(i => `${i.name} (${i.quantity})`).join(', ')}>
-                          {(p.items || []).map(i => `${i.name} (${i.quantity})`).join(', ')}
+                        <td className="p-3 max-w-xs text-slate-600">
+                          {p.isOpeningDebt || (!p.items || p.items.length === 0) ? (
+                            <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 rounded-md text-[11px] font-bold">
+                              <span>🏷️</span>
+                              <span>دين سابق / رصيد افتتاحي (بدون مواد)</span>
+                            </span>
+                          ) : (
+                            <span className="truncate block" title={(p.items || []).map(i => `${i.name} (${i.quantity})`).join(', ')}>
+                              {(p.items || []).map(i => `${i.name} (${i.quantity})`).join(', ')}
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 font-bold text-slate-700 font-mono">
                           {formatIQD(p.itemsTotalAmount || p.totalAmount)} د.ع
@@ -2385,19 +2590,56 @@ export default function PurchasesScreen({ products = [], user }) {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">طريقة الدفع</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="نقدي">نقدي (كاش)</option>
-                  <option value="حوالة / صيرفة">حوالة / صيرفة</option>
-                  <option value="زين كاش / مصرفي">زين كاش / مصرفي</option>
-                  <option value="صك">صك</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">طريقة الدفع</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => {
+                      setPaymentMethod(e.target.value);
+                      if (e.target.value === 'نقدي') {
+                        setPaymentSource('cash_drawer');
+                      }
+                    }}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="نقدي">نقدي (كاش من القاصة) 💵</option>
+                    <option value="حوالة / صيرفة">حوالة / صيرفة 🏦</option>
+                    <option value="زين كاش / مصرفي">زين كاش / مصرفي 📱</option>
+                    <option value="صك">صك 📜</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">مصدر الخصم المالي</label>
+                  <select
+                    value={paymentSource}
+                    onChange={(e) => setPaymentSource(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="cash_drawer">الصندوق / القاصة 🏦 (يخصم من القاصة)</option>
+                    <option value="management">حساب خارجي / الإدارة 💼 (لا يخصم من القاصة)</option>
+                  </select>
+                </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">تاريخ الدفعة</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Info note about cash deduction */}
+              {(paymentSource === 'cash_drawer' || paymentMethod === 'نقدي') && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-900 font-bold animate-fade-in">
+                  <span>💵</span>
+                  <span>سيتم خصم هذا المبلغ فوراً من نقد القاصة اليومي وتوثيقه في كشف الصندوق واليومية.</span>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات السداد (اختياري)</label>
@@ -2405,7 +2647,7 @@ export default function PurchasesScreen({ products = [], user }) {
                   type="text"
                   value={paymentNotes}
                   onChange={(e) => setPaymentNotes(e.target.value)}
-                  placeholder="مثال: دفعة عن فاتورة الأسبوع الماضي..."
+                  placeholder="مثال: دفعة عن الرصيد السابق، وصل قبض رقم..."
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                 />
               </div>
@@ -2421,9 +2663,326 @@ export default function PurchasesScreen({ products = [], user }) {
                 <button
                   type="submit"
                   disabled={submittingPayment}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl shadow-md cursor-pointer"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  {submittingPayment ? 'جاري السداد...' : 'تأكيد السداد 💵'}
+                  <span>{submittingPayment ? 'جاري السداد والخصم...' : 'تأكيد السداد والخصم من الصندوق 💵'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* OPENING DEBT MODAL (تسجيل دين سابق لمورد بدون مواد) */}
+      {/* ---------------------------------------------------- */}
+      {showOpeningDebtModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-amber-600 to-amber-700 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center text-xl shadow-inner">
+                  📝
+                </div>
+                <div>
+                  <h3 className="text-base font-black">تسجيل دين سابق لمورد (رصيد افتتاحي)</h3>
+                  <p className="text-xs text-amber-100 mt-0.5">تسجيل ديون قديمة ومرحلة قبل تشغيل النظام بدون مواد مخزنية</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetOpeningDebtForm();
+                  setShowOpeningDebtModal(false);
+                }}
+                className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white text-sm font-bold cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body Form */}
+            <form onSubmit={handleSubmitOpeningDebt} className="p-6 space-y-4 overflow-y-auto">
+              {/* Informative Guidance Alert */}
+              <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-2xl flex items-start gap-2.5 text-xs text-amber-950 leading-relaxed shadow-2xs">
+                <span className="text-lg shrink-0 mt-0.5">📌</span>
+                <div>
+                  <strong className="block font-bold mb-0.5">توضيح مهم:</strong>
+                  هذا الإجراء مخصص لتسجيل المبالغ التي يطلبك إياها المورد قبل بدء العمل بالنظام. لن يتم إدخال أي أصناف إلى المخزن، بل سيتم فتح أو زيادة رصيد دين المورد في كشف الحساب لتتمكن من سداده لاحقاً من القاصة.
+                </div>
+              </div>
+
+              {/* Supplier Selection with Autocomplete */}
+              <div className="relative">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">اسم المورد / الشركة الدائنة *</label>
+                  {knownSuppliers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowOpeningSupplierDropdown(!showOpeningSupplierDropdown)}
+                      className="text-[10px] text-amber-700 hover:text-amber-900 font-bold underline cursor-pointer"
+                    >
+                      {showOpeningSupplierDropdown ? 'إغلاق القائمة ✕' : `اختيار مورد سابق (${knownSuppliers.length}) ▼`}
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={openingSupplierName}
+                  onFocus={() => setShowOpeningSupplierDropdown(true)}
+                  onChange={(e) => {
+                    setOpeningSupplierName(e.target.value);
+                    setShowOpeningSupplierDropdown(true);
+                  }}
+                  placeholder="مثال: شركة الرواد، داهوا العراق، المورد علي..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                />
+
+                {/* Dropdown Menu */}
+                {showOpeningSupplierDropdown && filteredOpeningSuppliers.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
+                    <div className="p-2 bg-slate-50 text-[10px] font-bold text-slate-500 flex items-center justify-between">
+                      <span>الموردين المسجلين ({filteredOpeningSuppliers.length}):</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowOpeningSupplierDropdown(false)}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {filteredOpeningSuppliers.map((s, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setOpeningSupplierName(s.name);
+                          if (s.phone) setOpeningSupplierPhone(s.phone);
+                          setShowOpeningSupplierDropdown(false);
+                        }}
+                        className="p-2.5 flex items-center justify-between hover:bg-amber-50 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span>🏢</span>
+                          <span className="text-xs font-bold text-slate-800 truncate">{s.name}</span>
+                          {s.phone && (
+                            <span className="text-[11px] text-slate-400 font-mono mr-2">
+                              📞 {s.phone}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.5 rounded">اختيار</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Supplier Phone */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">رقم هاتف المورد (اختياري)</label>
+                <input
+                  type="text"
+                  value={openingSupplierPhone}
+                  onChange={(e) => setOpeningSupplierPhone(e.target.value)}
+                  placeholder="0770XXXXXXX"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                />
+              </div>
+
+              {/* Debt Amounts */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-amber-50/50 rounded-2xl border border-amber-200">
+                <div>
+                  <label className="block text-xs font-black text-rose-900 mb-1">
+                    مبلغ الدين السابق المطلوب (د.ع) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={openingDebtAmount}
+                      onChange={(e) => setOpeningDebtAmount(e.target.value)}
+                      placeholder="مثال: 500000"
+                      className="w-full p-2.5 bg-white border border-rose-300 rounded-xl text-sm font-bold font-mono focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400">د.ع</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    المبلغ المسدد منه سابقاً إن وجد (د.ع)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max={openingDebtAmount || undefined}
+                      value={openingPaidAmount}
+                      onChange={(e) => setOpeningPaidAmount(e.target.value)}
+                      placeholder="0"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400">د.ع</span>
+                  </div>
+                </div>
+
+                {Number(openingDebtAmount) > 0 && (
+                  <div className="sm:col-span-2 pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">صافي الدين المتبقي المستحق للمورد:</span>
+                    <span className="font-black font-mono text-rose-700 text-sm">
+                      {formatIQD(Math.max(0, (Number(openingDebtAmount) || 0) - (Number(openingPaidAmount) || 0)))} د.ع
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Reference & Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    رقم الوصل / المرجع القديم (اختياري)
+                  </label>
+                  <input
+                    type="text"
+                    value={openingInvoiceNumber}
+                    onChange={(e) => setOpeningInvoiceNumber(e.target.value)}
+                    placeholder="مثال: دفتر قديم / وصل 84"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تاريخ الدين / الرصيد</label>
+                  <input
+                    type="date"
+                    value={openingDate}
+                    onChange={(e) => setOpeningDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">بيان وملاحظات الدين (اختياري)</label>
+                <textarea
+                  rows="2"
+                  value={openingNotes}
+                  onChange={(e) => setOpeningNotes(e.target.value)}
+                  placeholder="مثال: حساب بضاعة سابقة قبل تشغيل البرنامج، تم الاتفاق على السداد على دفعات..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white resize-none"
+                />
+              </div>
+
+              {/* Attachment (Images & PDF) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  مرفق المستند / كشف الحساب القديم (صورة أو PDF)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="file"
+                    ref={openingFileInputRef}
+                    accept="image/*,application/pdf,.pdf"
+                    onChange={handleOpeningFileUpload}
+                    className="hidden"
+                  />
+                  <input
+                    type="file"
+                    ref={openingCameraInputRef}
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleOpeningFileUpload}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => openingFileInputRef.current?.click()}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <span>📁</span>
+                    <span>{openingImagePreview ? 'تغيير الملف / الصورة' : 'رفع مستند (صورة أو PDF)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openingCameraInputRef.current?.click()}
+                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <span>📷</span>
+                    <span>تصوير بالكاميرا</span>
+                  </button>
+
+                  {openingImagePreview && (
+                    <div className="flex items-center gap-2 mr-auto bg-slate-50 px-2 py-1 rounded-xl border border-slate-200">
+                      {isPdfAttachment(openingImageUrl, openingFileType) ? (
+                        <div
+                          onClick={() => setViewingAttachment({
+                            url: openingImageUrl,
+                            type: 'pdf',
+                            title: openingFileName || 'ملف PDF المرفق'
+                          })}
+                          className="flex items-center gap-1.5 cursor-pointer text-indigo-600 hover:text-indigo-800"
+                        >
+                          <span className="text-lg">📑</span>
+                          <span className="text-xs font-bold font-mono underline max-w-[130px] truncate">
+                            {openingFileName || 'ملف PDF'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => setViewingAttachment({
+                            url: openingImageUrl,
+                            type: 'image',
+                            title: 'معاينة صورة المستند'
+                          })}
+                          className="w-8 h-8 rounded-lg border border-slate-300 overflow-hidden bg-slate-100 shrink-0 cursor-pointer hover:opacity-80"
+                          title="معاينة الصورة"
+                        >
+                          <img src={openingImagePreview} alt="Receipt" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpeningImageUrl(null);
+                          setOpeningImagePreview(null);
+                          setOpeningFileType(null);
+                          setOpeningFileName('');
+                        }}
+                        className="text-xs text-red-500 hover:text-red-700 cursor-pointer font-bold p-1 hover:bg-red-50 rounded"
+                        title="إلغاء المرفق"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3 sticky bottom-0 bg-white">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResetOpeningDebtForm();
+                    setShowOpeningDebtModal(false);
+                  }}
+                  className="px-4 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingOpeningDebt}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <span>{savingOpeningDebt ? 'جاري تسجيل الدين...' : 'حفظ الدين السابق في كشف الحساب 💾'}</span>
                 </button>
               </div>
             </form>

@@ -142,8 +142,9 @@ export function useCashDrawerLedger(selectedDateStr) {
       });
 
       (supplierDebtPayments || []).forEach((p) => {
-        const pDate = new Date(p.date);
-        if (pDate > recDate) {
+        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening') return;
+        const pDate = toDateSafe(p.paymentDate || p.date || p.createdAt);
+        if (pDate && pDate > recDate) {
           outflowSince += Number(p.amount || 0);
         }
       });
@@ -216,7 +217,9 @@ export function useCashDrawerLedger(selectedDateStr) {
       return sum + actualDrawerPaid;
     }, 0);
 
-    const allSupplierDebtPayments = (supplierDebtPayments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const allSupplierDebtPayments = (supplierDebtPayments || [])
+      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const allReimbursementsFromDrawer = (reimbursements || [])
       .filter((r) => r.status === 'reimbursed' && r.reimbursementSource === 'cash_drawer')
       .reduce((sum, r) => sum + Number(r.reimbursedAmount || r.amount || 0), 0);
@@ -413,7 +416,8 @@ export function useCashDrawerLedger(selectedDateStr) {
 
     // ز) تسديدات ديون الموردين من القاصة (Supplier Debt Payments)
     (supplierDebtPayments || []).forEach((sp, idx) => {
-      const spDate = toDateSafe(sp.date || sp.createdAt);
+      if (sp.paymentSource === 'management' || sp.paymentSource === 'previous_opening') return;
+      const spDate = toDateSafe(sp.paymentDate || sp.date || sp.createdAt);
       const spAmt = Number(sp.amount || 0);
       if (spDate && spAmt > 0) {
         events.push({
@@ -421,7 +425,7 @@ export function useCashDrawerLedger(selectedDateStr) {
           date: spDate,
           dateStr: getIsoDateStr(spDate),
           type: 'supplier_payment',
-          typeLabel: 'تسديد دين مورد',
+          typeLabel: 'تسديد دين مورد (نقداً من القاصة)',
           direction: 'out',
           amount: spAmt,
           title: `تسديد دفعة حساب لمورد`,
