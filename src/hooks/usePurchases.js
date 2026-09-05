@@ -6,14 +6,15 @@ import {
   subscribeToSuppliers,
   subscribeToDraftPurchases
 } from '../services/purchasesService';
+import { BACKUP_KEYS, loadLocalBackup } from '../services/offlineDbHelper';
 
 export function usePurchases() {
-  const [purchases, setPurchases] = useState([]);
-  const [draftPurchases, setDraftPurchases] = useState([]);
-  const [supplierDebts, setSupplierDebts] = useState([]);
-  const [debtPayments, setDebtPayments] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [purchases, setPurchases] = useState(() => loadLocalBackup(BACKUP_KEYS.PURCHASES, []));
+  const [draftPurchases, setDraftPurchases] = useState(() => loadLocalBackup(BACKUP_KEYS.DRAFT_PURCHASES || 'offline_backup_draft_purchases', []));
+  const [supplierDebts, setSupplierDebts] = useState(() => loadLocalBackup(BACKUP_KEYS.SUPPLIER_DEBTS || 'offline_backup_supplier_debts', []));
+  const [debtPayments, setDebtPayments] = useState(() => loadLocalBackup(BACKUP_KEYS.DEBT_PAYMENTS || 'offline_backup_debt_payments', []));
+  const [suppliers, setSuppliers] = useState(() => loadLocalBackup(BACKUP_KEYS.SUPPLIERS || 'offline_backup_suppliers', []));
+  const [loading, setLoading] = useState(() => !(Array.isArray(purchases) && purchases.length > 0));
 
   useEffect(() => {
     let count = 0;

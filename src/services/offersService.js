@@ -2,22 +2,33 @@ import {
   collection, 
   doc, 
   setDoc, 
-  getDoc, 
-  getDocs, 
-  updateDoc, 
   deleteDoc, 
   query, 
   orderBy, 
-  serverTimestamp,
-  runTransaction
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { buildDraftItems } from './salesService'; // Reuse the same logic for converting cart items
+import { buildDraftItems } from './salesService';
 import { moveToTrash } from './trashBinService';
+import {
+  runOfflineSafeTransaction,
+  safeGetDoc,
+  safeGetDocs,
+  saveLocalBackup,
+  loadLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 const OFFERS_COLLECTION = 'offers';
 const OFFERS_COUNTER_PATH = ['counters', 'offers'];
 const STARTING_OFFER_NUMBER = 1001;
+
+function getNextOfflineOfferNumber() {
+  const current = Number(loadLocalBackup('offline_last_offer_number', STARTING_OFFER_NUMBER));
+  const next = current + 1;
+  saveLocalBackup('offline_last_offer_number', next);
+  return next;
+}
 
 /**
  * إنشاء عرض سعر جديد
@@ -32,18 +43,20 @@ export async function createOffer(cartItems, orderOptions = {}) {
     cashierEmail = '' 
   } = orderOptions;
 
-  const result = await runTransaction(db, async (transaction) => {
+  const result = await runOfflineSafeTransaction(db, async (transaction) => {
     // 1. Generate Offer Number
     const counterRef = doc(db, ...OFFERS_COUNTER_PATH);
     const counterSnap = await transaction.get(counterRef);
     let nextOfferNumber = STARTING_OFFER_NUMBER;
     
-    if (counterSnap.exists()) {
-      nextOfferNumber = (counterSnap.data().lastNumber || STARTING_OFFER_NUMBER - 1) + 1;
+    if (counterSnap && counterSnap.exists && counterSnap.exists()) {
+      nextOfferNumber = (Number(counterSnap.data().lastNumber) || STARTING_OFFER_NUMBER - 1) + 1;
       transaction.update(counterRef, { lastNumber: nextOfferNumber });
     } else {
-      transaction.set(counterRef, { lastNumber: STARTING_OFFER_NUMBER });
+      nextOfferNumber = getNextOfflineOfferNumber();
+      transaction.set(counterRef, { lastNumber: nextOfferNumber }, { merge: true });
     }
+    saveLocalBackup('offline_last_offer_number', nextOfferNumber);
 
     // 2. Prepare Items
     const items = buildDraftItems(cartItems);
@@ -103,7 +116,7 @@ export async function updateOffer(offerId, cartItems, orderOptions = {}) {
   }
 
   const offerRef = doc(db, OFFERS_COLLECTION, offerId);
-  const offerSnap = await getDoc(offerRef);
+  const offerSnap = await safeGetDoc(offerRef);
 
   if (!offerSnap.exists()) {
     return await createOffer(cartItems, orderOptions);
@@ -141,12 +154,12 @@ export async function getOffers() {
     orderBy('createdAt', 'desc')
   );
   
-  const snap = await getDocs(q);
+  const snap = await safeGetDocs(q);
   return snap.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
-    createdAt: doc.data().createdAt?.toDate() || new Date(),
-    updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+    createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : (doc.data().createdAt ? new Date(doc.data().createdAt) : new Date()),
+    updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : (doc.data().updatedAt ? new Date(doc.data().updatedAt) : new Date()),
   }));
 }
 
@@ -155,7 +168,7 @@ export async function getOffers() {
  */
 export async function deleteOffer(offerId, userEmail = 'سالم سنان') {
   const offerRef = doc(db, OFFERS_COLLECTION, offerId);
-  const offerSnap = await getDoc(offerRef);
+  const offerSnap = await safeGetDoc(offerRef);
   if (offerSnap.exists()) {
     const offerData = offerSnap.data();
     try {
@@ -180,8 +193,9 @@ export async function deleteOffer(offerId, userEmail = 'سالم سنان') {
  */
 export async function markOfferAsConverted(offerId) {
   const offerRef = doc(db, OFFERS_COLLECTION, offerId);
-  await updateDoc(offerRef, {
+  await setDoc(offerRef, {
     status: 'converted',
     updatedAt: serverTimestamp(),
-  });
+  }, { merge: true });
 }
+

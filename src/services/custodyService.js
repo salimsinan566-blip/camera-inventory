@@ -12,9 +12,16 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { 
+  runOfflineSafeTransaction, 
+  saveLocalBackup, 
+  loadLocalBackup, 
+  BACKUP_KEYS,
+  safeGetDoc,
+  safeGetDocs
+} from './offlineDbHelper';
 
 // ----------------------------------------------------
 // 1. إدارة الفنيين (Technicians CRUD)
@@ -22,17 +29,28 @@ import { db } from '../firebase/config';
 
 export async function fetchTechnicians() {
   const q = query(collection(db, 'technicians'), orderBy('name', 'asc'));
-  const snap = await getDocs(q);
+  const snap = await safeGetDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export function subscribeToTechnicians(callback) {
+  // Pre-load from local cache
+  const initial = loadLocalBackup(BACKUP_KEYS.TECHNICIANS, []);
+  if (Array.isArray(initial) && initial.length > 0) {
+    callback(initial);
+  }
+
   const q = query(collection(db, 'technicians'), orderBy('name', 'asc'));
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    saveLocalBackup(BACKUP_KEYS.TECHNICIANS, list);
     callback(list);
   }, (err) => {
-    console.error('Error subscribing to technicians:', err);
+    console.warn('Error subscribing to technicians (fallback to cache):', err?.message);
+    const cached = loadLocalBackup(BACKUP_KEYS.TECHNICIANS, []);
+    if (Array.isArray(cached) && cached.length > 0) {
+      callback(cached);
+    }
   });
 }
 
@@ -59,7 +77,7 @@ export async function updateTechnician(id, data) {
 
 export async function deleteTechnician(id) {
   // Check if technician has active custody
-  const custodyDoc = await getDoc(doc(db, 'custody_inventory', id));
+  const custodyDoc = await safeGetDoc(doc(db, 'custody_inventory', id));
   if (custodyDoc.exists()) {
     const items = custodyDoc.data().items || [];
     const totalQty = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
@@ -76,16 +94,28 @@ export async function deleteTechnician(id) {
 // ----------------------------------------------------
 
 export function subscribeToAllCustodies(callback) {
+  // Pre-load from local cache
+  const initial = loadLocalBackup(BACKUP_KEYS.CUSTODIES, {});
+  if (initial && typeof initial === 'object' && Object.keys(initial).length > 0) {
+    callback(initial);
+  }
+
   return onSnapshot(collection(db, 'custody_inventory'), (snap) => {
     const map = {};
     snap.docs.forEach(d => {
       map[d.id] = { id: d.id, ...d.data() };
     });
+    saveLocalBackup(BACKUP_KEYS.CUSTODIES, map);
     callback(map);
   }, (err) => {
-    console.error('Error subscribing to custodies:', err);
+    console.warn('Error subscribing to custodies (fallback to cache):', err?.message);
+    const cached = loadLocalBackup(BACKUP_KEYS.CUSTODIES, {});
+    if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
+      callback(cached);
+    }
   });
 }
+
 
 export async function getTechnicianCustody(technicianId) {
   const ref = doc(db, 'custody_inventory', technicianId);
@@ -111,7 +141,7 @@ export async function loadItemsToCustody({
   if (!technicianId) throw new Error('يرجى تحديد الفني');
   if (!items || items.length === 0) throw new Error('يرجى إضافة مادة واحدة على الأقل');
 
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     // ----------------------------------------------------
     // PHASE 1: READ ALL DOCUMENTS FIRST (No writes before reads!)
     // ----------------------------------------------------
@@ -216,6 +246,8 @@ export async function loadItemsToCustody({
     }, { merge: true });
 
     // Custody Log
+    const nowIso = new Date().toISOString();
+    const dateStr = nowIso.slice(0, 10);
     const logRef = doc(collection(db, 'custody_logs'));
     transaction.set(logRef, {
       type: 'load',
@@ -226,7 +258,8 @@ export async function loadItemsToCustody({
       totalQuantity: logItems.reduce((s, i) => s + i.quantity, 0),
       notes: notes.trim(),
       performedBy: performedBy || 'المسؤول',
-      createdAt: new Date().toISOString()
+      date: dateStr,
+      createdAt: nowIso
     });
 
     // Inventory Log
@@ -260,7 +293,7 @@ export async function returnItemsFromCustody({
   if (!technicianId) throw new Error('يرجى تحديد الفني');
   if (!items || items.length === 0) throw new Error('يرجى تحديد المواد المراد استرجاعها');
 
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     // ----------------------------------------------------
     // PHASE 1: READ ALL DOCUMENTS FIRST
     // ----------------------------------------------------
@@ -348,6 +381,8 @@ export async function returnItemsFromCustody({
     }, { merge: true });
 
     // Custody Log
+    const nowIso = new Date().toISOString();
+    const dateStr = nowIso.slice(0, 10);
     const logRef = doc(collection(db, 'custody_logs'));
     transaction.set(logRef, {
       type: 'return',
@@ -358,7 +393,8 @@ export async function returnItemsFromCustody({
       totalQuantity: logItems.reduce((s, i) => s + i.quantity, 0),
       notes: notes.trim(),
       performedBy: performedBy || 'المسؤول',
-      createdAt: new Date().toISOString()
+      date: dateStr,
+      createdAt: nowIso
     });
 
     // Inventory Log
@@ -390,7 +426,7 @@ export async function deductItemsFromCustodyForSale({
 }) {
   if (!technicianId || !items.length) return;
 
-  return await runTransaction(db, async (transaction) => {
+  return await runOfflineSafeTransaction(db, async (transaction) => {
     const custodyRef = doc(db, 'custody_inventory', technicianId);
     const custodySnap = await transaction.get(custodyRef);
     if (!custodySnap.exists()) {
@@ -424,6 +460,8 @@ export async function deductItemsFromCustodyForSale({
     }, { merge: true });
 
     // Log custody deduction
+    const nowIso = new Date().toISOString();
+    const dateStr = nowIso.slice(0, 10);
     const logRef = doc(collection(db, 'custody_logs'));
     transaction.set(logRef, {
       type: 'sale_deduct',
@@ -431,11 +469,18 @@ export async function deductItemsFromCustodyForSale({
       technicianName: currentCustody.technicianName || '',
       invoiceNumber,
       customerName,
-      items: items.map(i => ({ productId: i.productId || i.id, name: i.name, quantity: i.quantity })),
+      items: items.map(i => ({
+        productId: i.productId || i.id,
+        name: i.name,
+        quantity: Number(i.quantity) || 0,
+        sku: i.sku || '',
+        price: Number(i.price) || 0
+      })),
       totalQuantity: items.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
       notes: `صرف بيع مباشر - فاتورة رقم: ${invoiceNumber} للعميل: ${customerName}`,
       performedBy: performedBy || 'البائع',
-      createdAt: new Date().toISOString()
+      date: dateStr,
+      createdAt: nowIso
     });
   });
 }
@@ -444,7 +489,7 @@ export async function deductItemsFromCustodyForSale({
 // 6. سجل حركات العهد (Custody Logs Query)
 // ----------------------------------------------------
 
-export function subscribeToCustodyLogs(callback, maxLimit = 50) {
+export function subscribeToCustodyLogs(callback, maxLimit = 500) {
   const q = query(
     collection(db, 'custody_logs'),
     orderBy('createdAt', 'desc'),
@@ -454,6 +499,7 @@ export function subscribeToCustodyLogs(callback, maxLimit = 50) {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(list);
   }, (err) => {
-    console.error('Error subscribing to custody logs:', err);
+    console.warn('Error subscribing to custody logs (offline fallback):', err?.message);
   });
 }
+

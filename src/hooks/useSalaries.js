@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { subscribeToEmployees } from '../services/salariesService';
+import { BACKUP_KEYS, loadLocalBackup } from '../services/offlineDbHelper';
 
 /**
  * حساب فارق الأيام التقويمية بين اليوم وتاريخ الاستحقاق
@@ -67,8 +68,8 @@ export function getDueStatus(daysRemaining) {
 }
 
 export function useSalaries() {
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [employees, setEmployees] = useState(() => loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []));
+  const [loading, setLoading] = useState(() => !(Array.isArray(employees) && employees.length > 0));
 
   useEffect(() => {
     const unsubscribe = subscribeToEmployees((list) => {

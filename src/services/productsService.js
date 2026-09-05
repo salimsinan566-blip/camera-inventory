@@ -8,7 +8,6 @@ import {
   query,
   where,
   getDocs,
-  runTransaction,
   writeBatch,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -16,18 +15,40 @@ import { db } from '../firebase/config';
 import { LOCATIONS } from '../models/product';
 import { logInventoryChange, LOG_TYPES } from './inventoryLogsService';
 import { moveToTrash } from './trashBinService';
+import { 
+  runOfflineSafeTransaction, 
+  safeGetDoc, 
+  safeGetDocs,
+  loadLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 const PRODUCTS_COLLECTION = 'products';
 
 /** يتحقق ما إذا كان SKU مستخدم من قبل منتج آخر (لمنع التكرار) */
 export async function isSkuTaken(sku, excludeId = null) {
-  const q = query(collection(db, PRODUCTS_COLLECTION), where('sku', '==', sku));
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return false;
-  if (!excludeId) return true;
-  // في حالة التعديل: تجاهل نفس المنتج
-  return snapshot.docs.some((d) => d.id !== excludeId);
+  if (!sku) return false;
+  const cleanSku = String(sku).trim().toLowerCase();
+
+  // Check local products mirror first
+  const localList = loadLocalBackup(BACKUP_KEYS.PRODUCTS, []);
+  if (Array.isArray(localList) && localList.length > 0) {
+    const found = localList.some(p => String(p.sku || '').trim().toLowerCase() === cleanSku && p.id !== excludeId);
+    if (found) return true;
+  }
+
+  try {
+    const q = query(collection(db, PRODUCTS_COLLECTION), where('sku', '==', sku));
+    const snapshot = await safeGetDocs(q);
+    if (snapshot.empty) return false;
+    if (!excludeId) return true;
+    return snapshot.docs.some((d) => d.id !== excludeId);
+  } catch (err) {
+    console.warn('isSkuTaken query fallback:', err?.message);
+    return false;
+  }
 }
+
 
 /** يحوّل حقول المنتج للأرقام الصحيحة قبل الحفظ */
 function normalizePayload(productData) {
@@ -85,7 +106,7 @@ export async function createProduct(productData, userEmail = '') {
 /** تعديل منتج موجود مع توثيق تغييرات المخزون */
 export async function updateProduct(id, productData, userEmail = '', reason = '') {
   const ref = doc(db, PRODUCTS_COLLECTION, id);
-  const prevSnap = await getDoc(ref);
+  const prevSnap = await safeGetDoc(ref);
   const prevData = prevSnap.exists() ? prevSnap.data() : {};
 
   const payload = {
@@ -140,7 +161,7 @@ export async function updateProduct(id, productData, userEmail = '', reason = ''
 /** حذف منتج مع حفظه في سلة المحذوفات */
 export async function deleteProduct(id, userEmail = 'سالم سنان') {
   const ref = doc(db, PRODUCTS_COLLECTION, id);
-  const snap = await getDoc(ref);
+  const snap = await safeGetDoc(ref);
   const prevData = snap.exists() ? snap.data() : {};
 
   if (snap.exists()) {
@@ -196,7 +217,7 @@ export async function transferStock(productId, from, to, amount, userEmail = '',
 
   let productDetails = null;
 
-  await runTransaction(db, async (transaction) => {
+  await runOfflineSafeTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref);
     if (!snap.exists()) throw new Error('المنتج لم يعد موجوداً');
     const data = snap.data();
@@ -212,6 +233,7 @@ export async function transferStock(productId, from, to, amount, userEmail = '',
       updatedAt: serverTimestamp(),
     });
   });
+
 
   if (productDetails) {
     const fromLabel = from === LOCATIONS.STORE ? 'المحل' : 'المخزن';

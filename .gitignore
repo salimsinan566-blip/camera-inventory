@@ -7,6 +7,10 @@ dist
 *.zip
 *.rar
 whatsapp-server/auth_session
-whatsapp-server/node_modules
 scratch
 *.timestamp-*.mjs
+fix*.js
+fix*.cjs
+patch*.txt
+test_*.html
+net/

@@ -2,6 +2,19 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { getRecentInventoryLogs, LOG_TYPE_LABELS_AR, LOG_TYPES } from '../services/inventoryLogsService';
 import ProductHistoryModal from './ProductHistoryModal';
 
+function toDateSafe(timestamp) {
+  if (!timestamp) return null;
+  if (timestamp instanceof Date) return isNaN(timestamp.getTime()) ? null : timestamp;
+  if (typeof timestamp?.toDate === 'function') {
+    try {
+      const d = timestamp.toDate();
+      if (d instanceof Date && !isNaN(d.getTime())) return d;
+    } catch (e) {}
+  }
+  const d = new Date(timestamp);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export default function InventoryHistoryView({ onOpenProductHistory }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +41,7 @@ export default function InventoryHistoryView({ onOpenProductHistory }) {
 
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      const date = log.createdAt?.toDate ? log.createdAt.toDate() : null;
+      const date = toDateSafe(log.createdAt);
       if (dateFrom && date && date < new Date(dateFrom)) return false;
       if (dateTo && date && date > new Date(dateTo + 'T23:59:59')) return false;
       if (selectedType !== 'all' && log.type !== selectedType) return false;
@@ -224,7 +237,7 @@ export default function InventoryHistoryView({ onOpenProductHistory }) {
               </thead>
               <tbody>
                 {filteredLogs.map((log) => {
-                  const date = log.createdAt?.toDate ? log.createdAt.toDate() : new Date();
+                  const date = toDateSafe(log.createdAt) || new Date();
                   const typeLabel = LOG_TYPE_LABELS_AR[log.type] || log.type;
 
                   return (

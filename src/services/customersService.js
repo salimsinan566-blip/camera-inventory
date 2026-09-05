@@ -1,6 +1,3 @@
-// خدمة العملاء — إدارة وتعديل بيانات وحسابات العملاء
-// Firestore collection: "customers" — { name, phone1, phone2, pinCode, notes, customerType, reminderSchedule, createdAt, updatedAt }
-
 import { 
   collection, 
   addDoc, 
@@ -16,20 +13,37 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config.js';
 import { moveToTrash } from './trashBinService';
+import { 
+  BACKUP_KEYS, 
+  saveLocalBackup, 
+  loadLocalBackup, 
+  safeGetDocs,
+  safeGetDoc
+} from './offlineDbHelper';
 
 const CUSTOMERS_COLLECTION = 'customers';
 
 /**
- * الاشتراك الحي بقائمة العملاء
+ * الاشتراك الحي بقائمة العملاء مع حماية الذاكرة المؤقتة أوفلاين
  */
 export function subscribeToCustomers(callback) {
+  // Pre-load from local storage mirror immediately
+  const initialCached = loadLocalBackup(BACKUP_KEYS.CUSTOMERS, []);
+  if (Array.isArray(initialCached) && initialCached.length > 0) {
+    callback(initialCached);
+  }
+
   return onSnapshot(collection(db, CUSTOMERS_COLLECTION), (snapshot) => {
     const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
     list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+    saveLocalBackup(BACKUP_KEYS.CUSTOMERS, list);
     callback(list);
   }, (err) => {
-    console.error('Subscribe to customers error:', err);
-    callback([]);
+    console.warn('Subscribe to customers snapshot fallback to local cache:', err?.message);
+    const cached = loadLocalBackup(BACKUP_KEYS.CUSTOMERS, []);
+    if (Array.isArray(cached) && cached.length > 0) {
+      callback(cached);
+    }
   });
 }
 
@@ -96,7 +110,7 @@ export async function updateCustomer(customerId, updates = {}) {
 export async function deleteCustomer(customerId, userEmail = 'سالم سنان') {
   if (!customerId) throw new Error('معرف العميل غير صالح');
   const customerRef = doc(db, CUSTOMERS_COLLECTION, customerId);
-  const customerSnap = await getDoc(customerRef);
+  const customerSnap = await safeGetDoc(customerRef);
   if (customerSnap.exists()) {
     const customerData = customerSnap.data();
     try {
@@ -117,15 +131,24 @@ export async function deleteCustomer(customerId, userEmail = 'سالم سنان'
 }
 
 /**
- * يبحث عن عميل بنفس الاسم أو ينشئ عميل جديد
+ * يبحث عن عميل بنفس الاسم أو ينشئ عميل جديد مع أمان تام بدون إنترنت
  */
 export async function findOrCreateCustomer(name, phone1 = '', phone2 = '', customerType = 'client') {
   const trimmedName = (name || '').trim();
   if (!trimmedName) return null;
 
+  // Search local cache first if available
+  const localList = loadLocalBackup(BACKUP_KEYS.CUSTOMERS, []);
+  if (Array.isArray(localList)) {
+    const matched = localList.find(c => (c.name || '').trim().toLowerCase() === trimmedName.toLowerCase());
+    if (matched && matched.id) {
+      return matched.id;
+    }
+  }
+
   try {
     const q = query(collection(db, CUSTOMERS_COLLECTION), where('name', '==', trimmedName));
-    const snapshot = await getDocs(q);
+    const snapshot = await safeGetDocs(q);
     
     if (!snapshot.empty) {
       const existing = snapshot.docs[0];
@@ -136,7 +159,7 @@ export async function findOrCreateCustomer(name, phone1 = '', phone2 = '', custo
       if (!data.customerType && customerType) updates.customerType = customerType;
       
       if (Object.keys(updates).length > 0) {
-        await updateDoc(doc(db, CUSTOMERS_COLLECTION, existing.id), updates);
+        await updateDoc(doc(db, CUSTOMERS_COLLECTION, existing.id), updates).catch(e => console.warn('Offline customer update sync note:', e));
       }
       return existing.id;
     }
@@ -144,13 +167,19 @@ export async function findOrCreateCustomer(name, phone1 = '', phone2 = '', custo
     console.warn('Customer lookup query fallback:', err?.message);
   }
 
-  const newDoc = await addDoc(collection(db, CUSTOMERS_COLLECTION), {
-    name: trimmedName,
-    phone1: phone1 || '',
-    phone2: phone2 || '',
-    customerType: customerType || 'client',
-    reminderSchedule: 'default',
-    createdAt: serverTimestamp(),
-  });
-  return newDoc.id;
+  try {
+    const newDoc = await addDoc(collection(db, CUSTOMERS_COLLECTION), {
+      name: trimmedName,
+      phone1: phone1 || '',
+      phone2: phone2 || '',
+      customerType: customerType || 'client',
+      reminderSchedule: 'default',
+      createdAt: serverTimestamp(),
+    });
+    return newDoc.id;
+  } catch (addErr) {
+    console.warn('Customer addDoc fallback in offline mode:', addErr?.message);
+    return `local_cust_${Date.now()}`;
+  }
 }
+

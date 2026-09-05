@@ -10,6 +10,17 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
   
   const [printingOffer, setPrintingOffer] = useState(null);
 
+  const formatOfferDate = (dateVal) => {
+    if (!dateVal) return '-';
+    try {
+      const d = dateVal?.toDate ? dateVal.toDate() : (dateVal instanceof Date ? dateVal : new Date(dateVal));
+      if (isNaN(d.getTime())) return String(dateVal).slice(0, 10) || '-';
+      return d.toLocaleDateString('en-GB');
+    } catch {
+      return '-';
+    }
+  };
+
   const handleDelete = (offer) => {
     confirm(
       'تأكيد الحذف',
@@ -90,7 +101,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
                     <td className="px-6 py-4 font-mono font-bold text-ink-900">#{offer.offerNumber || '---'}</td>
                     <td className="px-6 py-4 font-bold text-brand-700">{offer.offerName}</td>
                     <td className="px-6 py-4 text-ink-700">{offer.customerName || '-'}</td>
-                    <td className="px-6 py-4 text-ink-500" dir="ltr">{offer.createdAt.toLocaleDateString('en-GB')}</td>
+                    <td className="px-6 py-4 text-ink-500 font-mono" dir="ltr">{formatOfferDate(offer.createdAt)}</td>
                     <td className="px-6 py-4 font-bold text-ink-900">{Number(offer.total).toLocaleString()} د.ع</td>
                     <td className="px-6 py-4">
                       {offer.status === 'converted' ? (

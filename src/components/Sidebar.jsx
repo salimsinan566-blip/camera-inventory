@@ -7,6 +7,7 @@ import { updateProfile } from 'firebase/auth';
 import { useSettings } from '../hooks/useSettings';
 import { auth } from '../firebase/auth';
 import { useTrashBin } from '../hooks/useTrashBin';
+import NetworkStatusIndicator from './NetworkStatusIndicator';
 
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onCloseMobile }) {
   const { toast, confirm } = useUI();
@@ -77,23 +78,26 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, onClo
         <svg className={`w-4 h-4 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
       </button>
 
-      <div className={`p-4 md:p-6 border-b border-slate-800 flex items-center justify-between transition-all ${isCollapsed ? 'px-3' : ''}`}>
-        <div className={`bg-white p-2 rounded-xl shadow-sm flex items-center justify-center overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-10 h-10' : 'w-full h-20 md:h-24'}`}>
-          <img 
-            src={settings?.logoUrl || logo} 
-            alt={settings?.storeName || "Safe Zone"} 
-            className="max-h-full max-w-full object-contain" 
-          />
+      <div className={`p-4 md:p-6 border-b border-slate-800 flex flex-col items-center justify-between gap-3 transition-all ${isCollapsed ? 'px-2' : ''}`}>
+        <div className="w-full flex items-center justify-between">
+          <div className={`bg-white p-2 rounded-xl shadow-sm flex items-center justify-center overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-10 h-10' : 'w-full h-16 md:h-20'}`}>
+            <img 
+              src={settings?.logoUrl || logo} 
+              alt={settings?.storeName || "Safe Zone"} 
+              className="max-h-full max-w-full object-contain" 
+            />
+          </div>
+          {onCloseMobile && (
+            <button
+              onClick={onCloseMobile}
+              className="md:hidden p-2 text-slate-400 hover:text-white mr-2 bg-slate-800 rounded-xl"
+              title="إغلاق القائمة"
+            >
+              ✕
+            </button>
+          )}
         </div>
-        {onCloseMobile && (
-          <button
-            onClick={onCloseMobile}
-            className="md:hidden p-2 text-slate-400 hover:text-white mr-2 bg-slate-800 rounded-xl"
-            title="إغلاق القائمة"
-          >
-            ✕
-          </button>
-        )}
+        {!isCollapsed && <NetworkStatusIndicator className="w-full justify-center text-xs py-1" />}
       </div>
 
       <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto overflow-x-hidden">

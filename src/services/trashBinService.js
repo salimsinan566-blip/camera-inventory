@@ -6,18 +6,22 @@ import {
   doc,
   addDoc,
   setDoc,
-  getDoc,
-  getDocs,
   deleteDoc,
   serverTimestamp,
   onSnapshot,
   query,
-  where,
   orderBy,
-  writeBatch,
-  runTransaction
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase/config.js';
+import {
+  runOfflineSafeTransaction,
+  safeGetDocs,
+  safeGetDoc,
+  saveLocalBackup,
+  loadLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 export const TRASH_COLLECTION = 'trash_bin';
 
@@ -171,7 +175,7 @@ export async function restoreFromTrash(trashItem, restoreMode = 'original', user
     const items = rawData.items || [];
     const nonServiceItems = items.filter(i => !i.isService && i.productId);
 
-    await runTransaction(db, async (transaction) => {
+    await runOfflineSafeTransaction(db, async (transaction) => {
       // 1. قراءة وثائق المنتجات المتأثرة
       const productRefs = nonServiceItems.map(item => doc(db, 'products', item.productId));
       const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));

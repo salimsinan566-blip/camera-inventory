@@ -69,10 +69,21 @@ export async function saveCashReconciliation({
   return recRef.id;
 }
 
+import {
+  BACKUP_KEYS,
+  saveLocalBackup,
+  loadLocalBackup
+} from './offlineDbHelper';
+
 /**
  * الاشتراك بسجل التسويات المالية التاريخية (الأحدث أولاً)
  */
 export function subscribeToCashReconciliations(callback) {
+  const cached = loadLocalBackup(BACKUP_KEYS.RECONCILIATIONS || 'offline_backup_reconciliations', []);
+  if (Array.isArray(cached) && cached.length > 0) {
+    callback(cached);
+  }
+
   const q = query(
     collection(db, RECONCILIATIONS_COLLECTION),
     orderBy('createdAt', 'desc'),
@@ -82,10 +93,15 @@ export function subscribeToCashReconciliations(callback) {
     q,
     (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      saveLocalBackup(BACKUP_KEYS.RECONCILIATIONS || 'offline_backup_reconciliations', list);
       callback(list);
     },
     (err) => {
-      console.error('Error subscribing to cash reconciliations:', err);
+      console.warn('Subscribe to cash reconciliations offline fallback:', err?.message);
+      const fallback = loadLocalBackup(BACKUP_KEYS.RECONCILIATIONS || 'offline_backup_reconciliations', []);
+      if (Array.isArray(fallback) && fallback.length > 0) {
+        callback(fallback);
+      }
     }
   );
 }
@@ -94,18 +110,29 @@ export function subscribeToCashReconciliations(callback) {
  * الاشتراك بآخر تسوية معتمدة للصندوق
  */
 export function subscribeToLatestReconciliation(callback) {
+  const cachedLatest = loadLocalBackup(BACKUP_KEYS.LATEST_RECONCILIATION || 'offline_backup_latest_reconciliation', null);
+  if (cachedLatest) {
+    callback(cachedLatest);
+  }
+
   const ref = doc(db, SETTINGS_COLLECTION, CASH_DRAWER_DOC);
   return onSnapshot(
     ref,
     (snap) => {
       if (snap.exists() && snap.data().latestReconciliation) {
-        callback(snap.data().latestReconciliation);
+        const latest = snap.data().latestReconciliation;
+        saveLocalBackup(BACKUP_KEYS.LATEST_RECONCILIATION || 'offline_backup_latest_reconciliation', latest);
+        callback(latest);
       } else {
         callback(null);
       }
     },
     (err) => {
-      console.error('Error subscribing to latest reconciliation:', err);
+      console.warn('Subscribe to latest reconciliation offline fallback:', err?.message);
+      const fallback = loadLocalBackup(BACKUP_KEYS.LATEST_RECONCILIATION || 'offline_backup_latest_reconciliation', null);
+      if (fallback) {
+        callback(fallback);
+      }
     }
   );
 }

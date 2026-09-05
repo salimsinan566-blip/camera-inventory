@@ -35,6 +35,7 @@ import { useAutoDebtScheduler } from '../hooks/useAutoDebtScheduler';
 import logo from '../assets/logo.png';
 import { useUI } from '../contexts/UIContext';
 import { updateStoreSettings } from '../services/settingsService';
+import NetworkStatusIndicator from './NetworkStatusIndicator';
 
 export default function Dashboard({ user }) {
   // Automated background WhatsApp debt reminder scheduler
@@ -209,24 +210,26 @@ export default function Dashboard({ user }) {
   return (
     <div className="min-h-screen bg-ink-50 flex flex-col md:flex-row" dir="rtl">
       {/* شريط الجوال العلوي */}
-      <div className="md:hidden bg-slate-900 text-white px-4 py-3 flex justify-between items-center z-30 shadow-md shrink-0 safe-top">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center bg-white p-1 rounded-xl shadow-sm h-10 w-24 overflow-hidden">
+      <div className="md:hidden bg-slate-900 text-white px-3 py-2.5 flex justify-between items-center z-30 shadow-md shrink-0 safe-top">
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-center bg-white p-1 rounded-xl shadow-sm h-9 w-20 overflow-hidden">
             <img src={settings?.logoUrl || logo} alt={settings?.storeName || "Safe Zone"} className="h-full w-auto object-contain" />
           </div>
           <div className="text-right">
-            <span className="text-xs font-bold text-white block truncate max-w-[130px]">{(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : settings.storeName}</span>
-            <span className="text-[10px] text-slate-400 block truncate max-w-[120px]">{getDisplayName(user)}</span>
+            <span className="text-xs font-bold text-white block truncate max-w-[110px]">{(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : settings.storeName}</span>
+            <span className="text-[10px] text-slate-400 block truncate max-w-[100px]">{getDisplayName(user)}</span>
           </div>
         </div>
-        <button 
-          onClick={() => setMobileMenuOpen(true)} 
-          className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-200 cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-          title="القائمة"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-          <span>القائمة</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <NetworkStatusIndicator className="text-[10px] px-2 py-0.5" />
+          <button 
+            onClick={() => setMobileMenuOpen(true)} 
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-200 cursor-pointer flex items-center gap-1 text-xs font-bold"
+            title="القائمة"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+        </div>
       </div>
 
       {/* خلفية تظليل للقائمة في الجوال */}

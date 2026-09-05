@@ -929,3 +929,155 @@ export async function generateCustodyManifestPDF(technician, custodyDoc = {}, st
   const fileName = `كشف_عهدة_${(technician?.name || 'فني').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
   return await htmlToPdfBlob(html, fileName);
 }
+
+/**
+ * 8. Comprehensive Daily / Period Custody Movements Report PDF (تقرير_حركة_العهد_اليومي.pdf)
+ */
+export async function generateCustodyMovementReportPDF({
+  technician = null, // null for all technicians
+  logs = [],
+  filterTitle = 'تقرير حركة عهد الفنيين وسيارات الصيانة',
+  dateRangeText = '',
+  storeSettings = {}
+}) {
+  const totalLoads = logs.filter(l => l.type === 'load').reduce((s, l) => s + (Number(l.totalQuantity) || 0), 0);
+  const totalSales = logs.filter(l => l.type === 'sale_deduct').reduce((s, l) => s + (Number(l.totalQuantity) || 0), 0);
+  const totalReturns = logs.filter(l => l.type === 'return').reduce((s, l) => s + (Number(l.totalQuantity) || 0), 0);
+  const netChange = totalLoads - totalSales - totalReturns;
+
+  let html = `
+    <div style="padding: 24px 30px; font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, sans-serif; direction: rtl; text-align: right; background: #ffffff; color: #0f172a;">
+      ${renderBrandHeader({
+        storeSettings,
+        documentTitle: filterTitle,
+        subtitle: `الفترة: ${dateRangeText || new Date().toLocaleDateString('ar-IQ')} | تاريخ الإصدار: ${new Date().toLocaleDateString('ar-IQ')} ${new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}`,
+        badgeText: `${logs.length} حركة مسجلة`
+      })}
+
+      <!-- Filter / Technician info -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 13px; font-weight: bold; color: #1e293b;">
+            🚚 نطاق التقرير: <span style="color: #4338ca;">${technician ? technician.name : 'جميع الفنيين وسيارات العمل'}</span>
+          </div>
+          ${technician ? `
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+              📞 الهاتف: ${technician.phone || '—'} ${technician.vehicleNumber ? `| 🚘 رقم السيارة: <strong style="color: #0f172a;">${technician.vehicleNumber}</strong>` : ''}
+            </div>
+          ` : `
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+              سجل شامل لجميع عمليات التحميل، الصرف الميداني، والاسترجاع.
+            </div>
+          `}
+        </div>
+        <div style="text-align: left; font-size: 11px; color: #64748b;">
+          عدد العمليات: <strong style="color: #0f172a; font-size: 14px;">${logs.length}</strong>
+        </div>
+      </div>
+
+      <!-- Quick Summary Stats Grid -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+        <div style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 10px; color: #4338ca; font-weight: bold;">🚚 إجمالي المحمّل</div>
+          <div style="font-size: 16px; font-weight: 900; color: #312e81; margin-top: 2px;">${totalLoads} <span style="font-size: 10px;">قطعة</span></div>
+        </div>
+        <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 10px; color: #047857; font-weight: bold;">🧾 إجمالي المباع/المصروف</div>
+          <div style="font-size: 16px; font-weight: 900; color: #064e3b; margin-top: 2px;">${totalSales} <span style="font-size: 10px;">قطعة</span></div>
+        </div>
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 10px; color: #b45309; font-weight: bold;">🔄 إجمالي المسترجع</div>
+          <div style="font-size: 16px; font-weight: 900; color: #78350f; margin-top: 2px;">${totalReturns} <span style="font-size: 10px;">قطعة</span></div>
+        </div>
+        <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 10px; color: #475569; font-weight: bold;">📊 صافي الحركة</div>
+          <div style="font-size: 16px; font-weight: 900; color: ${netChange >= 0 ? '#1e293b' : '#dc2626'}; margin-top: 2px;">${netChange > 0 ? '+' : ''}${netChange} <span style="font-size: 10px;">قطعة</span></div>
+        </div>
+      </div>
+
+      <!-- Log Entries Table -->
+      <table style="width: 100%; border-collapse: collapse; font-size: 10.5px; text-align: right; margin-bottom: 25px;">
+        <thead style="background: #f1f5f9; color: #334155;">
+          <tr style="page-break-inside: avoid;">
+            <th style="padding: 7px 8px; border-bottom: 2px solid #cbd5e1; width: 14%;">التاريخ والوقت</th>
+            <th style="padding: 7px 8px; border-bottom: 2px solid #cbd5e1; width: 14%;">الفني / السيارة</th>
+            <th style="padding: 7px 8px; border-bottom: 2px solid #cbd5e1; width: 14%; text-align: center;">نوع الحركة</th>
+            <th style="padding: 7px 8px; border-bottom: 2px solid #cbd5e1; width: 38%;">المواد المنقولة والتفاصيل</th>
+            <th style="padding: 7px 8px; border-bottom: 2px solid #cbd5e1; width: 10%; text-align: center;">الكمية</th>
+            <th style="padding: 7px 8px; border-bottom: 2px solid #cbd5e1; width: 10%;">المسؤول</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${logs.length === 0 ? `
+            <tr>
+              <td colspan="6" style="padding: 20px; text-align: center; color: #94a3b8;">لا توجد حركات مسجلة ضمن هذه الفترة</td>
+            </tr>
+          ` : logs.map((log, idx) => {
+            const isLoad = log.type === 'load';
+            const isReturn = log.type === 'return';
+            const isSale = log.type === 'sale_deduct';
+            
+            const badgeBg = isLoad ? '#eef2ff' : isReturn ? '#fffbeb' : '#ecfdf5';
+            const badgeColor = isLoad ? '#4338ca' : isReturn ? '#b45309' : '#047857';
+            const badgeBorder = isLoad ? '#c7d2fe' : isReturn ? '#fde68a' : '#a7f3d0';
+            const typeLabel = isLoad ? '🚚 تحميل للسيارة' : isReturn ? '🔄 استرجاع للمحل' : '🧾 صرف بيع مباشر';
+            
+            let destinationText = '';
+            if (isLoad) {
+              destinationText = `من: ${log.sourceLocation === 'warehouse' ? 'المخزن الرئيسي' : 'المحل'} ⬅️ إلى سيارة الفني`;
+            } else if (isReturn) {
+              destinationText = `من السيارة ⬅️ إلى: ${log.targetLocation === 'warehouse' ? 'المخزن الرئيسي' : 'المحل'}`;
+            } else if (isSale) {
+              destinationText = `صرف للزبون: ${log.customerName || 'زبون نقدي'} ${log.invoiceNumber ? `| فاتورة #${log.invoiceNumber}` : ''}`;
+            }
+
+            const itemsStr = (log.items || []).map(i => `${i.name || 'مادة'} (${i.quantity} ${i.sellMode === 'meter' ? 'متر' : 'قطعة'})`).join(' • ');
+
+            return `
+              <tr style="border-bottom: 1px solid #e2e8f0; page-break-inside: avoid;">
+                <td style="padding: 6px 8px; color: #475569; font-family: monospace; font-size: 10px;">
+                  <div>${log.createdAt ? new Date(log.createdAt).toLocaleDateString('ar-IQ') : '—'}</div>
+                  <div style="color: #94a3b8; font-size: 9px;">${log.createdAt ? new Date(log.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                </td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #1e293b;">
+                  ${log.technicianName || '—'}
+                </td>
+                <td style="padding: 6px 8px; text-align: center;">
+                  <span style="display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 9.5px; font-weight: bold; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
+                    ${typeLabel}
+                  </span>
+                </td>
+                <td style="padding: 6px 8px; color: #334155;">
+                  <div style="font-weight: bold; font-size: 10.5px; color: #0f172a; margin-bottom: 2px;">
+                    ${itemsStr || '—'}
+                  </div>
+                  <div style="font-size: 9.5px; color: #64748b;">
+                    📍 ${destinationText}
+                  </div>
+                  ${log.notes && log.notes !== destinationText ? `
+                    <div style="font-size: 9px; color: #94a3b8; margin-top: 1px;">
+                      📝 ${log.notes}
+                    </div>
+                  ` : ''}
+                </td>
+                <td style="padding: 6px 8px; text-align: center; font-weight: 900; font-size: 11px; color: #0f172a; font-family: monospace;">
+                  ${log.totalQuantity || 0}
+                </td>
+                <td style="padding: 6px 8px; color: #64748b; font-size: 9.5px;">
+                  ${log.performedBy || 'المسؤول'}
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+
+      ${renderBrandFooter(storeSettings)}
+    </div>
+  `;
+
+  const safeTechName = (technician?.name || 'جميع_الفنيين').replace(/\s+/g, '_');
+  const fileName = `تقرير_حركة_العهد_${safeTechName}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  return await htmlToPdfBlob(html, fileName);
+}
+

@@ -30,24 +30,36 @@
  */
 
 /** يبني عنصر سلة جديد من منتج تم مسحه بالباركود أو مختار من الشبكة */
-export function createCartItem(product, quantity = 1) {
+export function createCartItem(product, quantity = 1, options = {}) {
+  const source = options.source || (product.isCustodyItem ? 'custody' : (product.isWarehouseStock ? 'warehouse' : 'store'));
+  const technicianId = options.technicianId || (source === 'custody' ? product.technicianId || null : null);
+  const technicianName = options.technicianName || (source === 'custody' ? product.technicianName || '' : '');
+  const cartItemId = options.cartItemId || `${product.id}_${source}_${technicianId || ''}`;
+
   return {
+    cartItemId,
     productId: product.id,
-    sku: product.sku,
-    name: product.name,
-    quantity,
+    sku: product.sku || '',
+    name: product.name || '',
+    cameraType: product.cameraType || '',
+    quantity: Math.max(1, Number(quantity) || 1),
     unitPrice: Number(product.retailPrice) || 0,
     originalPrice: Number(product.retailPrice) || 0,
     wholesalePrice: Number(product.wholesalePrice) || 0,
     availableQuantity: Number(product.storeQty) || 0,
     sellMode: product.sellMode || 'unit',
     isService: false,
+    source, // 'store' | 'warehouse' | 'custody'
+    technicianId,
+    technicianName,
+    isCustody: source === 'custody'
   };
 }
 
 /** يبني عنصر سلة جديد من خدمة / أجور عمل */
 export function createLaborCartItem(labor) {
   return {
+    cartItemId: `labor_${labor.id}`,
     productId: `labor_${labor.id}`,
     sku: '-',
     name: labor.name,
@@ -58,6 +70,10 @@ export function createLaborCartItem(labor) {
     availableQuantity: 999999, // خدمات غير محدودة
     sellMode: 'unit',
     isService: true,
+    source: 'service',
+    technicianId: null,
+    technicianName: '',
+    isCustody: false
   };
 }
 
@@ -69,16 +85,27 @@ export function cartItemsFromDraft(draftItems, productsList = []) {
       const prod = productsList.find(p => p.id === item.productId || p.sku === item.sku);
       if (prod) ws = Number(prod.wholesalePrice) || 0;
     }
+    const source = item.source || (item.isCustody ? 'custody' : 'store');
+    const technicianId = item.technicianId || null;
+    const technicianName = item.technicianName || '';
+    const cartItemId = item.cartItemId || `${item.productId}_${source}_${technicianId || ''}`;
+
     return {
+      cartItemId,
       productId: item.productId,
-      sku: item.sku,
-      name: item.name,
+      sku: item.sku || '',
+      name: item.name || '',
+      cameraType: item.cameraType || '',
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       originalPrice: item.originalPrice || item.unitPrice,
       wholesalePrice: ws || 0,
       sellMode: item.sellMode || 'unit',
       isService: item.isService || false,
+      source,
+      technicianId,
+      technicianName,
+      isCustody: source === 'custody'
     };
   });
 }

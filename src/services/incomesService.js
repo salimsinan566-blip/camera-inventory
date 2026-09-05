@@ -74,10 +74,21 @@ export async function deleteIncome(id) {
   await deleteDoc(doc(db, INCOMES_COLLECTION, id));
 }
 
+import {
+  BACKUP_KEYS,
+  saveLocalBackup,
+  loadLocalBackup
+} from './offlineDbHelper';
+
 /**
  * الاشتراك بالدخل والمقبوضات الإضافية في الوقت الفعلي
  */
 export function subscribeToIncomes(callback) {
+  const cached = loadLocalBackup(BACKUP_KEYS.INCOMES, []);
+  if (Array.isArray(cached) && cached.length > 0) {
+    callback(cached);
+  }
+
   const q = query(
     collection(db, INCOMES_COLLECTION),
     orderBy('createdAt', 'desc'),
@@ -85,9 +96,13 @@ export function subscribeToIncomes(callback) {
   );
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    saveLocalBackup(BACKUP_KEYS.INCOMES, list);
     callback(list);
   }, (err) => {
-    console.error('Error subscribing to incomes:', err);
-    callback([]);
+    console.warn('Subscribe to incomes offline fallback:', err?.message);
+    const fallback = loadLocalBackup(BACKUP_KEYS.INCOMES, []);
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      callback(fallback);
+    }
   });
 }

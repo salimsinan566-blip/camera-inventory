@@ -84,7 +84,18 @@ export async function deleteExpense(id) {
   await deleteDoc(doc(db, EXPENSES_COLLECTION, id));
 }
 
+import {
+  BACKUP_KEYS,
+  saveLocalBackup,
+  loadLocalBackup
+} from './offlineDbHelper';
+
 export function subscribeToExpenses(callback, maxLimit = 150) {
+  const cached = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);
+  if (Array.isArray(cached) && cached.length > 0) {
+    callback(cached);
+  }
+
   const q = query(
     collection(db, EXPENSES_COLLECTION),
     orderBy('date', 'desc'),
@@ -92,8 +103,13 @@ export function subscribeToExpenses(callback, maxLimit = 150) {
   );
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    saveLocalBackup(BACKUP_KEYS.EXPENSES, list);
     callback(list);
   }, (err) => {
-    console.error('Error subscribing to expenses:', err);
+    console.warn('Subscribe to expenses offline fallback:', err?.message);
+    const fallback = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      callback(fallback);
+    }
   });
 }

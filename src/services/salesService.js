@@ -1,12 +1,5 @@
-// خدمة نقطة البيع: البحث عن منتج بالباركود، وإتمام عملية البيع.
-//
-// قرار مهم للاستقرار: إنقاص الكمية + إنشاء الفاتورة + توليد رقمها
-// التسلسلي، كل هذا يصير داخل Firestore Transaction واحدة. لو صارت
-// عمليتا بيع لنفس المنتج بنفس اللحظة (مثلاً بيّاعين استخدموا نقطة
-// البيع بنفس الثانية)، Firestore يمنع أي تعارض ويعيد المحاولة تلقائياً
-// بدل ما تنزل الكمية غلط أو تحت الصفر.
-
-import { writeBatch, 
+import { 
+  writeBatch, 
   collection,
   doc,
   getDoc,
@@ -23,72 +16,45 @@ import { db } from '../firebase/config';
 import { calculateOrderSummary } from '../models/sale';
 import { findOrCreateCustomer } from './customersService';
 import { moveToTrash } from './trashBinService';
-
-
-async function runOfflineSafeTransaction(dbInstance, callback) {
-  try {
-    return await runTransaction(dbInstance, callback);
-  } catch (err) {
-    const msg = err.message ? err.message.toLowerCase() : '';
-    if (msg.includes('connection') || msg.includes('offline') || msg.includes('network') || err.code === 'unavailable' || err.code === 'resource-exhausted' || msg.includes('quota') || msg.includes('failed to get document')) {
-       console.warn('Network error in transaction, falling back to offline batch...', err);
-       const batch = writeBatch(dbInstance);
-       const fakeTransaction = {
-         get: async (ref) => {
-           try {
-             return await getDoc(ref);
-           } catch(e) {
-             if (e.message && e.message.toLowerCase().includes('offline')) {
-                console.warn('Offline cache miss for', ref.path, 'Mocking snapshot.');
-                if (ref.path.includes('counters')) {
-                    // For counters, use a timestamp-based ID to avoid resetting the counter to 1000
-                    return {
-                        exists: () => true,
-                        data: () => ({ next: Math.floor(Date.now() / 1000) }),
-                        id: ref.id, ref
-                    };
-                }
-                return { exists: () => false, data: () => ({}), id: ref.id, ref };
-             }
-             throw e;
-           }
-         },
-         set: (ref, data, opts) => {
-             if (ref.path.includes('counters') && data.next > 1000000000) {
-                 return fakeTransaction;
-             }
-             batch.set(ref, data, opts); 
-             return fakeTransaction; 
-         },
-         update: (ref, data) => { batch.update(ref, data); return fakeTransaction; },
-         delete: (ref) => { batch.delete(ref); return fakeTransaction; }
-       };
-       const result = await callback(fakeTransaction);
-       
-       // Do not await batch.commit() so that the UI does not hang while offline.
-       // The local cache will be updated immediately, and Firebase will sync it in the background when online.
-       batch.commit().catch(e => console.error("Offline batch commit sync failed later:", e));
-       
-       return result;
-    }
-    throw err;
-  }
-}
-
+import { 
+  runOfflineSafeTransaction, 
+  recordLastKnownInvoiceNumber, 
+  getNextOfflineInvoiceNumber,
+  safeGetDoc,
+  safeGetDocs,
+  loadLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 const PRODUCTS_COLLECTION = 'products';
 const SALES_COLLECTION = 'sales';
 const SALES_COUNTER_PATH = ['counters', 'sales'];
 const STARTING_INVOICE_NUMBER = 1001;
 
-/** يبحث عن منتج بالباركود الممسوح. يرجع null لو ما لقى شي. */
+/** يبحث عن منتج بالباركود الممسوح مع دعم العمل دون اتصال */
 export async function findProductByBarcode(barcode) {
-  const q = query(collection(db, PRODUCTS_COLLECTION), where('barcode', '==', barcode));
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  const d = snapshot.docs[0];
-  return { id: d.id, ...d.data() };
+  if (!barcode) return null;
+  const cleanBarcode = String(barcode).trim();
+
+  // Search in local backup first for instant zero-latency response
+  const localList = loadLocalBackup(BACKUP_KEYS.PRODUCTS, []);
+  if (Array.isArray(localList) && localList.length > 0) {
+    const found = localList.find(p => String(p.barcode || '').trim() === cleanBarcode);
+    if (found) return found;
+  }
+
+  try {
+    const q = query(collection(db, PRODUCTS_COLLECTION), where('barcode', '==', cleanBarcode));
+    const snapshot = await safeGetDocs(q);
+    if (snapshot.empty) return null;
+    const d = snapshot.docs[0];
+    return { id: d.id, ...d.data() };
+  } catch (err) {
+    console.warn('findProductByBarcode query fallback:', err?.message);
+    return null;
+  }
 }
+
 
 /**
  * يُتمّ عملية بيع: يتحقق من توفر الكمية، ينقصها، وينشئ فاتورة برقم تسلسلي.
@@ -122,46 +88,73 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
   const salesRef = doc(collection(db, SALES_COLLECTION));
 
   const result = await runOfflineSafeTransaction(db, async (transaction) => {
-    // 1) قراءة كل منتجات السلة والعداد بالتوازي المتزامن الفوري (Zero-latency parallel read)
+    // 1) قراءة كل منتجات السلة ومستندات العهد والعداد بالتوازي المتزامن الفوري (Zero-latency parallel read)
     const productRefsMap = {};
     for (const item of cartItems) {
-      if (!item.isService && !productRefsMap[item.productId]) {
+      if (!item.isService && item.productId && !productRefsMap[item.productId]) {
         productRefsMap[item.productId] = doc(db, PRODUCTS_COLLECTION, item.productId);
       }
     }
     
-    const productEntries = Object.entries(productRefsMap);
-    const custodyDocRef = (stockSource === 'custody' && technicianId) ? doc(db, 'custody_inventory', technicianId) : null;
+    // جمع كل الفنيين المشاركين في بنود العهدة بالسلة
+    const custodyTechIds = [...new Set(
+      cartItems
+        .filter(item => !item.isService && (item.source === 'custody' || (stockSource === 'custody' && !item.source)))
+        .map(item => item.technicianId || technicianId)
+        .filter(Boolean)
+    )];
 
-    // جلب كل المستندات بطلب شبكة واحد متزامن وسريع جداً
-    const [counterSnap, custodySnap, ...productSnaps] = await Promise.all([
+    const custodyRefsMap = {};
+    for (const tId of custodyTechIds) {
+      custodyRefsMap[tId] = doc(db, 'custody_inventory', tId);
+    }
+
+    const productEntries = Object.entries(productRefsMap);
+    const custodyEntries = Object.entries(custodyRefsMap);
+
+    // جلب كل المستندات بطلب شبكة متزامن واحد
+    const [counterSnap, ...allSnaps] = await Promise.all([
       transaction.get(counterRef),
-      custodyDocRef ? transaction.get(custodyDocRef) : Promise.resolve(null),
+      ...custodyEntries.map(([_, ref]) => transaction.get(ref)),
       ...productEntries.map(([_, ref]) => transaction.get(ref))
     ]);
 
-    const productSnapsMap = {};
-    productEntries.forEach(([id], index) => {
-      productSnapsMap[id] = productSnaps[index];
+    const custodySnapsMap = {};
+    custodyEntries.forEach(([tId], index) => {
+      custodySnapsMap[tId] = allSnaps[index];
     });
 
-    let custodyRef = custodyDocRef;
-    let custodyItems = [];
-    if (stockSource === 'custody' && technicianId) {
-      if (!custodySnap || !custodySnap.exists()) {
-        throw new Error(`لا توجد عهدة مسجلة للفني: ${technicianName || technicianId}`);
+    const productSnapsMap = {};
+    const custodyCount = custodyEntries.length;
+    productEntries.forEach(([pId], index) => {
+      productSnapsMap[pId] = allSnaps[custodyCount + index];
+    });
+
+    // تجهيز مساحات العمل لعهد الفنيين
+    const custodyWorkingMap = {};
+    for (const [tId, snap] of Object.entries(custodySnapsMap)) {
+      if (!snap || !snap.exists()) {
+        throw new Error(`لا توجد عهدة مسجلة للفني: ${tId}`);
       }
-      custodyItems = [...(custodySnap.data().items || [])];
+      const cData = snap.data();
+      custodyWorkingMap[tId] = {
+        ref: custodyRefsMap[tId],
+        technicianName: cData.technicianName || technicianName || '',
+        items: [...(cData.items || [])],
+        deductedItems: []
+      };
     }
 
-    // 2) التحقق من توفر الكمية لكل منتج قبل أي تعديل
+    // 2) التحقق من توفر الكميات وتجهيز الخصومات لكل بند بحسب مصدره الخاص
+    const storeDeductions = {};
+    const warehouseDeductions = {};
     const items = [];
 
     for (const cartItem of cartItems) {
       if (cartItem.isService) {
         items.push({
           productId: cartItem.productId,
-          sku: cartItem.sku,
+          sku: cartItem.sku || '-',
           name: cartItem.name,
           quantity: cartItem.quantity,
           unitPrice: cartItem.unitPrice,
@@ -170,6 +163,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
           sellMode: cartItem.sellMode || 'unit',
           lineTotal: cartItem.quantity * cartItem.unitPrice,
           isService: true,
+          source: 'service',
         });
         continue;
       }
@@ -180,92 +174,134 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       }
       const pData = snap.data();
 
-      if (stockSource === 'custody') {
-        const cIdx = custodyItems.findIndex(ci => ci.productId === cartItem.productId);
-        const inCustodyQty = cIdx >= 0 ? (Number(custodyItems[cIdx].quantity) || 0) : 0;
+      // تحديد مصدر الصنف (من السطر نفسه أو من المصدر العام للطلب)
+      const itemSource = cartItem.source || (cartItem.isCustody ? 'custody' : stockSource);
+      const itemTechId = cartItem.technicianId || technicianId;
+      const itemTechName = cartItem.technicianName || technicianName || (itemTechId && custodyWorkingMap[itemTechId]?.technicianName) || '';
+
+      if (itemSource === 'custody') {
+        if (!itemTechId || !custodyWorkingMap[itemTechId]) {
+          throw new Error(`يرجى تحديد الفني لخصم المادة "${cartItem.name}" من عهدته`);
+        }
+        const techEntry = custodyWorkingMap[itemTechId];
+        const cIdx = techEntry.items.findIndex(ci => ci.productId === cartItem.productId);
+        const inCustodyQty = cIdx >= 0 ? (Number(techEntry.items[cIdx].quantity) || 0) : 0;
         if (inCustodyQty < cartItem.quantity) {
           throw new Error(
-            `الكمية المتوفرة في سيارة الفني (${technicianName}) من "${cartItem.name}" هي ${inCustodyQty} فقط (مطلوب ${cartItem.quantity})`
+            `الكمية المتوفرة في سيارة الفني (${techEntry.technicianName || itemTechName}) من "${cartItem.name}" هي ${inCustodyQty} فقط (مطلوب ${cartItem.quantity})`
           );
         }
-        custodyItems[cIdx].quantity = inCustodyQty - cartItem.quantity;
-      } else if (stockSource === 'warehouse') {
-        const currentWarehouseQty = Number(pData.warehouseQty) || 0;
-        if (currentWarehouseQty < cartItem.quantity) {
+        techEntry.items[cIdx].quantity = inCustodyQty - cartItem.quantity;
+        techEntry.deductedItems.push({
+          productId: cartItem.productId,
+          name: cartItem.name,
+          quantity: cartItem.quantity,
+          sku: cartItem.sku || '',
+          price: cartItem.unitPrice || 0,
+          cameraType: cartItem.cameraType || ''
+        });
+      } else if (itemSource === 'warehouse') {
+        const availableWarehouseQty = Number(pData.warehouseQty) || 0;
+        const currentDeducted = warehouseDeductions[cartItem.productId] || 0;
+        if (availableWarehouseQty < currentDeducted + cartItem.quantity) {
           throw new Error(
-            `الكمية المتوفرة في المخزن من "${cartItem.name}" هي ${currentWarehouseQty} فقط (مطلوب ${cartItem.quantity})`
+            `الكمية المتوفرة في المخزن من "${cartItem.name}" هي ${availableWarehouseQty} فقط (مطلوب ${currentDeducted + cartItem.quantity})`
           );
         }
+        warehouseDeductions[cartItem.productId] = currentDeducted + cartItem.quantity;
       } else {
-        const currentStoreQty = Number(pData.storeQty) || 0;
-        if (currentStoreQty < cartItem.quantity) {
+        // Store
+        const availableStoreQty = Number(pData.storeQty) || 0;
+        const currentDeducted = storeDeductions[cartItem.productId] || 0;
+        if (availableStoreQty < currentDeducted + cartItem.quantity) {
           throw new Error(
-            `الكمية المتوفرة في المحل من "${cartItem.name}" هي ${currentStoreQty} فقط (مطلوب ${cartItem.quantity})`
+            `الكمية المتوفرة في المحل من "${cartItem.name}" هي ${availableStoreQty} فقط (مطلوب ${currentDeducted + cartItem.quantity})`
           );
         }
+        storeDeductions[cartItem.productId] = currentDeducted + cartItem.quantity;
       }
 
       items.push({
         productId: cartItem.productId,
-        sku: cartItem.sku,
+        sku: cartItem.sku || '',
         name: cartItem.name,
+        cameraType: cartItem.cameraType || '',
         quantity: cartItem.quantity,
         unitPrice: cartItem.unitPrice,
         wholesalePrice: cartItem.wholesalePrice || 0,
         sellMode: cartItem.sellMode || 'unit',
         lineTotal: cartItem.quantity * cartItem.unitPrice,
         isService: false,
+        source: itemSource,
+        technicianId: itemSource === 'custody' ? itemTechId : null,
+        technicianName: itemSource === 'custody' ? (itemTechName || techEntry?.technicianName || '') : '',
       });
     }
 
     const summary = calculateOrderSummary(cartItems, discount, taxRate);
 
-    // 3) توليد رقم الفاتورة التسلسلي
-    const nextInvoiceNumber = counterSnap.exists()
-      ? counterSnap.data().next
-      : STARTING_INVOICE_NUMBER;
+    // 3) توليد رقم الفاتورة التسلسلي مع حماية أوفلاين
+    const nextInvoiceNumber = (counterSnap && counterSnap.exists() && counterSnap.data()?.next)
+      ? Number(counterSnap.data().next)
+      : getNextOfflineInvoiceNumber();
+    recordLastKnownInvoiceNumber(nextInvoiceNumber);
 
-    // 4) تنفيذ كل الكتابات: إنقاص الكميات + تحديث العداد + إنشاء الفاتورة
-    if (stockSource === 'custody' && custodyRef) {
-      const cleanedCustody = custodyItems.filter(i => Number(i.quantity) > 0);
-      const totalCost = cleanedCustody.reduce((s, i) => s + (Number(i.costPrice) || 0) * Number(i.quantity), 0);
+    // 4) تنفيذ كل الكتابات: إنقاص كميات العهد + المحل + المخزن + إنشاء السجلات
+    const saleNowIso = new Date().toISOString();
+    const saleDateStr = saleNowIso.slice(0, 10);
+
+    // تحديث عهد الفنيين
+    for (const [tId, techEntry] of Object.entries(custodyWorkingMap)) {
+      if (techEntry.deductedItems.length === 0) continue;
+
+      const cleanedCustody = techEntry.items.filter(i => Number(i.quantity) > 0);
+      const totalCost = cleanedCustody.reduce((s, i) => s + (Number(i.costPrice || i.wholesalePrice) || 0) * Number(i.quantity), 0);
       const totalRetail = cleanedCustody.reduce((s, i) => s + (Number(i.retailPrice) || 0) * Number(i.quantity), 0);
-      transaction.set(custodyRef, {
+
+      transaction.set(techEntry.ref, {
         items: cleanedCustody,
         totalCost,
         totalRetail,
         totalItemsCount: cleanedCustody.reduce((s, i) => s + Number(i.quantity), 0),
-        lastUpdated: new Date().toISOString()
+        lastUpdated: saleNowIso
       }, { merge: true });
 
-      // Log to custody_logs
+      // تسجيل حركة الصرف في سجل العهد
       const cLogRef = doc(collection(db, 'custody_logs'));
       transaction.set(cLogRef, {
         type: 'sale_deduct',
-        technicianId,
-        technicianName,
+        technicianId: tId,
+        technicianName: techEntry.technicianName,
         invoiceNumber: nextInvoiceNumber,
         customerName: customerName || 'زبون نقدي',
-        items: items.map(i => ({ productId: i.productId, name: i.name, quantity: i.quantity })),
-        totalQuantity: items.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
-        notes: `صرف بيع مباشر - فاتورة رقم: ${nextInvoiceNumber}`,
+        items: techEntry.deductedItems,
+        totalQuantity: techEntry.deductedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
+        notes: `صرف بيع مباشر - فاتورة رقم: ${nextInvoiceNumber} (${customerName || 'زبون نقدي'})`,
         performedBy: cashierEmail,
-        createdAt: new Date().toISOString()
+        date: saleDateStr,
+        createdAt: saleNowIso
       });
-    } else {
-      for (const cartItem of cartItems) {
-        if (cartItem.isService) continue;
-        const snap = productSnapsMap[cartItem.productId];
-        const ref = productRefsMap[cartItem.productId];
-        if (stockSource === 'warehouse') {
-          const currentQty = Number(snap.data().warehouseQty) || 0;
-          transaction.update(ref, { warehouseQty: currentQty - cartItem.quantity });
-        } else {
-          const currentQty = Number(snap.data().storeQty) || 0;
-          transaction.update(ref, { storeQty: currentQty - cartItem.quantity });
-        }
-      }
     }
+
+    // تحديث منتجات المحل
+    for (const [pId, qty] of Object.entries(storeDeductions)) {
+      const snap = productSnapsMap[pId];
+      const ref = productRefsMap[pId];
+      const currentQty = Number(snap.data().storeQty) || 0;
+      transaction.update(ref, { storeQty: currentQty - qty });
+    }
+
+    // تحديث منتجات المخزن
+    for (const [pId, qty] of Object.entries(warehouseDeductions)) {
+      const snap = productSnapsMap[pId];
+      const ref = productRefsMap[pId];
+      const currentQty = Number(snap.data().warehouseQty) || 0;
+      transaction.update(ref, { warehouseQty: currentQty - qty });
+    }
+
+    // تحديد وصف مصدر المخزون للفاتورة
+    const distinctSources = [...new Set(items.filter(i => !i.isService).map(i => i.source))];
+    const overallStockSource = distinctSources.length === 1 ? distinctSources[0] : (distinctSources.length > 1 ? 'mixed' : stockSource);
 
     transaction.set(counterRef, { next: nextInvoiceNumber + 1 }, { merge: true });
     transaction.set(salesRef, {
@@ -282,13 +318,39 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       phone2: phone2 || '',
       invoiceType,
       paymentMethod: orderOptions?.paymentMethod || (invoiceType === 'mastercard' ? 'mastercard' : (invoiceType === 'debt' ? 'debt' : 'cash')),
-      stockSource,
-      technicianId: technicianId || null,
-      technicianName: technicianName || null,
+      stockSource: overallStockSource,
+      stockSourcesList: distinctSources,
+      technicianId: custodyTechIds[0] || null,
+      technicianName: custodyWorkingMap[custodyTechIds[0]]?.technicianName || technicianName || null,
       cashierEmail,
       createdAt: serverTimestamp(),
       confirmedAt: serverTimestamp(),
     });
+
+    // تسجيل حركة المبيعات في سجل حركات المخزون لكل مادة
+    for (const item of items) {
+      if (item.isService || !item.productId) continue;
+      const invLogRef = doc(collection(db, 'inventory_logs'));
+      const isCustody = item.source === 'custody';
+      const isWarehouse = item.source === 'warehouse';
+
+      transaction.set(invLogRef, {
+        productId: item.productId,
+        productName: item.name || '',
+        sku: item.sku || '',
+        type: isCustody ? 'custody_sale' : 'sale',
+        location: isCustody ? 'custody' : (isWarehouse ? 'warehouse' : 'store'),
+        quantity: item.quantity,
+        storeQtyDiff: isCustody || isWarehouse ? 0 : -item.quantity,
+        warehouseQtyDiff: isWarehouse ? -item.quantity : 0,
+        technicianName: item.technicianName || '',
+        customerName: customerName || 'زبون نقدي',
+        referenceNumber: nextInvoiceNumber,
+        reason: `فاتورة بيع رقم: ${nextInvoiceNumber}`,
+        userEmail: cashierEmail || 'الكاشير',
+        createdAt: new Date().toISOString()
+      });
+    }
 
     return {
       invoiceNumber: nextInvoiceNumber,
@@ -302,9 +364,10 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       phone1: phone1 || '',
       phone2: phone2 || '',
       invoiceType,
-      stockSource,
-      technicianId,
-      technicianName,
+      stockSource: overallStockSource,
+      stockSourcesList: distinctSources,
+      technicianId: custodyTechIds[0] || null,
+      technicianName: custodyWorkingMap[custodyTechIds[0]]?.technicianName || technicianName || null,
       cashierEmail,
       createdAt: new Date(),
     };
@@ -324,9 +387,11 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
 
 export function buildDraftItems(cartItems) {
   return cartItems.map((item) => ({
+    cartItemId: item.cartItemId || `${item.productId}_${item.source || 'store'}_${item.technicianId || ''}`,
     productId: item.productId,
-    sku: item.sku,
-    name: item.name,
+    sku: item.sku || '',
+    name: item.name || '',
+    cameraType: item.cameraType || '',
     quantity: item.quantity,
     unitPrice: Number(item.unitPrice) || 0,
     originalPrice: item.originalPrice || item.unitPrice,
@@ -334,6 +399,10 @@ export function buildDraftItems(cartItems) {
     sellMode: item.sellMode || 'unit',
     lineTotal: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
     isService: item.isService || false,
+    source: item.source || 'store',
+    technicianId: item.technicianId || null,
+    technicianName: item.technicianName || '',
+    isCustody: item.source === 'custody'
   }));
 }
 
@@ -702,9 +771,13 @@ export async function confirmDraftSale(draftId, cashierEmail, invoiceType = null
     let nextInvoiceNumber = existingInvoiceNumber;
 
     if (!existingInvoiceNumber) {
-      nextInvoiceNumber = counterSnap.exists() ? counterSnap.data().next : STARTING_INVOICE_NUMBER;
+      nextInvoiceNumber = (counterSnap && counterSnap.exists() && counterSnap.data()?.next)
+        ? Number(counterSnap.data().next)
+        : getNextOfflineInvoiceNumber();
+      recordLastKnownInvoiceNumber(nextInvoiceNumber);
       transaction.set(counterRef, { next: nextInvoiceNumber + 1 }, { merge: true });
     }
+
 
     for (const item of items) {
       if (item.isService) continue;

@@ -1,8 +1,6 @@
 import {
   collection,
   doc,
-  getDoc,
-  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -15,6 +13,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { addExpense } from './expensesService';
+import {
+  safeGetDoc,
+  safeGetDocs,
+  saveLocalBackup,
+  loadLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 export const EMPLOYEES_COLLECTION = 'employees';
 export const SALARY_PAYMENTS_COLLECTION = 'salary_payments';
@@ -176,8 +181,8 @@ export async function payEmployeeSalary({
 
   const nowIso = new Date().toISOString();
   const empRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
-  const empSnap = await getDoc(empRef);
-  const empData = empSnap.exists() ? empSnap.data() : {};
+  const empSnap = await safeGetDoc(empRef);
+  const empData = empSnap.exists && empSnap.exists() ? empSnap.data() : {};
 
   // 1. تسجيل حركة الدفع في مجموعة salary_payments
   const paymentRecord = {
@@ -231,7 +236,7 @@ export async function payEmployeeSalary({
     currentAdvanceDebt: newAdvanceDebt,
     nextDueDate: newNextDueDate,
     updatedAt: nowIso
-  });
+  }).catch(e => console.warn('Offline employee salary update sync note:', e?.message));
 
   // 3. إذا كان الصرف من القاصة (cash_drawer)، نسجل مصروفاً تلقائياً لضبط مطابقة الصندوق
   if (paymentSource === 'cash_drawer') {
@@ -261,9 +266,14 @@ export async function payEmployeeSalary({
 }
 
 /**
- * الاشتراك اللحظي الخفيف بقائمة الموظفين فقط (موفر جداً للكوتا)
+ * الاشتراك اللحظي الخفيف بقائمة الموظفين فقط (موفر جداً للكوتا ومع أمان محلي)
  */
 export function subscribeToEmployees(callback) {
+  const cached = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+  if (Array.isArray(cached) && cached.length > 0) {
+    callback(cached);
+  }
+
   const q = query(
     collection(db, EMPLOYEES_COLLECTION),
     orderBy('createdAt', 'desc')
@@ -273,10 +283,15 @@ export function subscribeToEmployees(callback) {
     q,
     (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      saveLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', list);
       callback(list);
     },
     (err) => {
-      console.error('Error subscribing to employees:', err);
+      console.warn('Subscribe to employees offline fallback:', err?.message);
+      const fallback = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+      if (Array.isArray(fallback) && fallback.length > 0) {
+        callback(fallback);
+      }
     }
   );
 }
@@ -292,7 +307,7 @@ export async function getEmployeePaymentHistory(employeeId, limitCount = 50) {
       where('employeeId', '==', employeeId)
     );
 
-    const snap = await getDocs(q);
+    const snap = await safeGetDocs(q);
     const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     // الترتيب في الذاكرة لتجنب خطأ الفهرس المركب (Composite Index) تماماً
@@ -305,6 +320,6 @@ export async function getEmployeePaymentHistory(employeeId, limitCount = 50) {
     return list.slice(0, limitCount);
   } catch (err) {
     console.error('Error fetching employee payment history:', err);
-    throw err;
+    return [];
   }
 }

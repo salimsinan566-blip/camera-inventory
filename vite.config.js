@@ -77,16 +77,49 @@ export default defineConfig({
     apiDevPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.png'],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
-        maximumFileSizeToCacheInBytes: 5000000
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2,ttf,eot,mp3,wav}'],
+        maximumFileSizeToCacheInBytes: 15000000,
+        cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'images-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+              }
+            }
+          }
+        ]
       },
       manifest: {
         name: 'Camera Inventory POS',
         short_name: 'POS',
-        description: 'نظام الكاميرات ونقاط البيع',
-        theme_color: '#ffffff',
+        description: 'نظام إدارة المخزون ونقاط البيع المتكامل',
+        theme_color: '#0f172a',
+        background_color: '#0f172a',
         display: 'standalone',
+        orientation: 'any',
+        dir: 'rtl',
+        lang: 'ar'
       }
     })
   ],

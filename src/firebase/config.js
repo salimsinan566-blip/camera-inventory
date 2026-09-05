@@ -1,6 +1,12 @@
 // إعداد الاتصال بـ Firebase
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager, 
+  CACHE_SIZE_UNLIMITED 
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const env = (typeof import.meta !== 'undefined' && import.meta.env) || (typeof process !== 'undefined' && process.env) || {};
@@ -15,16 +21,20 @@ const firebaseConfig = {
 };
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+let firestoreInstance;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+      cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    }),
+  });
+} catch (err) {
+  // If Firestore is already initialized in current realm, fallback to getFirestore
+  firestoreInstance = getFirestore(app);
+}
+
+export const db = firestoreInstance;
 export const storage = getStorage(app);
 
-// تفعيل قاعدة البيانات المحلية (Offline Persistence) للحماية من نفاذ الكوتا وتسريع النظام
-if (typeof window !== 'undefined') {
-  enableMultiTabIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('تفعيل الذاكرة المحلية فشل: الموقع مفتوح في عدة تبويبات غير متوافقة.');
-    } else if (err.code === 'unimplemented') {
-      console.warn('المتصفح الحالي لا يدعم ميزة الذاكرة المحلية لـ Firebase.');
-    }
-  });
-}

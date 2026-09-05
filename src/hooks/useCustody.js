@@ -4,12 +4,13 @@ import {
   subscribeToAllCustodies,
   subscribeToCustodyLogs
 } from '../services/custodyService';
+import { BACKUP_KEYS, loadLocalBackup } from '../services/offlineDbHelper';
 
 export function useCustody() {
-  const [technicians, setTechnicians] = useState([]);
-  const [custodies, setCustodies] = useState({}); // map technicianId -> custodyDoc
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [technicians, setTechnicians] = useState(() => loadLocalBackup(BACKUP_KEYS.TECHNICIANS, []));
+  const [custodies, setCustodies] = useState(() => loadLocalBackup(BACKUP_KEYS.CUSTODIES, {}));
+  const [logs, setLogs] = useState(() => loadLocalBackup(BACKUP_KEYS.CUSTODY_LOGS || 'offline_backup_custody_logs', []));
+  const [loading, setLoading] = useState(() => !(Array.isArray(technicians) && technicians.length > 0));
 
   useEffect(() => {
     let unsubs = [];

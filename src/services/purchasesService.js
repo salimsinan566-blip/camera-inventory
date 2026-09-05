@@ -1,4 +1,5 @@
-import { writeBatch, 
+import { 
+  writeBatch, 
   collection,
   doc,
   getDoc,
@@ -12,56 +13,16 @@ import { writeBatch,
   orderBy,
   limit,
   onSnapshot,
-  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-
-
-async function runOfflineSafeTransaction(dbInstance, callback) {
-  try {
-    return await runTransaction(dbInstance, callback);
-  } catch (err) {
-    const msg = err.message ? err.message.toLowerCase() : '';
-    if (msg.includes('connection') || msg.includes('offline') || msg.includes('network') || err.code === 'unavailable' || err.code === 'resource-exhausted' || msg.includes('quota') || msg.includes('failed to get document')) {
-       console.warn('Network error in transaction, falling back to offline batch...', err);
-       const batch = writeBatch(dbInstance);
-       const fakeTransaction = {
-         get: async (ref) => {
-           try {
-             return await getDoc(ref);
-           } catch(e) {
-             if (e.message && e.message.toLowerCase().includes('offline')) {
-                console.warn('Offline cache miss for', ref.path, 'Mocking snapshot.');
-                if (ref.path.includes('counters')) {
-                    // For counters, use a timestamp-based ID to avoid resetting the counter to 1000
-                    return {
-                        exists: () => true,
-                        data: () => ({ next: Math.floor(Date.now() / 1000) }),
-                        id: ref.id, ref
-                    };
-                }
-                return { exists: () => false, data: () => ({}), id: ref.id, ref };
-             }
-             throw e;
-           }
-         },
-         set: (ref, data, opts) => {
-             if (ref.path.includes('counters') && data.next > 1000000000) {
-                 return fakeTransaction;
-             }
-             batch.set(ref, data, opts); 
-             return fakeTransaction; 
-         },
-         update: (ref, data) => { batch.update(ref, data); return fakeTransaction; },
-         delete: (ref) => { batch.delete(ref); return fakeTransaction; }
-       };
-       const result = await callback(fakeTransaction);
-       batch.commit().catch(e => console.error('Offline batch commit sync failed later:', e));
-       return result;
-    }
-    throw err;
-  }
-}
+import { 
+  runOfflineSafeTransaction, 
+  safeGetDoc, 
+  safeGetDocs,
+  saveLocalBackup,
+  loadLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 
 const PURCHASES_COLLECTION = 'purchases';
@@ -92,7 +53,7 @@ export function subscribeToSuppliers(callback) {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(list);
   }, (err) => {
-    console.error('Error subscribing to suppliers:', err);
+    console.warn('Error subscribing to suppliers (offline fallback):', err?.message);
   });
 }
 
@@ -100,24 +61,25 @@ export function subscribeToSuppliers(callback) {
  * حذف مورد من قائمة الموردين المحفوظين
  */
 export async function deleteSavedSupplier(supplierNameOrId) {
-  const cleanName = (supplierNameOrId || '').trim();
+  const cleanName = (supplierNameOrId || "").trim();
   if (!cleanName) return;
-  const docId = cleanName.replace(/[\/\\]/g, '_');
+  const docId = cleanName.replace(/[\/\\]/g, "_");
   await deleteDoc(doc(db, SUPPLIERS_COLLECTION, docId));
 
   // Also clean up from supplier_debts if 0 remaining debt
   try {
     const dRef = doc(db, SUPPLIER_DEBTS_COLLECTION, docId);
-    const snap = await getDoc(dRef);
+    const snap = await safeGetDoc(dRef);
     if (snap.exists() && Number(snap.data().remainingDebt || 0) <= 0) {
       await deleteDoc(dRef);
     }
   } catch (err) {
-    console.warn('Error deleting supplier debts record:', err);
+    console.warn("Error deleting supplier debts record:", err);
   }
 }
 
 /**
+
  * حفظ أو تحديث مسودة فاتورة شراء
  */
 export async function saveDraftPurchase({

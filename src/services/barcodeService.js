@@ -1,30 +1,53 @@
-// توليد رقم باركود تسلسلي فريد لكل منتج.
-// نستخدم Firestore Transaction على مستند عداد (counters/barcode) حتى لو
-// صارت عمليتا توليد بنفس اللحظة، ما يصير تعارض بالأرقام.
-
-import { doc, runTransaction, updateDoc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import {
+  runOfflineSafeTransaction,
+  loadLocalBackup,
+  saveLocalBackup,
+  BACKUP_KEYS
+} from './offlineDbHelper';
 
 const COUNTER_REF_PATH = ['counters', 'barcode'];
 const STARTING_NUMBER = 200001; // نبدأ من رقم بادئ حتى يكون الباركود 6 خانات فأكثر
 
-/** يولّد رقم باركود تسلسلي جديد وفريد (كنص) */
+export function getNextOfflineBarcodeNumber() {
+  const current = Number(loadLocalBackup(BACKUP_KEYS.LAST_BARCODE_NUM || 'offline_last_barcode_number', STARTING_NUMBER));
+  const next = current + 1;
+  saveLocalBackup(BACKUP_KEYS.LAST_BARCODE_NUM || 'offline_last_barcode_number', next);
+  return next;
+}
+
+/** يولّد رقم باركود تسلسلي جديد وفريد (كنص) بأمان تام حتى دون اتصال */
 export async function generateNextBarcode() {
   const counterRef = doc(db, ...COUNTER_REF_PATH);
 
-  const newNumber = await runTransaction(db, async (transaction) => {
-    const counterSnap = await transaction.get(counterRef);
-    const current = counterSnap.exists() ? counterSnap.data().next : STARTING_NUMBER;
-    transaction.set(counterRef, { next: current + 1 }, { merge: true });
-    return current;
-  });
+  try {
+    const newNumber = await runOfflineSafeTransaction(db, async (transaction) => {
+      const counterSnap = await transaction.get(counterRef);
+      let current = STARTING_NUMBER;
+      if (counterSnap.exists()) {
+        current = Number(counterSnap.data().next) || STARTING_NUMBER;
+      } else {
+        current = Number(loadLocalBackup(BACKUP_KEYS.LAST_BARCODE_NUM || 'offline_last_barcode_number', STARTING_NUMBER));
+      }
+      const next = current + 1;
+      transaction.set(counterRef, { next: next }, { merge: true });
+      saveLocalBackup(BACKUP_KEYS.LAST_BARCODE_NUM || 'offline_last_barcode_number', next);
+      return current;
+    });
 
-  return String(newNumber);
+    return String(newNumber);
+  } catch (err) {
+    console.warn('generateNextBarcode fallback to local generator:', err?.message);
+    return String(getNextOfflineBarcodeNumber());
+  }
 }
 
 /** يولّد باركود لمنتج معيّن ويحفظه مباشرة على مستند المنتج بالـ Firestore */
 export async function generateBarcodeForProduct(productId) {
   const barcode = await generateNextBarcode();
-  await updateDoc(doc(db, 'products', productId), { barcode });
+  const { updateProduct } = await import('./productsService');
+  await updateProduct(productId, { barcode });
   return barcode;
 }
+

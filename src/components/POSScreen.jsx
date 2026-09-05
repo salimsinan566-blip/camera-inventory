@@ -24,6 +24,7 @@ import ProductGrid from './ProductGrid';
 import CustomerSelect from './CustomerSelect';
 import InvoiceReceipt from './InvoiceReceipt';
 import { useUI } from '../contexts/UIContext';
+import NetworkStatusIndicator from './NetworkStatusIndicator';
 
 export default function POSScreen({ 
   mode = 'sale', 
@@ -239,38 +240,76 @@ export default function POSScreen({
     }
   }
 
+  const selectedTech = technicians.find(t => t.id === selectedTechnicianId);
+
+  // الملخص الإحصائي لمصادر المواد الموجودة في السلة حالياً
+  const cartSourcesSummary = useMemo(() => {
+    const custodyCount = cart.filter(i => !i.isService && (i.source === 'custody' || i.isCustody)).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+    const storeCount = cart.filter(i => !i.isService && (i.source === 'store' || (!i.source && !i.isCustody))).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+    const warehouseCount = cart.filter(i => !i.isService && i.source === 'warehouse').reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+
+    const parts = [];
+    if (custodyCount > 0) parts.push(`🚚 ${custodyCount} سيارة`);
+    if (storeCount > 0) parts.push(`🏪 ${storeCount} محل`);
+    if (warehouseCount > 0) parts.push(`🏢 ${warehouseCount} مخزن`);
+
+    return {
+      isMixed: parts.length > 1,
+      text: parts.join(' + ')
+    };
+  }, [cart]);
+
   const addToCart = useCallback((product) => {
     startTransition(() => {
       setLastInvoice(null);
+      const currentSource = stockSource; // 'store' | 'warehouse' | 'custody'
+      const currentTechId = currentSource === 'custody' ? selectedTechnicianId : null;
+      const currentTechName = currentSource === 'custody' ? selectedTech?.name || '' : '';
+      const cartItemId = `${product.id}_${currentSource}_${currentTechId || ''}`;
+
       setCart((prev) => {
-        const existing = prev.find((item) => item.productId === product.id);
-        if (existing) {
-          return prev.map((item) =>
-            item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
-          );
+        const existingIdx = prev.findIndex((item) => 
+          item.cartItemId === cartItemId || 
+          (!item.cartItemId && item.productId === product.id && (item.source || 'store') === currentSource && (item.technicianId || null) === currentTechId)
+        );
+
+        if (existingIdx >= 0) {
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            quantity: updated[existingIdx].quantity + 1
+          };
+          return updated;
         }
-        return [...prev, createCartItem(product, 1)];
+
+        const newItem = createCartItem(product, 1, {
+          source: currentSource,
+          technicianId: currentTechId,
+          technicianName: currentTechName,
+          cartItemId
+        });
+        return [...prev, newItem];
       });
     });
-  }, []);
+  }, [stockSource, selectedTechnicianId, selectedTech]);
 
-  function updateQuantity(productId, quantity) {
+  function updateQuantity(idOrCartItemId, quantity) {
     const qty = Math.max(1, Number(quantity) || 1);
     setCart((prev) =>
-      prev.map((item) => (item.productId === productId ? { ...item, quantity: qty } : item))
+      prev.map((item) => (item.cartItemId === idOrCartItemId || item.productId === idOrCartItemId ? { ...item, quantity: qty } : item))
     );
   }
 
-  function updatePrice(productId, price) {
+  function updatePrice(idOrCartItemId, price) {
     const newPrice = Math.max(0, Number(price) || 0);
     setCart((prev) =>
-      prev.map((item) => (item.productId === productId ? { ...item, unitPrice: newPrice } : item))
+      prev.map((item) => (item.cartItemId === idOrCartItemId || item.productId === idOrCartItemId ? { ...item, unitPrice: newPrice } : item))
     );
   }
 
-  function removeFromCart(productId) {
+  function removeFromCart(idOrCartItemId) {
     startTransition(() => {
-      setCart((prev) => prev.filter((item) => item.productId !== productId));
+      setCart((prev) => prev.filter((item) => item.cartItemId !== idOrCartItemId && (item.cartItemId || item.productId !== idOrCartItemId)));
     });
   }
 
@@ -291,7 +330,6 @@ export default function POSScreen({
     setShowMobileCart(false);
   }
 
-  const selectedTech = technicians.find(t => t.id === selectedTechnicianId);
   const orderOptions = {
     discount,
     taxRate,
@@ -303,14 +341,16 @@ export default function POSScreen({
     offerName,
     notes: offerNotes,
     stockSource,
-    technicianId: stockSource === 'custody' ? selectedTechnicianId : null,
-    technicianName: stockSource === 'custody' ? selectedTech?.name : null,
+    technicianId: selectedTechnicianId || null,
+    technicianName: selectedTech?.name || null,
     cashierEmail: cashierEmail || user?.email || ''
   };
 
   async function handleCheckout() {
-    if (stockSource === 'custody' && !selectedTechnicianId) {
-      setCheckoutError('⚠️ يرجى اختيار الفني أو السيارة لصرف المواد من عهدته');
+    // التحقق من وجود مواد عهدة بدون تحديد فني
+    const hasCustodyWithoutTech = cart.some(i => (i.source === 'custody' || i.isCustody) && !i.technicianId && !selectedTechnicianId);
+    if (hasCustodyWithoutTech) {
+      setCheckoutError('⚠️ تحتوي السلة على مواد من عهدة السيارة، يرجى اختيار الفني لصرفها من عهدته');
       return;
     }
     if (mode === 'offer') {
@@ -918,6 +958,7 @@ export default function POSScreen({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-base">🛒</span>
                   <h3 className="font-black text-ink-900 text-sm shrink-0">تفاصيل الفاتورة</h3>
+                  <NetworkStatusIndicator className="text-[10px] px-1.5 py-0.5" />
                 </div>
 
                 {/* Quick Toolbar Actions */}
@@ -1286,76 +1327,128 @@ export default function POSScreen({
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {cart.map((item) => (
-                    <div 
-                      key={item.productId} 
-                      className="flex items-center justify-between p-2 bg-white rounded-xl border border-ink-200/80 shadow-2xs hover:border-brand-300 transition-colors gap-2 min-w-0"
-                    >
-                      {/* Name & Price */}
-                      <div className="flex-1 min-w-0 pr-0.5">
-                        <p 
-                          className="font-bold text-ink-900 text-xs leading-snug line-clamp-2 break-words" 
-                          title={item.name}
-                        >
-                          {item.name}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] text-ink-400 font-medium">السعر:</span>
+                  {cart.map((item) => {
+                    const itemKey = item.cartItemId || `${item.productId}_${item.source || 'store'}_${item.technicianId || ''}`;
+                    const isCustody = item.source === 'custody' || item.isCustody;
+                    const isWarehouse = item.source === 'warehouse';
+                    const isService = item.isService;
+
+                    return (
+                      <div 
+                        key={itemKey} 
+                        className="flex items-center justify-between p-1.5 px-2 bg-white rounded-lg border border-ink-200/80 shadow-2xs hover:border-brand-300 transition-colors gap-1.5 min-w-0"
+                      >
+                        {/* Name & Source Sticker & Price */}
+                        <div className="flex-1 min-w-0 pr-0.5">
+                          {/* Row 1: Source Sticker + Full Product Name */}
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            {/* Source Sticker */}
+                            {isCustody ? (
+                              <span 
+                                className="inline-flex items-center gap-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5" 
+                                title={`عهدة: ${item.technicianName || 'سيارة'}`}
+                              >
+                                <span>🚚</span>
+                                <span className="max-w-[70px] truncate">{item.technicianName ? item.technicianName.split('/')[0] : 'سيارة'}</span>
+                              </span>
+                            ) : isWarehouse ? (
+                              <span className="inline-flex items-center gap-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5">
+                                <span>🏢</span>
+                                <span>مخزن</span>
+                              </span>
+                            ) : isService ? (
+                              <span className="inline-flex items-center gap-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5">
+                                <span>🛠️</span>
+                                <span>أجور</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5">
+                                <span>🏪</span>
+                                <span>محل</span>
+                              </span>
+                            )}
+
+                            {/* Product Name (Full Name without Truncate) */}
+                            <p 
+                              className="font-bold text-ink-900 text-xs leading-tight break-words flex-1 min-w-0" 
+                              title={item.name}
+                            >
+                              {item.name}
+                            </p>
+                          </div>
+
+                          {/* Row 2: Price & Warnings */}
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-ink-400 font-medium">السعر:</span>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPriceItem({ item, tempPrice: item.unitPrice, error: '' })}
+                              className={`text-[11px] font-mono font-bold hover:underline cursor-pointer ${item.unitPrice < item.wholesalePrice && !item.isService ? 'text-danger-600' : 'text-brand-700'}`}
+                              title="اضغط لتعديل السعر"
+                            >
+                              {Number(item.unitPrice || 0).toLocaleString()} د.ع
+                            </button>
+                            {item.unitPrice < item.wholesalePrice && !item.isService && (
+                              <span className="text-[8px] text-danger-700 bg-danger-50 px-1 py-0.2 rounded border border-danger-200 shrink-0 font-bold">
+                                ⚠️ دون التكلفة
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Controls: Quantity + Total + Delete */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Quantity Input */}
+                          <div className="flex items-center">
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(itemKey, e.target.value)}
+                              className="w-10 border border-ink-200 rounded-md py-0.5 px-1 text-center text-xs font-black font-mono focus:ring-2 focus:ring-brand-500 bg-ink-50/50"
+                            />
+                          </div>
+
+                          {/* Line Total */}
+                          <div className="text-left min-w-[55px] shrink-0">
+                            <span className="text-xs font-black text-ink-900 font-mono block leading-tight">
+                              {Number((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString()}
+                            </span>
+                            <span className="text-[9px] text-ink-400 font-mono block leading-none">د.ع</span>
+                          </div>
+
+                          {/* Remove Button */}
                           <button
                             type="button"
-                            onClick={() => setEditingPriceItem({ item, tempPrice: item.unitPrice, error: '' })}
-                            className={`text-xs font-mono font-bold hover:underline cursor-pointer ${item.unitPrice < item.wholesalePrice && !item.isService ? 'text-danger-600' : 'text-brand-700'}`}
-                            title="اضغط لتعديل السعر"
+                            onClick={() => removeFromCart(itemKey)}
+                            className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-danger-600 hover:bg-danger-50 rounded-md transition-colors shrink-0 cursor-pointer"
+                            title="حذف من السلة"
                           >
-                            {Number(item.unitPrice || 0).toLocaleString()} د.ع
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                           </button>
-                          {item.unitPrice < item.wholesalePrice && !item.isService && (
-                            <span className="text-[9px] text-danger-700 bg-danger-50 px-1 py-0.2 rounded border border-danger-200 shrink-0 font-bold">
-                              ⚠️ دون التكلفة
-                            </span>
-                          )}
                         </div>
                       </div>
-
-                      {/* Controls: Quantity + Total + Delete */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Quantity Input */}
-                        <div className="flex items-center">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.productId, e.target.value)}
-                            className="w-11 border border-ink-200 rounded-lg py-1 px-1 text-center text-xs font-black font-mono focus:ring-2 focus:ring-brand-500 bg-ink-50/50"
-                          />
-                        </div>
-
-                        {/* Line Total */}
-                        <div className="text-left min-w-[60px] shrink-0">
-                          <span className="text-xs font-black text-ink-900 font-mono block">
-                            {Number((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString()}
-                          </span>
-                          <span className="text-[9px] text-ink-400 font-mono block leading-none">د.ع</span>
-                        </div>
-
-                        {/* Remove Button */}
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.productId)}
-                          className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors shrink-0 cursor-pointer"
-                          title="حذف من السلة"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             {/* Footer: Summary & Checkout Actions */}
             <div className="p-2.5 bg-white border-t border-ink-100 shrink-0">
+              {/* Mixed Cart Sources Summary Pill */}
+              {cartSourcesSummary.isMixed && (
+                <div className="mb-2 px-2.5 py-1 bg-gradient-to-r from-indigo-50 via-slate-50 to-emerald-50 border border-indigo-200 rounded-lg flex items-center justify-between text-[11px] font-bold text-slate-800 shadow-2xs animate-in fade-in duration-150">
+                  <span className="flex items-center gap-1">
+                    <span>✨</span>
+                    <span>سلة مبيعات مشتركة:</span>
+                  </span>
+                  <span className="font-mono text-indigo-900 bg-white/80 px-2 py-0.5 rounded border border-indigo-100">
+                    {cartSourcesSummary.text}
+                  </span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                 <div className={`flex items-center justify-between px-2 py-0.5 rounded-lg border transition-colors ${discount > 0 ? 'bg-danger-50/60 border-danger-200 text-danger-900' : 'bg-ink-50/60 border-ink-100'}`}>
                   <label className="text-[10px] font-bold">الخصم (د.ع):</label>

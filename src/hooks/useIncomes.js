@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { subscribeToIncomes } from '../services/incomesService';
+import { BACKUP_KEYS, loadLocalBackup } from '../services/offlineDbHelper';
 
 export function useIncomes() {
-  const [incomes, setIncomes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [incomes, setIncomes] = useState(() => loadLocalBackup(BACKUP_KEYS.INCOMES, []));
+  const [loading, setLoading] = useState(() => !(Array.isArray(incomes) && incomes.length > 0));
 
   useEffect(() => {
     const unsubscribe = subscribeToIncomes((list) => {
