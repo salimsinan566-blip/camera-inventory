@@ -7,11 +7,13 @@ import { useCashReconciliation } from '../hooks/useCashReconciliation';
 import { useIncomes } from '../hooks/useIncomes';
 import { useEmployeeReimbursements } from '../hooks/useEmployeeReimbursements';
 import { useEmployeeAdvances } from '../hooks/useEmployeeAdvances';
+import { useFundTransfers } from '../hooks/useFundTransfers';
 import { getStockStatus, STOCK_STATUS } from '../models/product';
 import { useUI } from '../contexts/UIContext';
 import IncomeExpensesModal from './IncomeExpensesModal';
 import CashReconciliationModal from './CashReconciliationModal';
 import AddIncomeModal from './AddIncomeModal';
+import TransferFundsModal from './TransferFundsModal';
 
 function toDateSafe(timestamp) {
   if (!timestamp) return null;
@@ -48,11 +50,13 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   const { incomes, stats: incomesStats, loading: incomesLoading } = useIncomes();
   const { reimbursements } = useEmployeeReimbursements();
   const { advances } = useEmployeeAdvances();
+  const { transfers, loading: transfersLoading } = useFundTransfers();
 
   const [showIncomeExpensesModal, setShowIncomeExpensesModal] = useState(false);
   const [showCashReconciliationModal, setShowCashReconciliationModal] = useState(false);
   const [cashModalInitialTab, setCashModalInitialTab] = useState('reconcile');
   const [showAddIncomeModal, setShowAddIncomeModal] = useState(false);
+  const [showTransferFundsModal, setShowTransferFundsModal] = useState(false);
   const { toast } = useUI();
 
   const lowStock = products.filter((p) => getStockStatus(p) === STOCK_STATUS.LOW_STOCK);
@@ -130,11 +134,97 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
   const allMastercardIncomes = useMemo(() => {
     return (incomes || [])
-      .filter((inc) => inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card')
+      .filter((inc) => inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card' || String(inc.paymentMethod || '').includes('ماستر'))
       .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
   }, [incomes]);
 
-  const allMastercardTotal = allMastercardSales + allMastercardIncomes;
+  const allDebtMastercardRepayments = useMemo(() => {
+    let sum = 0;
+    sales.forEach((s) => {
+      if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+        s.payments.forEach((p) => {
+          const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+          if (isCard) {
+            sum += Number(p.amount || 0);
+          }
+        });
+      }
+    });
+    return sum;
+  }, [sales]);
+
+  const allMastercardTotal = allMastercardSales + allMastercardIncomes + allDebtMastercardRepayments;
+
+  // Live Mastercard Balance accounting for reconciliation & fund transfers
+  const liveMastercardBalance = useMemo(() => {
+    if (latestReconciliation && latestReconciliation.date && typeof latestReconciliation.actualMastercardAmount === 'number' && latestReconciliation.actualMastercardAmount > 0) {
+      const recDate = new Date(latestReconciliation.date);
+      const baseAmount = Number(latestReconciliation.actualMastercardAmount) || 0;
+
+      let inflowSince = 0;
+      sales.forEach((s) => {
+        const sDate = toDateSafe(s.createdAt);
+        if (sDate && sDate > recDate) {
+          const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
+          if (isCard) inflowSince += Number(s.total || 0);
+        }
+      });
+
+      sales.forEach((s) => {
+        const sDate = toDateSafe(s.createdAt);
+        if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+          s.payments.forEach((p) => {
+            const pDate = p.date ? new Date(p.date) : null;
+            if (pDate && pDate > recDate) {
+              const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+              if (isPCard) inflowSince += Number(p.amount || 0);
+            }
+          });
+        }
+      });
+
+      (incomes || []).forEach((inc) => {
+        const isCard = inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card' || String(inc.paymentMethod || '').includes('ماستر');
+        if (isCard) {
+          const createdDate = inc.createdAt ? new Date(inc.createdAt) : null;
+          const docDate = inc.date ? new Date(inc.date) : null;
+          if ((createdDate && createdDate > recDate) || (docDate && docDate > recDate)) {
+            inflowSince += Number(inc.amount || 0);
+          }
+        }
+      });
+
+      let transfersOutSince = 0;
+      let transfersInSince = 0;
+      (transfers || []).forEach((t) => {
+        const tDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null);
+        if (tDate && tDate > recDate) {
+          const tAmt = Number(t.amount || 0);
+          if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+            transfersOutSince += tAmt;
+          } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+            transfersInSince += tAmt;
+          }
+        }
+      });
+
+      return baseAmount + inflowSince + transfersInSince - transfersOutSince;
+    }
+
+    // Cumulative calculation
+    let totalTransfersOut = 0;
+    let totalTransfersIn = 0;
+    (transfers || []).forEach((t) => {
+      const tAmt = Number(t.amount || 0);
+      if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+        totalTransfersOut += tAmt;
+      } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+        totalTransfersIn += tAmt;
+      }
+    });
+
+    return (allMastercardSales + allMastercardIncomes + allDebtMastercardRepayments + totalTransfersIn) - totalTransfersOut;
+  }, [sales, incomes, transfers, latestReconciliation, allMastercardSales, allMastercardIncomes, allDebtMastercardRepayments]);
 
   const todaysManualIncome = useMemo(() => {
     return (incomes || [])
@@ -336,6 +426,19 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         }
       });
 
+      // التحويلات المالية منذ تاريخ التسوية
+      (transfers || []).forEach((t) => {
+        const tDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null);
+        if (tDate && tDate > recDate) {
+          const tAmt = Number(t.amount || 0);
+          if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+            inflowSince += tAmt;
+          } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+            outflowSince += tAmt;
+          }
+        }
+      });
+
       return baseAmount + inflowSince - outflowSince;
     }
 
@@ -397,8 +500,19 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     
     const allAdvancesGiven = (advances || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
 
-    return (allDirectCashSales + allDebtPayments + allManualIncomes + allAdvanceRepaymentsInCash) - (allDrawerExpenses + allCashPurchases + allSupplierDebtPayments + allReimbursementsFromDrawer + allAdvancesGiven);
-  }, [sales, expenses, purchases, supplierDebtPayments, incomes, reimbursements, advances, latestReconciliation]);
+    let allTransfersFromMasterToCash = 0;
+    let allTransfersFromCashToMaster = 0;
+    (transfers || []).forEach((t) => {
+      const tAmt = Number(t.amount || 0);
+      if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+        allTransfersFromMasterToCash += tAmt;
+      } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+        allTransfersFromCashToMaster += tAmt;
+      }
+    });
+
+    return (allDirectCashSales + allDebtPayments + allManualIncomes + allAdvanceRepaymentsInCash + allTransfersFromMasterToCash) - (allDrawerExpenses + allCashPurchases + allSupplierDebtPayments + allReimbursementsFromDrawer + allAdvancesGiven + allTransfersFromCashToMaster);
+  }, [sales, expenses, purchases, supplierDebtPayments, incomes, reimbursements, advances, transfers, latestReconciliation]);
 
   const topProducts = useMemo(() => {
     const map = new Map();
@@ -417,13 +531,36 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <h2 className="text-xl font-bold text-ink-900 tracking-tight">لوحة التحكم ونظرة عامة</h2>
-          <p className="text-xs text-slate-500 mt-0.5">مؤشرات النشاط اليومي، النقد الفعلي بالمكتب، وتدفق الصندوق</p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-ink-900 tracking-tight">لوحة التحكم ونظرة عامة</h2>
+            <p className="text-xs text-slate-500 mt-0.5">مؤشرات النشاط اليومي، النقد الفعلي بالمكتب، وتدفق الصندوق</p>
+          </div>
+
+          {/* إجمالي السيولة الشاملة (النقد + الماستر) */}
+          <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-xl">
+            <span className="text-sm">💼</span>
+            <div className="text-[11px]">
+              <span className="text-slate-500 block leading-tight font-medium">إجمالي السيولة (النقد + الماستر):</span>
+              <span className="font-bold font-mono text-indigo-950 text-xs">
+                {salesLoading || expensesLoading || incomesLoading || transfersLoading ? '...' : (actualOfficeCash + liveMastercardBalance).toLocaleString()} <span className="text-[10px] text-slate-500 font-normal">د.ع</span>
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Quick Action Buttons */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowTransferFundsModal(true)}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="تحويل مالي بين رصيد الماستر كارد وقاصة النقد"
+          >
+            <span className="text-sm">🔄</span>
+            <span>تحويل (ماستر ➔ قاصة)</span>
+          </button>
+
           <a
             href={`${window.location.origin}${window.location.pathname}?portal=customer`}
             target="_blank"
@@ -520,11 +657,9 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           </div>
         </div>
 
-        {/* Card 2: Live Mastercard / Electronic Income (دخل الماستر كارد والدفع الإلكتروني) */}
+        {/* Card 2: Live Mastercard Balance & Electronic Transfers (رصيد الماستر كارد والتحويل) */}
         <div 
-          onClick={() => setShowIncomeExpensesModal(true)}
-          className="card p-4 sm:p-5 flex flex-col justify-between gap-2.5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-400 transition-all duration-200 cursor-pointer group border border-indigo-800/60 relative overflow-hidden"
-          title="انقر لفتح تفاصيل وحركات الدفع الإلكتروني والماستر كارد"
+          className="card p-4 sm:p-5 flex flex-col justify-between gap-2.5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-400 transition-all duration-200 group border border-indigo-800/60 relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-amber-400 via-rose-500 to-indigo-500"></div>
           
@@ -536,7 +671,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 opacity-90 inline-block -mr-1"></span>
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 opacity-90 inline-block"></span>
                 </span>
-                <span>دخل الماستر (اليوم)</span>
+                <span>رصيد الماستر كارد</span>
               </h3>
             </div>
             <div className="w-8 h-8 rounded-xl bg-indigo-900/80 border border-indigo-700/60 flex items-center justify-center text-amber-300 group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0 shadow-2xs">
@@ -549,20 +684,41 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           <div>
             <div className="flex items-baseline gap-1">
               <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-amber-300">
-                {salesLoading || incomesLoading ? '...' : todaysMastercardTotal.toLocaleString()}
+                {salesLoading || incomesLoading || transfersLoading ? '...' : liveMastercardBalance.toLocaleString()}
               </span>
-              <span className="text-[11px] font-bold text-slate-300">د.ع</span>
+              <span className="text-[11px] font-bold text-amber-200/80">د.ع</span>
             </div>
-            <span className="text-[10px] text-slate-300 block mt-0.5 font-medium truncate">
-              {todaysMastercardCount > 0 
-                ? `${todaysMastercardCount} حركة إلكترونية اليوم`
-                : 'لا توجد حركات ماستر اليوم'}
-            </span>
+            <div className="text-[10px] text-slate-300 flex items-center gap-1.5 mt-0.5 font-medium truncate">
+              <span>دخل اليوم: {todaysMastercardTotal > 0 ? `+${todaysMastercardTotal.toLocaleString()} د.ع` : '0 د.ع'}</span>
+              <span>•</span>
+              <span className="text-slate-400">
+                {todaysMastercardCount > 0 ? `${todaysMastercardCount} حركة` : 'لا توجد حركات اليوم'}
+              </span>
+            </div>
           </div>
 
-          <div className="text-[10px] font-bold text-amber-300 group-hover:text-white flex items-center justify-between pt-1.5 border-t border-dashed border-indigo-800/80">
-            <span className="truncate">إجمالي الماستر: {allMastercardTotal.toLocaleString()} د.ع</span>
-            <span className="text-amber-400 group-hover:translate-x-[-2px] transition-transform">←</span>
+          <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-dashed border-indigo-800/80 text-[10px] font-bold">
+            <button
+              type="button"
+              onClick={() => setShowTransferFundsModal(true)}
+              className="text-amber-300 hover:text-white flex items-center gap-1 hover:underline cursor-pointer bg-transparent border-0 p-0"
+              title="تحويل مبلغ من رصيد الماستر كارد إلى قاصة الصندوق النقدي"
+            >
+              <span>🔄</span>
+              <span>تحويل للقاصة</span>
+            </button>
+
+            <span className="text-indigo-700 font-normal">|</span>
+
+            <button
+              type="button"
+              onClick={() => setShowIncomeExpensesModal(true)}
+              className="text-indigo-300 hover:text-white flex items-center gap-1 hover:underline cursor-pointer bg-transparent border-0 p-0"
+              title="فتح كشف وتفاصيل حركات الدفع الإلكتروني"
+            >
+              <span>📑</span>
+              <span>كشف وتفاصيل</span>
+            </button>
           </div>
         </div>
 
@@ -836,6 +992,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       {showCashReconciliationModal && (
         <CashReconciliationModal
           currentCalculatedCash={actualOfficeCash}
+          currentCalculatedMastercard={liveMastercardBalance}
           initialTab={cashModalInitialTab}
           onClose={() => setShowCashReconciliationModal(false)}
         />
@@ -844,6 +1001,14 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       {showAddIncomeModal && (
         <AddIncomeModal
           onClose={() => setShowAddIncomeModal(false)}
+        />
+      )}
+
+      {showTransferFundsModal && (
+        <TransferFundsModal
+          currentMastercardBalance={liveMastercardBalance}
+          currentCashBalance={actualOfficeCash}
+          onClose={() => setShowTransferFundsModal(false)}
         />
       )}
     </div>

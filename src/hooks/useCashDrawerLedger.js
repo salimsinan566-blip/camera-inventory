@@ -6,6 +6,7 @@ import { useIncomes } from './useIncomes';
 import { useEmployeeAdvances } from './useEmployeeAdvances';
 import { useEmployeeReimbursements } from './useEmployeeReimbursements';
 import { useCashReconciliation } from './useCashReconciliation';
+import { useFundTransfers } from './useFundTransfers';
 
 function toDateSafe(timestamp) {
   if (!timestamp) return null;
@@ -40,8 +41,9 @@ export function useCashDrawerLedger(selectedDateStr) {
   const { advances } = useEmployeeAdvances();
   const { reimbursements } = useEmployeeReimbursements();
   const { latestReconciliation, reconciliations } = useCashReconciliation();
+  const { transfers, loading: transfersLoading } = useFundTransfers();
 
-  const loading = salesLoading || expensesLoading || incomesLoading;
+  const loading = salesLoading || expensesLoading || incomesLoading || transfersLoading;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const targetDateStr = selectedDateStr || todayStr;
@@ -165,6 +167,19 @@ export function useCashDrawerLedger(selectedDateStr) {
         }
       });
 
+      // التحويلات المالية منذ تاريخ التسوية
+      (transfers || []).forEach((t) => {
+        const tDate = toDateSafe(t.date || t.createdAt);
+        if (tDate && tDate > recDate) {
+          const tAmt = Number(t.amount || 0);
+          if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+            inflowSince += tAmt;
+          } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+            outflowSince += tAmt;
+          }
+        }
+      });
+
       return baseAmount + inflowSince - outflowSince;
     }
 
@@ -226,8 +241,19 @@ export function useCashDrawerLedger(selectedDateStr) {
 
     const allAdvancesGiven = (advances || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
 
-    return (allDirectCashSales + allDebtPayments + allManualIncomes + allAdvanceRepaymentsInCash) - (allDrawerExpenses + allCashPurchases + allSupplierDebtPayments + allReimbursementsFromDrawer + allAdvancesGiven);
-  }, [sales, expenses, purchases, supplierDebtPayments, incomes, reimbursements, advances, latestReconciliation]);
+    let allTransfersFromMasterToCash = 0;
+    let allTransfersFromCashToMaster = 0;
+    (transfers || []).forEach((t) => {
+      const tAmt = Number(t.amount || 0);
+      if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+        allTransfersFromMasterToCash += tAmt;
+      } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+        allTransfersFromCashToMaster += tAmt;
+      }
+    });
+
+    return (allDirectCashSales + allDebtPayments + allManualIncomes + allAdvanceRepaymentsInCash + allTransfersFromMasterToCash) - (allDrawerExpenses + allCashPurchases + allSupplierDebtPayments + allReimbursementsFromDrawer + allAdvancesGiven + allTransfersFromCashToMaster);
+  }, [sales, expenses, purchases, supplierDebtPayments, incomes, reimbursements, advances, transfers, latestReconciliation]);
 
   // 2. تجميع وتوحيد كل الحركات النقدية اليومية
   const allRawCashEvents = useMemo(() => {
@@ -480,9 +506,46 @@ export function useCashDrawerLedger(selectedDateStr) {
       }
     });
 
+    // ي) التحويلات المالية بين الماستر كارد والقاصة (Fund Transfers)
+    (transfers || []).forEach((t) => {
+      const tDate = toDateSafe(t.date || t.createdAt);
+      const tAmount = Number(t.amount || 0);
+      if (!tDate || tAmount <= 0) return;
+
+      if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+        events.push({
+          id: `transfer_${t.id}`,
+          date: tDate,
+          dateStr: getIsoDateStr(tDate),
+          type: 'fund_transfer_in',
+          typeLabel: 'تحويل من الماستر',
+          direction: 'in',
+          amount: tAmount,
+          title: 'تحويل من رصيد الماستر كارد إلى القاصة',
+          subtitle: t.notes || 'سحب نقدي من الحساب الإلكتروني وإيداع بالقاصة',
+          user: t.createdBy || 'المسؤول',
+          raw: t
+        });
+      } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+        events.push({
+          id: `transfer_${t.id}`,
+          date: tDate,
+          dateStr: getIsoDateStr(tDate),
+          type: 'fund_transfer_out',
+          typeLabel: 'إيداع في الماستر',
+          direction: 'out',
+          amount: tAmount,
+          title: 'إيداع نقدي من القاصة في الماستر كارد',
+          subtitle: t.notes || 'إيداع نقدي من القاصة في الحساب البنكي',
+          user: t.createdBy || 'المسؤول',
+          raw: t
+        });
+      }
+    });
+
     // فرز جميع الحركات تصاعدياً حسب التوقيت الزمني الدقيق (من الأقدم للأحدث)
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [sales, expenses, purchases, supplierDebtPayments, incomes, advances, reimbursements]);
+  }, [sales, expenses, purchases, supplierDebtPayments, incomes, advances, reimbursements, transfers]);
 
   // 3. تجميع الحركات اليومية بحسب التواريخ (Daily Net Deltas)
   const dailyMetricsMap = useMemo(() => {
