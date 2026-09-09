@@ -332,8 +332,9 @@ export async function generateInvoicePdfBlob(sale, settings) {
               return `
                 <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
                   <td style="padding: 8px 8px; font-weight: bold; color: #1e293b; text-align: right; max-width: 260px; word-break: break-word; line-height: 1.35; letter-spacing: 0px;">
-                    ${item.isService ? '<span style="font-size: 9px; background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
+                    ${item.isService && !item.isCustom ? '<span style="font-size: 9px; background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
                     <bdi dir="auto" style="unicode-bidi: plaintext !important;">${item.name || 'منتج'}</bdi>
+                    ${item.notes ? `<div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 2px;">${item.notes}</div>` : ''}
                   </td>
                   <td style="padding: 8px 8px; text-align: center; font-weight: bold; color: #1e293b; letter-spacing: 0px;">
                     ${item.quantity || 1}
@@ -436,17 +437,18 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
         <!-- Footer Notes & Info -->
         <div style="padding-top: 12px; border-top: 1px solid #e2e8f0; direction: rtl;">
-          ${settings?.description ? `
-            <div style="font-size: 11px; color: #475569; margin-bottom: 8px; width: 75%; font-weight: 500; letter-spacing: 0px; line-height: 1.7;">
-              <strong style="color: #1e293b; display: block; margin-bottom: 3px; letter-spacing: 0px; font-size: 11px;">ملاحظات هامة:</strong>
-              <p style="margin: 0; white-space: pre-wrap; letter-spacing: 0px; line-height: 1.7;">${settings.description}</p>
+          ${(sale.notes || sale.offerNotes || sale.invoiceNotes) ? `
+            <div style="font-size: 11px; color: #1e293b; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; line-height: 1.6;">
+              <strong style="color: #78350f; display: block; margin-bottom: 2px; font-size: 11px;">📝 ${sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</strong>
+              <p style="margin: 0; white-space: pre-wrap; font-weight: 500;">${sale.notes || sale.offerNotes || sale.invoiceNotes}</p>
             </div>
           ` : ''}
 
-          <div style="display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 4px; font-size: 11px; color: #64748b; font-weight: bold; letter-spacing: 0px;">
-            <span>${storeName}</span>
-            ${address ? `<span>• ${address}</span>` : ''}
-            <span>• شكراً لثقتكم بنا</span>
+          <!-- عبارة أمنية ختامية -->
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-top: 8px; line-height: 1.6; text-align: center;">
+            <div style="color: #0f172a; font-weight: bold; font-size: 11px; margin-bottom: 4px;">🔒 أمانكم واستقرار أعمالكم هو أولويتنا الأولى.</div>
+            <div style="font-size: 10px; color: #475569; line-height: 1.6; margin-bottom: 6px;">نسعى دائماً لتقديم أحدث تقنيات المراقبة الذكية وحلول الحماية المتقدمة بأعلى معايير الجودة والاعتمادية.</div>
+            <div style="color: #C89B3C; font-weight: bold; font-size: 11px;">شكراً لاختياركم المنطقة الامنة لأنظمة المراقبة.</div>
           </div>
         </div>
 

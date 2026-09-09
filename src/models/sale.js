@@ -70,7 +70,78 @@ export function createLaborCartItem(labor) {
     availableQuantity: 999999, // خدمات غير محدودة
     sellMode: 'unit',
     isService: true,
+    isCustom: false,
     source: 'service',
+    technicianId: null,
+    technicianName: '',
+    isCustody: false
+  };
+}
+
+/** يبني عنصر سلة جديد لبند مخصص يدوي لا يؤثر على المخزون */
+export function createCustomCartItem({ name, unitPrice, price: altPrice, quantity = 1, wholesalePrice = 0, costPrice: altCost, notes = '' }) {
+  const customId = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const price = Math.max(0, Number(unitPrice !== undefined ? unitPrice : altPrice) || 0);
+  const cost = Math.max(0, Number(wholesalePrice !== undefined ? wholesalePrice : altCost) || 0);
+  const qty = Math.max(1, Number(quantity) || 1);
+
+  return {
+    cartItemId: customId,
+    productId: customId,
+    sku: '-',
+    name: (name || '').trim(),
+    notes: (notes || '').trim(),
+    cameraType: 'بند مخصص',
+    quantity: qty,
+    unitPrice: price,
+    originalPrice: price,
+    wholesalePrice: cost,
+    availableQuantity: 999999,
+    sellMode: 'unit',
+    isService: true,
+    isCustom: true,
+    source: 'custom',
+    technicianId: null,
+    technicianName: '',
+    isCustody: false
+  };
+}
+
+/** يبني عنصر سلة جديد لمشتريات موقعية إضافية (خارجية) لا تؤثر على المخزون */
+export function createSitePurchaseCartItem({
+  name,
+  purchaseCost = 0,
+  costPrice: altCost,
+  sellingPrice = 0,
+  unitPrice: altPrice,
+  quantity = 1,
+  paymentSource = 'cash_drawer', // 'cash_drawer' | 'mastercard'
+  notes = '',
+}) {
+  const customId = `site_purchase_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const cost = Math.max(0, Number(purchaseCost !== undefined ? purchaseCost : altCost) || 0);
+  const price = Math.max(0, Number(sellingPrice !== undefined ? sellingPrice : (altPrice !== undefined ? altPrice : cost)) || 0);
+  const qty = Math.max(1, Number(quantity) || 1);
+
+  return {
+    cartItemId: customId,
+    productId: customId,
+    sku: '-',
+    name: (name || '').trim(),
+    notes: (notes || '').trim(),
+    cameraType: 'مشتريات موقعية',
+    quantity: qty,
+    unitPrice: price,
+    originalPrice: price,
+    wholesalePrice: cost,
+    purchaseCost: cost,
+    paymentSource: paymentSource === 'mastercard' ? 'mastercard' : 'cash_drawer',
+    isSitePurchase: true,
+    availableQuantity: 999999,
+    sellMode: 'unit',
+    isService: true,
+    isCustom: true,
+    source: 'site_purchase',
     technicianId: null,
     technicianName: '',
     isCustody: false
@@ -85,7 +156,7 @@ export function cartItemsFromDraft(draftItems, productsList = []) {
       const prod = productsList.find(p => p.id === item.productId || p.sku === item.sku);
       if (prod) ws = Number(prod.wholesalePrice) || 0;
     }
-    const source = item.source || (item.isCustody ? 'custody' : 'store');
+    const source = item.source || (item.isCustody ? 'custody' : (item.isSitePurchase ? 'site_purchase' : 'store'));
     const technicianId = item.technicianId || null;
     const technicianName = item.technicianName || '';
     const cartItemId = item.cartItemId || `${item.productId}_${source}_${technicianId || ''}`;
@@ -95,13 +166,18 @@ export function cartItemsFromDraft(draftItems, productsList = []) {
       productId: item.productId,
       sku: item.sku || '',
       name: item.name || '',
-      cameraType: item.cameraType || '',
+      notes: item.notes || '',
+      cameraType: item.cameraType || (item.isSitePurchase ? 'مشتريات موقعية' : ''),
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       originalPrice: item.originalPrice || item.unitPrice,
       wholesalePrice: ws || 0,
+      purchaseCost: Number(item.purchaseCost !== undefined ? item.purchaseCost : ws) || 0,
+      paymentSource: item.paymentSource || 'cash_drawer',
+      isSitePurchase: Boolean(item.isSitePurchase),
       sellMode: item.sellMode || 'unit',
       isService: item.isService || false,
+      isCustom: item.isCustom || false,
       source,
       technicianId,
       technicianName,

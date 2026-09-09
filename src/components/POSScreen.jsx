@@ -15,6 +15,8 @@ import {
   cartItemsFromDraft,
   calculateOrderSummary,
   createLaborCartItem,
+  createCustomCartItem,
+  createSitePurchaseCartItem,
 } from '../models/sale';
 import { useDraftSales } from '../hooks/useDraftSales';
 import { useLaborCharges } from '../hooks/useLaborCharges';
@@ -23,8 +25,8 @@ import { useCustody } from '../hooks/useCustody';
 import ProductGrid from './ProductGrid';
 import CustomerSelect from './CustomerSelect';
 import InvoiceReceipt from './InvoiceReceipt';
+import SuspendedStatementModal from './SuspendedStatementModal';
 import { useUI } from '../contexts/UIContext';
-import NetworkStatusIndicator from './NetworkStatusIndicator';
 
 export default function POSScreen({ 
   mode = 'sale', 
@@ -70,6 +72,30 @@ export default function POSScreen({
   const [showReceipt, setShowReceipt] = useState(false);
   const [showLaborMenu, setShowLaborMenu] = useState(false);
   const [showDraftsModal, setShowDraftsModal] = useState(false);
+  const [showSuspendedStatementModal, setShowSuspendedStatementModal] = useState(false);
+  const [showCustomItemModal, setShowCustomItemModal] = useState(false);
+  const [customItemForm, setCustomItemForm] = useState({
+    name: '',
+    unitPrice: '',
+    quantity: '1',
+    wholesalePrice: '',
+    notes: '',
+  });
+  const [customItemError, setCustomItemError] = useState('');
+  const customItemNameInputRef = useRef(null);
+
+  const [showSitePurchaseModal, setShowSitePurchaseModal] = useState(false);
+  const [sitePurchaseForm, setSitePurchaseForm] = useState({
+    name: '',
+    purchaseCost: '',
+    sellingPrice: '',
+    quantity: '1',
+    paymentSource: 'cash_drawer', // 'cash_drawer' or 'mastercard'
+    notes: '',
+  });
+  const [sitePurchaseError, setSitePurchaseError] = useState('');
+  const sitePurchaseNameInputRef = useRef(null);
+  const [invoiceNotes, setInvoiceNotes] = useState('');
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [isCartMaximized, setIsCartMaximized] = useState(false);
   const [editingPriceItem, setEditingPriceItem] = useState(null); // { item, tempPrice, error }
@@ -79,6 +105,22 @@ export default function POSScreen({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (showCustomItemModal) {
+      setTimeout(() => {
+        customItemNameInputRef.current?.focus();
+      }, 50);
+    }
+  }, [showCustomItemModal]);
+
+  useEffect(() => {
+    if (showSitePurchaseModal) {
+      setTimeout(() => {
+        sitePurchaseNameInputRef.current?.focus();
+      }, 50);
+    }
+  }, [showSitePurchaseModal]);
 
   useEffect(() => {
     if (draftToOpen && mode === 'sale') {
@@ -327,6 +369,7 @@ export default function POSScreen({
     setSelectedTechnicianId('');
     setOfferName('');
     setOfferNotes('');
+    setInvoiceNotes('');
     setShowMobileCart(false);
   }
 
@@ -339,7 +382,7 @@ export default function POSScreen({
     phone1,
     phone2,
     offerName,
-    notes: offerNotes,
+    notes: mode === 'offer' ? offerNotes : invoiceNotes,
     stockSource,
     technicianId: selectedTechnicianId || null,
     technicianName: selectedTech?.name || null,
@@ -466,6 +509,7 @@ export default function POSScreen({
     setPhone1(draft.phone1 || '');
     setPhone2(draft.phone2 || '');
     setInvoiceType(draft.invoiceType || 'cash');
+    setInvoiceNotes(draft.notes || '');
     setEditingDraftId(draft.id);
   }
 
@@ -512,6 +556,9 @@ export default function POSScreen({
       customerName,
       phone1,
       phone2,
+      notes: mode === 'offer' ? (offerNotes || '') : (invoiceNotes || ''),
+      invoiceType,
+      stockSource,
     };
     setLastInvoice(unconfirmedInvoice);
     setShowReceipt(true);
@@ -596,9 +643,20 @@ export default function POSScreen({
               <svg className="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
               الفواتير المعلقة {drafts.length > 0 && <span className="bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full text-sm">{drafts.length}</span>}
             </h3>
-            <button onClick={() => setShowDraftsModal(false)} className="p-2 text-ink-400 hover:text-danger-500 hover:bg-danger-50 rounded-full transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSuspendedStatementModal(true)}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="فتح كشف حساب الفواتير المعلقة والمحجوزة"
+              >
+                <span>📑</span>
+                <span>كشف حساب المعلقات</span>
+              </button>
+              <button onClick={() => setShowDraftsModal(false)} className="p-2 text-ink-400 hover:text-danger-500 hover:bg-danger-50 rounded-full transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
           </div>
           <div className="overflow-y-auto flex-1 p-4 bg-ink-50/30">
             {drafts.length === 0 ? (
@@ -714,7 +772,7 @@ export default function POSScreen({
         }));
         return;
       }
-      updatePrice(item.productId, numPrice);
+      updatePrice(item.cartItemId || item.productId, numPrice);
       setEditingPriceItem(null);
     };
 
@@ -838,11 +896,457 @@ export default function POSScreen({
     );
   };
 
+  const renderCustomItemModal = () => {
+    if (!showCustomItemModal) return null;
+
+    const handleFormSubmit = (e) => {
+      e.preventDefault();
+      const trimmedName = (customItemForm.name || '').trim();
+      if (!trimmedName) {
+        setCustomItemError('يرجى إدخال اسم المادة أو البند');
+        return;
+      }
+      const price = Number(customItemForm.unitPrice);
+      if (isNaN(price) || price < 0 || customItemForm.unitPrice === '') {
+        setCustomItemError('يرجى إدخال سعر بيع صحيح');
+        return;
+      }
+      const qty = Math.max(1, Number(customItemForm.quantity) || 1);
+      const cost = Math.max(0, Number(customItemForm.wholesalePrice) || 0);
+
+      const newItem = createCustomCartItem({
+        name: trimmedName,
+        unitPrice: price,
+        quantity: qty,
+        wholesalePrice: cost,
+        notes: customItemForm.notes,
+      });
+
+      setCart((prev) => [...prev, newItem]);
+      setShowCustomItemModal(false);
+      setCustomItemForm({ name: '', unitPrice: '', quantity: '1', wholesalePrice: '', notes: '' });
+      setCustomItemError('');
+      toast('تمت إضافة البند المخصص للسلة ✨', 'success');
+    };
+
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowCustomItemModal(false);
+          }
+        }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl border border-ink-100 w-full max-w-md p-5 animate-in zoom-in-95 duration-150 relative">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-ink-100 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">✨</span>
+              <div>
+                <h3 className="font-black text-ink-900 text-base">إضافة بند مخصص (حر)</h3>
+                <p className="text-[11px] text-ink-500 font-medium">لا يؤثر على رصيد المخزن ولا ينقص الكميات</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCustomItemModal(false)}
+              className="text-ink-400 hover:text-ink-700 p-1.5 rounded-lg hover:bg-ink-100 transition-colors cursor-pointer text-base leading-none"
+            >
+              ✕
+            </button>
+          </div>
+
+          {customItemError && (
+            <div className="mb-3 px-3 py-2 bg-danger-50 border border-danger-200 text-danger-700 text-xs font-bold rounded-xl flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>{customItemError}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleFormSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-ink-800 mb-1">
+                اسم المادة أو البند <span className="text-danger-500">*</span>
+              </label>
+              <input
+                ref={customItemNameInputRef}
+                type="text"
+                value={customItemForm.name}
+                onChange={(e) => {
+                  setCustomItemForm((prev) => ({ ...prev, name: e.target.value }));
+                  if (customItemError) setCustomItemError('');
+                }}
+                placeholder="مثال: توصيلة كهربائية، صيانة خاصة، حامل شاشة..."
+                className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold text-ink-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-hidden bg-ink-50/40"
+                autoFocus
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-ink-800 mb-1">
+                  سعر البيع (د.ع) <span className="text-danger-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={customItemForm.unitPrice}
+                  onChange={(e) => {
+                    setCustomItemForm((prev) => ({ ...prev, unitPrice: e.target.value }));
+                    if (customItemError) setCustomItemError('');
+                  }}
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold font-mono text-ink-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-hidden bg-ink-50/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-ink-800 mb-1">
+                  الكمية
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={customItemForm.quantity}
+                  onChange={(e) => setCustomItemForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                  className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold font-mono text-ink-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-hidden bg-ink-50/40"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-ink-800 mb-1">
+                سعر التكلفة / الشراء (اختياري)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={customItemForm.wholesalePrice}
+                onChange={(e) => setCustomItemForm((prev) => ({ ...prev, wholesalePrice: e.target.value }))}
+                placeholder="0 (يُترك فارغاً إذا كان بدون تكلفة)"
+                className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold font-mono text-ink-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-hidden bg-ink-50/40"
+              />
+              <p className="text-[10px] text-ink-500 mt-1">يُستخدم لاحتساب صافي الأرباح بدقة في التقارير المالية</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-ink-800 mb-1">
+                ملاحظات أو مواصفات البند (اختياري)
+              </label>
+              <textarea
+                value={customItemForm.notes}
+                onChange={(e) => setCustomItemForm((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="أي تفاصيل أو ملاحظات خاصة بالبند..."
+                rows={2}
+                className="w-full px-3 py-1.5 border border-ink-200 rounded-xl text-xs text-ink-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-hidden bg-ink-50/40 resize-none"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-ink-100">
+              <button
+                type="submit"
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <span>✨</span>
+                <span>إضافة إلى الفاتورة</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCustomItemModal(false)}
+                className="px-4 py-2 border border-ink-200 text-ink-700 hover:bg-ink-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSitePurchaseModal = () => {
+    if (!showSitePurchaseModal) return null;
+
+    const handleFormSubmit = (e) => {
+      e.preventDefault();
+      const trimmedName = (sitePurchaseForm.name || '').trim();
+      if (!trimmedName) {
+        setSitePurchaseError('يرجى إدخال اسم المادة المشتراة للموقع');
+        return;
+      }
+      const cost = Number(sitePurchaseForm.purchaseCost);
+      if (isNaN(cost) || cost < 0 || sitePurchaseForm.purchaseCost === '') {
+        setSitePurchaseError('يرجى إدخال سعر شراء صحيح');
+        return;
+      }
+      const sellPrice = Number(sitePurchaseForm.sellingPrice !== '' ? sitePurchaseForm.sellingPrice : cost);
+      if (isNaN(sellPrice) || sellPrice < 0) {
+        setSitePurchaseError('يرجى إدخال سعر بيع صحيح للزبون');
+        return;
+      }
+      const qty = Math.max(1, Number(sitePurchaseForm.quantity) || 1);
+
+      const newItem = createSitePurchaseCartItem({
+        name: trimmedName,
+        purchaseCost: cost,
+        sellingPrice: sellPrice,
+        quantity: qty,
+        paymentSource: sitePurchaseForm.paymentSource || 'cash_drawer',
+        notes: sitePurchaseForm.notes,
+      });
+
+      setCart((prev) => [...prev, newItem]);
+      setShowSitePurchaseModal(false);
+      setSitePurchaseForm({
+        name: '',
+        purchaseCost: '',
+        sellingPrice: '',
+        quantity: '1',
+        paymentSource: 'cash_drawer',
+        notes: '',
+      });
+      setSitePurchaseError('');
+      toast(`تمت إضافة الشراء الموقعي (${trimmedName}) بنجاح 🛒`, 'success');
+    };
+
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowSitePurchaseModal(false);
+          }
+        }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl border border-ink-100 w-full max-w-md p-5 animate-in zoom-in-95 duration-150 relative">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-ink-100 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl p-2 bg-amber-50 border border-amber-200 rounded-xl">🛒</span>
+              <div>
+                <h3 className="font-black text-ink-900 text-base">تسجيل شراء موقعي إضافي</h3>
+                <p className="text-[11px] text-amber-700 font-bold">لا يُضاف للمخزن • يُخصم الشراء من الصندوق أو الماستر فوراً</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSitePurchaseModal(false)}
+              className="text-ink-400 hover:text-ink-700 p-1.5 rounded-lg hover:bg-ink-100 transition-colors cursor-pointer text-base leading-none"
+            >
+              ✕
+            </button>
+          </div>
+
+          {sitePurchaseError && (
+            <div className="mb-3 px-3 py-2 bg-danger-50 border border-danger-200 text-danger-700 text-xs font-bold rounded-xl flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>{sitePurchaseError}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleFormSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-ink-800 mb-1">
+                اسم المادة أو المشترى من الموقع <span className="text-danger-500">*</span>
+              </label>
+              <input
+                ref={sitePurchaseNameInputRef}
+                type="text"
+                value={sitePurchaseForm.name}
+                onChange={(e) => {
+                  setSitePurchaseForm((prev) => ({ ...prev, name: e.target.value }));
+                  if (sitePurchaseError) setSitePurchaseError('');
+                }}
+                placeholder="مثال: سنادات تثبيت خاصة، بوري حديد 2 انج، قفل خارجي..."
+                className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold text-ink-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden bg-ink-50/40"
+                autoFocus
+              />
+            </div>
+
+            {/* Payment Source Selection */}
+            <div>
+              <label className="block text-xs font-bold text-ink-800 mb-1.5">
+                طريقة دفع سعر الشراء (جهة الخصم) <span className="text-danger-500">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSitePurchaseForm((prev) => ({ ...prev, paymentSource: 'cash_drawer' }))}
+                  className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                    sitePurchaseForm.paymentSource === 'cash_drawer'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs ring-2 ring-emerald-200'
+                      : 'bg-ink-50/50 border-ink-200 text-ink-600 hover:bg-ink-100'
+                  }`}
+                >
+                  <span className="text-base">💵</span>
+                  <span>القاصة (كاش)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSitePurchaseForm((prev) => ({ ...prev, paymentSource: 'mastercard' }))}
+                  className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                    sitePurchaseForm.paymentSource === 'mastercard'
+                      ? 'bg-amber-50 border-amber-500 text-amber-800 shadow-xs ring-2 ring-amber-200'
+                      : 'bg-ink-50/50 border-ink-200 text-ink-600 hover:bg-ink-100'
+                  }`}
+                >
+                  <span className="text-base">💳</span>
+                  <span>بطاقة الماستر</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-ink-500 mt-1">
+                {sitePurchaseForm.paymentSource === 'mastercard'
+                  ? '💳 سيتم خصم تكلفة الشراء من رصيد بطاقة الماستركارد فور تأكيد البيع'
+                  : '💵 سيتم خصم تكلفة الشراء من القاصة النقدية اليومية فور تأكيد البيع'}
+              </p>
+            </div>
+
+            {/* Pricing: Purchase Cost & Quantity */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-ink-800 mb-1">
+                  سعر الشراء الفعلي (د.ع) <span className="text-danger-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={sitePurchaseForm.purchaseCost}
+                  onChange={(e) => {
+                    const newCost = e.target.value;
+                    setSitePurchaseForm((prev) => ({
+                      ...prev,
+                      purchaseCost: newCost,
+                      sellingPrice: (prev.sellingPrice === '' || prev.sellingPrice === prev.purchaseCost) ? newCost : prev.sellingPrice
+                    }));
+                    if (sitePurchaseError) setSitePurchaseError('');
+                  }}
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold font-mono text-ink-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden bg-ink-50/40"
+                />
+                <span className="text-[10px] text-danger-600 font-medium">المبلغ المخصوم من الصندوق/الماستر</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-ink-800 mb-1">
+                  الكمية
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={sitePurchaseForm.quantity}
+                  onChange={(e) => setSitePurchaseForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                  className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold font-mono text-ink-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden bg-ink-50/40"
+                />
+              </div>
+            </div>
+
+            {/* Selling Price to Customer */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-ink-800">
+                  سعر البيع للزبون (د.ع) <span className="text-danger-500">*</span>
+                </label>
+                {sitePurchaseForm.purchaseCost && (
+                  <button
+                    type="button"
+                    onClick={() => setSitePurchaseForm((prev) => ({ ...prev, sellingPrice: prev.purchaseCost }))}
+                    className="text-[10px] text-amber-700 hover:text-amber-900 font-bold underline cursor-pointer"
+                  >
+                    مطابقة بسعر الشراء (بدون ربح)
+                  </button>
+                )}
+              </div>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={sitePurchaseForm.sellingPrice}
+                onChange={(e) => {
+                  setSitePurchaseForm((prev) => ({ ...prev, sellingPrice: e.target.value }));
+                  if (sitePurchaseError) setSitePurchaseError('');
+                }}
+                placeholder="سعر البيع المسجل على الزبون في الفاتورة"
+                className="w-full px-3 py-2 border border-ink-200 rounded-xl text-xs font-bold font-mono text-ink-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden bg-ink-50/40"
+              />
+              {Number(sitePurchaseForm.sellingPrice) > Number(sitePurchaseForm.purchaseCost) && (
+                <p className="text-[10px] text-emerald-600 font-bold mt-1">
+                  📈 ربح الفاتورة: +{(Number(sitePurchaseForm.sellingPrice) - Number(sitePurchaseForm.purchaseCost)).toLocaleString()} د.ع للقطعة
+                </p>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-bold text-ink-800 mb-1">
+                ملاحظات أو تفاصيل الشراء (اختياري)
+              </label>
+              <textarea
+                value={sitePurchaseForm.notes}
+                onChange={(e) => setSitePurchaseForm((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="رقم وصل الشراء من المحل الخارجي، أو تفاصيل الموقع..."
+                rows={2}
+                className="w-full px-3 py-1.5 border border-ink-200 rounded-xl text-xs text-ink-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden bg-ink-50/40 resize-none"
+              />
+            </div>
+
+            {/* Explanatory Banner */}
+            <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-2.5 text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
+              <span className="text-amber-600 shrink-0 text-sm">💡</span>
+              <div>
+                <p className="font-bold">ضمان مالي ومخزني دقيق:</p>
+                <p className="text-amber-800 text-[10px]">
+                  هذا البند لن يدخل للمخزن إطلاقاً، ويُخصم شراؤه تلقائياً. في حال تم إرجاع المادة أو تعديل الفاتورة لاحقاً، يتم استرداد المبلغ مباشرة إلى (الصندوق أو الماستر).
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-ink-100">
+              <button
+                type="submit"
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <span>🛒</span>
+                <span>إضافة للفاتورة وخصم الشراء</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSitePurchaseModal(false)}
+                className="px-4 py-2.5 border border-ink-200 text-ink-700 hover:bg-ink-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-4 h-full overflow-hidden relative" dir="rtl">
       {renderDraftsModal()}
+      {showSuspendedStatementModal && (
+        <SuspendedStatementModal
+          onClose={() => setShowSuspendedStatementModal(false)}
+          onOpenDraft={(draft) => {
+            setShowSuspendedStatementModal(false);
+            setShowDraftsModal(false);
+            handleLoadDraft(draft);
+          }}
+        />
+      )}
       {renderPriceModal()}
       {renderPrintOptionsModal()}
+      {renderCustomItemModal()}
+      {renderSitePurchaseModal()}
 
       {/* Mobile Cart Toggle Button */}
       <div className="lg:hidden shrink-0 mt-2">
@@ -957,12 +1461,46 @@ export default function POSScreen({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-base">🛒</span>
-                  <h3 className="font-black text-ink-900 text-sm shrink-0">تفاصيل الفاتورة</h3>
-                  <NetworkStatusIndicator className="text-[10px] px-1.5 py-0.5" />
+                  <h3 className="font-black text-ink-900 text-sm shrink-0">السلة</h3>
                 </div>
 
                 {/* Quick Toolbar Actions */}
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomItemForm({ name: '', unitPrice: '', quantity: '1', wholesalePrice: '', notes: '' });
+                      setCustomItemError('');
+                      setShowCustomItemModal(true);
+                    }}
+                    className="px-2 py-1 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                    title="إضافة مادة حرة أو خدمة لا تؤثر على المخزون"
+                  >
+                    <span className="text-purple-600">✨</span>
+                    <span>+ بند مخصص</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSitePurchaseForm({
+                        name: '',
+                        purchaseCost: '',
+                        sellingPrice: '',
+                        quantity: '1',
+                        paymentSource: 'cash_drawer',
+                        notes: '',
+                      });
+                      setSitePurchaseError('');
+                      setShowSitePurchaseModal(true);
+                    }}
+                    className="px-2 py-1 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                    title="تسجيل مشتريات إضافية للموقع (لا تؤثر على المخزون وتُخصم من الصندوق أو الماستر)"
+                  >
+                    <span>🛒</span>
+                    <span>+ شراء موقعي</span>
+                  </button>
+
                   {mode === 'sale' && laborCharges?.length > 0 && (
                     <div className="relative">
                       <button
@@ -1305,6 +1843,18 @@ export default function POSScreen({
                 </div>
               )}
 
+              {mode === 'sale' && (
+                <div className="pt-0.5">
+                  <input
+                    type="text"
+                    value={invoiceNotes}
+                    onChange={(e) => setInvoiceNotes(e.target.value)}
+                    placeholder="📝 ملاحظات الفاتورة (اختياري - تظهر بالوصل)..."
+                    className="w-full bg-slate-50 hover:bg-white border border-ink-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 placeholder:text-ink-400 focus:outline-none focus:ring-1 focus:ring-brand-500 transition-colors"
+                  />
+                </div>
+              )}
+
               {checkoutError && (
                 <div className="bg-danger-50 border border-danger-500 text-danger-700 text-xs font-medium rounded-lg p-2">
                   {checkoutError}
@@ -1343,7 +1893,15 @@ export default function POSScreen({
                           {/* Row 1: Source Sticker + Full Product Name */}
                           <div className="flex items-start gap-1.5 min-w-0">
                             {/* Source Sticker */}
-                            {isCustody ? (
+                            {item.isSitePurchase ? (
+                              <span 
+                                className={`inline-flex items-center gap-0.5 ${item.paymentSource === 'mastercard' ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-emerald-100 border-emerald-300 text-emerald-900'} border text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5`}
+                                title={`شراء موقعي - يُخصم من ${item.paymentSource === 'mastercard' ? 'الماستركارد' : 'القاصة النقدية'} (تكلفة: ${Number(item.purchaseCost || item.wholesalePrice || 0).toLocaleString()} د.ع)`}
+                              >
+                                <span>{item.paymentSource === 'mastercard' ? '💳' : '🛒'}</span>
+                                <span>{item.paymentSource === 'mastercard' ? 'موقعي (ماستر)' : 'موقعي (قاصة)'}</span>
+                              </span>
+                            ) : isCustody ? (
                               <span 
                                 className="inline-flex items-center gap-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5" 
                                 title={`عهدة: ${item.technicianName || 'سيارة'}`}
@@ -1355,6 +1913,11 @@ export default function POSScreen({
                               <span className="inline-flex items-center gap-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5">
                                 <span>🏢</span>
                                 <span>مخزن</span>
+                              </span>
+                            ) : item.isCustom ? (
+                              <span className="inline-flex items-center gap-0.5 bg-purple-50 border border-purple-200 text-purple-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5" title="بند مخصص (لا يؤثر على المخزون)">
+                                <span>✨</span>
+                                <span>مخصص</span>
                               </span>
                             ) : isService ? (
                               <span className="inline-flex items-center gap-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-bold px-1 py-0.5 rounded shrink-0 mt-0.5">
@@ -1369,12 +1932,19 @@ export default function POSScreen({
                             )}
 
                             {/* Product Name (Full Name without Truncate) */}
-                            <p 
-                              className="font-bold text-ink-900 text-xs leading-tight break-words flex-1 min-w-0" 
-                              title={item.name}
-                            >
-                              {item.name}
-                            </p>
+                            <div className="flex-1 min-w-0">
+                              <p 
+                                className="font-bold text-ink-900 text-xs leading-tight break-words" 
+                                title={item.name}
+                              >
+                                {item.name}
+                              </p>
+                              {item.notes && (
+                                <p className="text-[10px] text-ink-500 font-normal leading-tight mt-0.5 truncate" title={item.notes}>
+                                  📝 {item.notes}
+                                </p>
+                              )}
+                            </div>
                           </div>
 
                           {/* Row 2: Price & Warnings */}
@@ -1391,6 +1961,11 @@ export default function POSScreen({
                             {item.unitPrice < item.wholesalePrice && !item.isService && (
                               <span className="text-[8px] text-danger-700 bg-danger-50 px-1 py-0.2 rounded border border-danger-200 shrink-0 font-bold">
                                 ⚠️ دون التكلفة
+                              </span>
+                            )}
+                            {item.isSitePurchase && (
+                              <span className="text-[9px] text-ink-500 font-bold bg-amber-50/80 px-1 py-0.2 rounded border border-amber-200 shrink-0" title="سعر الشراء الفعلي المخصوم من الصندوق أو الماستر">
+                                كلفة الشراء: {Number(item.purchaseCost || 0).toLocaleString()} د.ع
                               </span>
                             )}
                           </div>

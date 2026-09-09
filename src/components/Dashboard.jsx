@@ -22,6 +22,7 @@ import SalesReports from './SalesReports';
 import CustomersScreen from './CustomersScreen';
 import HomeDashboard from './HomeDashboard';
 import SettingsScreen from './SettingsScreen';
+import UserGuideScreen from './UserGuideScreen';
 import TrashBinScreen from './TrashBinScreen';
 import ProductHistoryModal from './ProductHistoryModal';
 import InventoryHistoryView from './InventoryHistoryView';
@@ -266,6 +267,7 @@ export default function Dashboard({ user }) {
               setFilters((prev) => ({ ...prev, stockStatus: status }));
               setActiveTab('inventory');
             }}
+            onOpenGuide={() => setActiveTab('guide')}
             onOpenDraft={(draft) => {
               setDraftToOpen(draft);
               setActiveTab('pos');
@@ -333,7 +335,13 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className={activeTab === 'reports' ? 'block h-full' : 'hidden'}>
-          <SalesReports />
+          <SalesReports
+            onOpenDraft={(draft) => {
+              setDraftToOpen(draft);
+              setPosMode('sale');
+              setActiveTab('pos');
+            }}
+          />
         </div>
 
         <div className={activeTab === 'customers' ? 'block h-full' : 'hidden'}>
@@ -346,6 +354,15 @@ export default function Dashboard({ user }) {
 
         <div className={activeTab === 'settings' ? 'block h-full' : 'hidden'}>
           <SettingsScreen />
+        </div>
+
+        <div className={activeTab === 'guide' ? 'block h-full' : 'hidden'}>
+          <UserGuideScreen
+            onNavigate={(tab) => {
+              if (tab === 'pos') setPosMode('sale');
+              setActiveTab(tab);
+            }}
+          />
         </div>
 
         <div className={activeTab === 'inventory' ? 'block h-full' : 'hidden'}>

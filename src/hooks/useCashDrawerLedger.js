@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { useSales } from './useSales';
 import { useExpenses } from './useExpenses';
 import { usePurchases } from './usePurchases';
@@ -48,6 +50,23 @@ export function useCashDrawerLedger(selectedDateStr) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const targetDateStr = selectedDateStr || todayStr;
 
+  const confirmedSaleIds = useMemo(() => new Set((sales || []).map((s) => s.id)), [sales]);
+
+  // تنظيف تلقائي لأي مصاريف شراء موقعي يتيمة تم حذف فاتورتها
+  useEffect(() => {
+    if (salesLoading || expensesLoading) return;
+    (expenses || []).forEach((e) => {
+      if (e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)) {
+        deleteDoc(doc(db, 'expenses', e.id)).catch(() => {});
+      }
+    });
+    (incomes || []).forEach((inc) => {
+      if (inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)) {
+        deleteDoc(doc(db, 'office_incomes', inc.id)).catch(() => {});
+      }
+    });
+  }, [sales, expenses, incomes, salesLoading, expensesLoading, confirmedSaleIds]);
+
   // 1. حساب النقد الفعلي الحي المعتمد بالصندوق الآن (مطابق تماماً للوحة التحكم HomeDashboard)
   const currentLiveOfficeCash = useMemo(() => {
     if (latestReconciliation && latestReconciliation.date) {
@@ -93,6 +112,7 @@ export function useCashDrawerLedger(selectedDateStr) {
       (incomes || []).forEach((inc) => {
         const isCard = inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card' || String(inc.paymentMethod || '').includes('ماستر');
         if (!isCard) {
+          if (inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)) return;
           const createdDate = inc.createdAt ? new Date(inc.createdAt) : null;
           const docDate = inc.date ? new Date(inc.date) : null;
           if ((createdDate && createdDate > recDate) || (docDate && docDate > recDate)) {
@@ -125,7 +145,8 @@ export function useCashDrawerLedger(selectedDateStr) {
 
       let outflowSince = 0;
       (expenses || []).forEach((e) => {
-        if (e.paymentSource !== 'management') {
+        if (e.paymentSource !== 'management' && e.paymentSource !== 'mastercard') {
+          if (e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)) return;
           const eDate = e.createdAt ? new Date(e.createdAt) : (e.date ? new Date(e.date) : null);
           if (eDate && eDate > recDate) {
             outflowSince += Number(e.amount || 0);
@@ -201,6 +222,7 @@ export function useCashDrawerLedger(selectedDateStr) {
 
     const allManualIncomes = (incomes || [])
       .filter((inc) => inc.paymentMethod !== 'mastercard' && inc.paymentMethod !== 'card' && !String(inc.paymentMethod || '').includes('ماستر'))
+      .filter((inc) => !(inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)))
       .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
 
     let allAdvanceRepaymentsInCash = 0;
@@ -222,7 +244,8 @@ export function useCashDrawerLedger(selectedDateStr) {
     });
 
     const allDrawerExpenses = (expenses || [])
-      .filter((e) => e.paymentSource !== 'management')
+      .filter((e) => e.paymentSource !== 'management' && e.paymentSource !== 'mastercard')
+      .filter((e) => !(e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)))
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     const allCashPurchases = (purchases || []).reduce((sum, p) => {
@@ -339,6 +362,7 @@ export function useCashDrawerLedger(selectedDateStr) {
     (incomes || []).forEach((inc) => {
       const isCard = inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card' || String(inc.paymentMethod || '').includes('ماستر');
       if (isCard) return;
+      if (inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)) return;
 
       const incDate = toDateSafe(inc.date || inc.createdAt);
       const incAmount = Number(inc.amount || 0);
@@ -396,7 +420,8 @@ export function useCashDrawerLedger(selectedDateStr) {
 
     // هـ) المصاريف والنثريات اليومية والتشغيلية (Expenses)
     (expenses || []).forEach((e) => {
-      if (e.paymentSource === 'management') return;
+      if (e.paymentSource === 'management' || e.paymentSource === 'mastercard') return;
+      if (e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)) return;
       const eDate = toDateSafe(e.date || e.createdAt);
       const eAmount = Number(e.amount || 0);
       if (eDate && eAmount > 0) {

@@ -404,7 +404,8 @@ export async function generateInvoicePDF(sale, storeSettings = {}) {
                 <tr style="border-bottom: 1px solid #e2e8f0;">
                   <td style="padding: 8px 10px; font-weight: bold; color: #0f172a;">
                     ${item.name || '-'}
-                    ${item.isService ? `<span style="font-size: 9px; background: #f1f5f9; color: #64748b; padding: 1px 4px; border-radius: 4px; margin-right: 4px;">خدمة</span>` : ''}
+                    ${item.isService && !item.isCustom ? `<span style="font-size: 9px; background: #f1f5f9; color: #64748b; padding: 1px 4px; border-radius: 4px; margin-right: 4px;">خدمة</span>` : ''}
+                    ${item.notes ? `<div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 2px;">📝 ${item.notes}</div>` : ''}
                   </td>
                   <td style="padding: 8px 10px; text-align: center; font-weight: bold;">${item.quantity || 1}</td>
                   <td style="padding: 8px 10px; text-align: center; font-family: monospace;">${formatIQD(item.unitPrice)}</td>
@@ -437,6 +438,13 @@ export async function generateInvoicePDF(sale, storeSettings = {}) {
             </div>
           </div>
         </div>
+
+        ${(sale.notes || sale.offerNotes || sale.invoiceNotes) ? `
+          <div style="margin-top: 15px; padding: 8px 12px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; font-size: 11px; color: #1e293b;">
+            <strong style="color: #78350f; display: block; margin-bottom: 2px; font-size: 11px;">📝 ${sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</strong>
+            <p style="margin: 0; white-space: pre-wrap; font-weight: 500;">${sale.notes || sale.offerNotes || sale.invoiceNotes}</p>
+          </div>
+        ` : ''}
       </div>
 
       ${renderBrandFooter(storeSettings)}

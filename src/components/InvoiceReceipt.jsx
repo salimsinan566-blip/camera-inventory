@@ -105,6 +105,8 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     pages.push([]);
   }
 
+  const invoiceNotes = (sale.notes || sale.offerNotes || sale.invoiceNotes || '').trim();
+
   const invoiceContent = pages.map((pageItems, pageIndex) => {
     const isLastPage = pageIndex === pages.length - 1;
 
@@ -209,10 +211,15 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               {pageItems.map((item, i) => (
                 <tr key={`${item.productId}-${i}`} className="border-b border-slate-100">
                   <td className="py-2 px-3 text-slate-800 font-bold break-words max-w-[280px] leading-snug text-right">
-                    {item.isService && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal ml-1.5 inline-block align-middle">أجور/خدمة</span>}
+                    {item.isService && !item.isCustom && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal ml-1.5 inline-block align-middle">أجور/خدمة</span>}
                     <bdi dir="auto" className="inline-block text-right" style={{ unicodeBidi: 'plaintext' }}>
                       {item.name}
                     </bdi>
+                    {item.notes && (
+                      <span className="inline-block text-[10px] text-slate-600 font-medium leading-tight mt-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+                        📝 {item.notes}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 px-2 text-center text-slate-800 font-bold">
                     {item.quantity}
@@ -327,18 +334,33 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
 
           {/* التذييل */}
           <div className={`pt-3 ${isLastPage ? "border-t border-slate-200" : ""}`} style={{ letterSpacing: '0px', direction: 'rtl' }}>
-            {settings?.description && (
-              <div className="text-[11px] text-slate-600 mb-2 w-4/5 font-medium leading-relaxed" style={{ letterSpacing: '0px', wordSpacing: 'normal', lineHeight: '1.7' }}>
-                <strong className="text-slate-800 block mb-1 font-bold text-xs" style={{ letterSpacing: '0px' }}>ملاحظات هامة:</strong>
-                <p style={{ margin: 0, whiteSpace: 'pre-wrap', letterSpacing: '0px', lineHeight: '1.7' }}>{settings.description}</p>
+            {isLastPage && invoiceNotes && (
+              <div className="text-[12px] text-slate-800 mb-3 p-3 bg-amber-50/80 border border-amber-300 rounded-xl leading-relaxed text-right shadow-2xs">
+                <strong className="text-amber-950 flex items-center gap-1.5 mb-1 font-bold text-xs">
+                  <span>📝</span>
+                  <span>{sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</span>
+                </strong>
+                <p className="whitespace-pre-wrap font-semibold text-slate-800 text-[11px] leading-relaxed pr-1">
+                  {invoiceNotes}
+                </p>
               </div>
             )}
-            
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 font-bold" style={{ letterSpacing: '0px' }}>
-              <span>{(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}</span>
-              {settings?.address && <span>• {settings.address}</span>}
-              <span>• شكراً لثقتكم بنا</span>
-            </div>
+            {isLastPage && (
+              <div className="mt-3 text-center border-t border-slate-200/80 pt-3" style={{ letterSpacing: '0px' }}>
+                <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3.5 leading-relaxed">
+                  <p className="font-extrabold text-slate-900 text-xs flex items-center justify-center gap-1.5 mb-1">
+                    <span>🔒</span>
+                    <span>أمانكم واستقرار أعمالكم هو أولويتنا الأولى.</span>
+                  </p>
+                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed max-w-xl mx-auto">
+                    نسعى دائماً لتقديم أحدث تقنيات المراقبة الذكية وحلول الحماية المتقدمة بأعلى معايير الجودة والاعتمادية.
+                  </p>
+                  <p className="text-[11px] text-[#C89B3C] font-bold mt-2">
+                    شكراً لاختياركم المنطقة الامنة لأنظمة المراقبة.
+                  </p>
+                </div>
+              </div>
+            )}
             
             {isLastPage && sale.historyLogs && sale.historyLogs.length > 0 && (
               <div className="mt-4 bg-slate-50 border border-slate-200 p-3 rounded text-right relative z-20 print:hidden">
@@ -385,6 +407,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
         : Math.max(0, Number(sale.total) - paid);
       text += `💵 المدفوع: ${paid.toLocaleString()} د.ع\n`;
       text += `⏳ المتبقي (الدين): ${rem.toLocaleString()} د.ع\n`;
+    }
+    if (invoiceNotes) {
+      text += `──────────────\n`;
+      text += `📝 *ملاحظات:* ${invoiceNotes}\n`;
     }
     return text;
   };
@@ -1050,13 +1076,6 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 )}
                 <div className="relative z-10 flex-grow flex flex-col">
                   {page}
-                  {/* ملاحظات العرض */}
-                  {sale.isOffer && sale.notes && (
-                    <div className="mt-4 pt-4 border-t border-slate-200">
-                      <h4 className="text-[11px] font-bold text-slate-800 mb-1">ملاحظات العرض:</h4>
-                      <p className="text-[10px] text-slate-600 leading-relaxed whitespace-pre-wrap">{sale.notes}</p>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}

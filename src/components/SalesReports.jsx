@@ -5,10 +5,12 @@ import { useExpenses } from '../hooks/useExpenses';
 import InvoiceReceipt from './InvoiceReceipt';
 import ReturnExchangeModal from './ReturnExchangeModal';
 import CustomerStatementModal from './CustomerStatementModal';
+import SuspendedStatementModal from './SuspendedStatementModal';
 import AddCustomerModal from './AddCustomerModal';
 import CustomerPaymentModal from './CustomerPaymentModal';
 import IncomeReportTab from './IncomeReportTab';
 import ProfitsReportTab from './ProfitsReportTab';
+import { useDraftSales } from '../hooks/useDraftSales';
 import { useAuth } from '../hooks/useAuth';
 import { useUI } from '../contexts/UIContext';
 import { deleteConfirmedSale, revertSaleToSuspended } from '../services/salesService';
@@ -18,8 +20,9 @@ function toDateSafe(timestamp) {
   return timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
 }
 
-export default function SalesReports() {
+export default function SalesReports({ onOpenDraft }) {
   const { sales, loading, error } = useSales();
+  const { drafts } = useDraftSales();
   const { products } = useProducts();
   const { expenses } = useExpenses();
   const [activeSubTab, setActiveSubTab] = useState('invoices'); // 'invoices' | 'sold-items' | 'income' | 'profits'
@@ -40,6 +43,7 @@ export default function SalesReports() {
   const [editingSale, setEditingSale] = useState(null);
   const [payingSale, setPayingSale] = useState(null);
   const [showStatement, setShowStatement] = useState(false);
+  const [showSuspendedStatement, setShowSuspendedStatement] = useState(false);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
@@ -342,10 +346,10 @@ export default function SalesReports() {
       {/* TAB 1: General Invoices Ledger */}
       {activeSubTab === 'invoices' && (
         <div>
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
             <div className="bg-white border border-brand-100 rounded-xl shadow-sm p-4 text-center">
               <p className="text-2xl font-bold text-ink-900">{filteredSales.length}</p>
-              <p className="text-xs text-ink-500 mt-1">عدد الفواتير</p>
+              <p className="text-xs text-ink-500 mt-1">عدد الفواتير المؤكدة</p>
             </div>
             <div className="bg-white border border-brand-100 rounded-xl shadow-sm p-4 text-center">
               <p className="text-2xl font-bold text-ink-900">{totalRevenue.toLocaleString()} د.ع</p>
@@ -353,17 +357,30 @@ export default function SalesReports() {
             </div>
             <button 
               onClick={() => setShowAddCustomer(true)}
-              className="col-span-2 md:col-span-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-4 text-center hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 font-bold shadow-xs cursor-pointer"
+              className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-4 text-center hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 font-bold shadow-xs cursor-pointer"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-              إضافة عميل جديد
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+              <span>إضافة عميل</span>
             </button>
             <button 
               onClick={() => setShowStatement(true)}
-              className="col-span-2 md:col-span-1 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl p-4 text-center hover:bg-brand-100 transition-colors flex items-center justify-center gap-2 font-bold shadow-xs cursor-pointer"
+              className="bg-brand-50 border border-brand-200 text-brand-700 rounded-xl p-4 text-center hover:bg-brand-100 transition-colors flex items-center justify-center gap-2 font-bold shadow-xs cursor-pointer"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-              فتح كشف حساب عميل
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              <span>كشف حساب عميل</span>
+            </button>
+            <button 
+              onClick={() => setShowSuspendedStatement(true)}
+              className="col-span-2 sm:col-span-2 lg:col-span-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl p-4 text-center hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 font-bold shadow-xs cursor-pointer relative"
+              title="فتح كشف حساب الفواتير المعلقة والمحجوزة الشامل"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              <span>كشف الفواتير المعلقة</span>
+              {drafts && drafts.length > 0 && (
+                <span className="bg-indigo-600 text-white text-[11px] px-2 py-0.5 rounded-full font-black">
+                  {drafts.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -891,6 +908,13 @@ export default function SalesReports() {
 
       {showStatement && (
         <CustomerStatementModal onClose={() => setShowStatement(false)} />
+      )}
+
+      {showSuspendedStatement && (
+        <SuspendedStatementModal
+          onClose={() => setShowSuspendedStatement(false)}
+          onOpenDraft={onOpenDraft}
+        />
       )}
 
       {showAddCustomer && (

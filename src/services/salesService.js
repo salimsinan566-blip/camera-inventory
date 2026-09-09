@@ -77,7 +77,8 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
     phone2 = '',
     stockSource = 'store', // 'store' | 'warehouse' | 'custody'
     technicianId = null,
-    technicianName = ''
+    technicianName = '',
+    notes = '',
   } = orderOptions;
 
   // إيجاد/إنشاء العميل للعملاء المسجلين والديون فقط (تجاوز الزبائن النقديين لتسريع العملية فوراً)
@@ -153,6 +154,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
     for (const cartItem of cartItems) {
       if (cartItem.isService) {
         items.push({
+          cartItemId: cartItem.cartItemId || cartItem.productId,
           productId: cartItem.productId,
           sku: cartItem.sku || '-',
           name: cartItem.name,
@@ -160,10 +162,15 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
           unitPrice: cartItem.unitPrice,
           originalPrice: cartItem.originalPrice || cartItem.unitPrice,
           wholesalePrice: cartItem.wholesalePrice || 0,
+          purchaseCost: Number(cartItem.purchaseCost !== undefined ? cartItem.purchaseCost : cartItem.wholesalePrice) || 0,
+          paymentSource: cartItem.paymentSource || 'cash_drawer',
+          isSitePurchase: Boolean(cartItem.isSitePurchase),
           sellMode: cartItem.sellMode || 'unit',
           lineTotal: cartItem.quantity * cartItem.unitPrice,
           isService: true,
-          source: 'service',
+          isCustom: Boolean(cartItem.isCustom),
+          notes: cartItem.notes || '',
+          source: cartItem.source || (cartItem.isSitePurchase ? 'site_purchase' : 'service'),
         });
         continue;
       }
@@ -232,6 +239,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
         sellMode: cartItem.sellMode || 'unit',
         lineTotal: cartItem.quantity * cartItem.unitPrice,
         isService: false,
+        notes: cartItem.notes || '',
         source: itemSource,
         technicianId: itemSource === 'custody' ? itemTechId : null,
         technicianName: itemSource === 'custody' ? (itemTechName || techEntry?.technicianName || '') : '',
@@ -317,6 +325,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       phone1: phone1 || '',
       phone2: phone2 || '',
       invoiceType,
+      notes: notes || '',
       paymentMethod: orderOptions?.paymentMethod || (invoiceType === 'mastercard' ? 'mastercard' : (invoiceType === 'debt' ? 'debt' : 'cash')),
       stockSource: overallStockSource,
       stockSourcesList: distinctSources,
@@ -326,6 +335,38 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       createdAt: serverTimestamp(),
       confirmedAt: serverTimestamp(),
     });
+
+    // تسجيل نفقات المشتريات الموقعية الخارجية مباشرة في المصاريف (تُخصم من القاصة أو الماستر)
+    for (const item of items) {
+      if (item.isSitePurchase && (Number(item.purchaseCost) || Number(item.wholesalePrice)) > 0) {
+        const expRef = doc(collection(db, 'expenses'));
+        const unitCost = Number(item.purchaseCost || item.wholesalePrice);
+        const qty = Number(item.quantity) || 1;
+        const totalCost = unitCost * qty;
+        const pSource = item.paymentSource === 'mastercard' ? 'mastercard' : 'cash_drawer';
+
+        transaction.set(expRef, {
+          title: `شراء موقعي: ${item.name}`,
+          category: 'مشتريات موقعية',
+          expenseType: 'daily',
+          paymentSource: pSource,
+          amount: totalCost,
+          periodCovered: '',
+          buyerName: cashierEmail || 'الكاشير',
+          invoiceNumber: nextInvoiceNumber,
+          saleId: salesRef.id,
+          cartItemId: item.cartItemId || item.productId,
+          productName: item.name,
+          unitCost,
+          quantity: qty,
+          isSitePurchase: true,
+          notes: `شراء مواد إضافية للموقع - فاتورة #${nextInvoiceNumber}${item.notes ? ` - ملاحظات: ${item.notes}` : ''}`,
+          date: saleDateStr,
+          createdAt: saleNowIso,
+          createdBy: cashierEmail || 'نقطة البيع'
+        });
+      }
+    }
 
     // تسجيل حركة المبيعات في سجل حركات المخزون لكل مادة
     for (const item of items) {
@@ -360,6 +401,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       discount: summary.discount,
       taxRate: summary.taxRate,
       total: summary.total,
+      notes: notes || '',
       customerName: customerName || null,
       phone1: phone1 || '',
       phone2: phone2 || '',
@@ -399,7 +441,12 @@ export function buildDraftItems(cartItems) {
     sellMode: item.sellMode || 'unit',
     lineTotal: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
     isService: item.isService || false,
-    source: item.source || 'store',
+    isCustom: Boolean(item.isCustom),
+    isSitePurchase: Boolean(item.isSitePurchase),
+    purchaseCost: Number(item.purchaseCost !== undefined ? item.purchaseCost : item.wholesalePrice) || 0,
+    paymentSource: item.paymentSource || 'cash_drawer',
+    notes: item.notes || '',
+    source: item.source || (item.isSitePurchase ? 'site_purchase' : 'store'),
     technicianId: item.technicianId || null,
     technicianName: item.technicianName || '',
     isCustody: item.source === 'custody'
@@ -411,7 +458,7 @@ export async function createDraftSale(cartItems, cashierEmail, orderOptions = {}
   if (!cartItems || cartItems.length === 0) {
     throw new Error('السلة فاضية');
   }
-  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '' } = orderOptions;
+  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '', notes = '' } = orderOptions;
   const items = buildDraftItems(cartItems);
   const summary = calculateOrderSummary(cartItems, discount, taxRate);
 
@@ -458,6 +505,7 @@ export async function createDraftSale(cartItems, cashierEmail, orderOptions = {}
       discount: summary.discount,
       taxRate: summary.taxRate,
       total: summary.total,
+      notes: notes || '',
       customerName: customerName || null,
       phone1,
       phone2,
@@ -474,7 +522,7 @@ export async function createDraftSale(cartItems, cashierEmail, orderOptions = {}
 
 /** يحدّث فاتورة معلقة (يُرجع الكميات القديمة ويحجز الكميات الجديدة) */
 export async function updateDraftSale(draftId, cartItems, orderOptions = {}) {
-  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '' } = orderOptions;
+  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '', notes = '' } = orderOptions;
   const newItems = buildDraftItems(cartItems);
   const summary = calculateOrderSummary(cartItems, discount, taxRate);
   const draftRef = doc(db, SALES_COLLECTION, draftId);
@@ -553,6 +601,7 @@ export async function updateDraftSale(draftId, cartItems, orderOptions = {}) {
       discount: summary.discount,
       taxRate: summary.taxRate,
       total: summary.total,
+      notes: notes || '',
       customerName: customerName || null,
       phone1,
       phone2,
@@ -808,6 +857,38 @@ export async function confirmDraftSale(draftId, cashierEmail, invoiceType = null
       confirmedAt: serverTimestamp(),
     });
 
+    // تسجيل نفقات المشتريات الموقعية الخارجية مباشرة في المصاريف (تُخصم من القاصة أو الماستر)
+    for (const item of items) {
+      if (item.isSitePurchase && (Number(item.purchaseCost) || Number(item.wholesalePrice)) > 0) {
+        const expRef = doc(collection(db, 'expenses'));
+        const unitCost = Number(item.purchaseCost || item.wholesalePrice);
+        const qty = Number(item.quantity) || 1;
+        const totalCost = unitCost * qty;
+        const pSource = item.paymentSource === 'mastercard' ? 'mastercard' : 'cash_drawer';
+
+        transaction.set(expRef, {
+          title: `شراء موقعي: ${item.name}`,
+          category: 'مشتريات موقعية',
+          expenseType: 'daily',
+          paymentSource: pSource,
+          amount: totalCost,
+          periodCovered: '',
+          buyerName: cashierEmail || 'الكاشير',
+          invoiceNumber: nextInvoiceNumber,
+          saleId: draftId,
+          cartItemId: item.cartItemId || item.productId,
+          productName: item.name,
+          unitCost,
+          quantity: qty,
+          isSitePurchase: true,
+          notes: `شراء مواد إضافية للموقع - تأكيد فاتورة #${nextInvoiceNumber}${item.notes ? ` - ملاحظات: ${item.notes}` : ''}`,
+          date: new Date().toISOString().slice(0, 10),
+          createdAt: new Date().toISOString(),
+          createdBy: cashierEmail || 'تأكيد المسودة'
+        });
+      }
+    }
+
     return {
       invoiceNumber: nextInvoiceNumber,
       items,
@@ -819,6 +900,7 @@ export async function confirmDraftSale(draftId, cashierEmail, invoiceType = null
       phone1: draftData.phone1 || '',
       phone2: draftData.phone2 || '',
       invoiceType: invoiceType || draftData.invoiceType || 'cash',
+      notes: draftData.notes || '',
       cashierEmail,
       createdAt: new Date(),
     };
@@ -874,6 +956,17 @@ export async function revertSaleToSuspended(saleId) {
       updatedAt: serverTimestamp()
     });
   });
+
+  // حذف مصاريف الشراء الموقعي لأن الفاتورة لم تعد مؤكدة
+  try {
+    const expQuery = query(collection(db, 'expenses'), where('saleId', '==', saleId));
+    const expSnaps = await getDocs(expQuery);
+    const delPromises = [];
+    expSnaps.forEach((d) => delPromises.push(deleteDoc(d.ref)));
+    await Promise.all(delPromises);
+  } catch (cleanErr) {
+    console.warn('Error cleaning up site purchase expenses on revert:', cleanErr);
+  }
 }
 
 /**
@@ -961,11 +1054,52 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
         unitPrice: Number(item.unitPrice) || 0,
         originalPrice: item.originalPrice || oldItem?.originalPrice || item.unitPrice,
         wholesalePrice: item.wholesalePrice ?? oldItem?.wholesalePrice ?? 0,
+        purchaseCost: Number(item.purchaseCost !== undefined ? item.purchaseCost : oldItem?.purchaseCost) || 0,
+        paymentSource: item.paymentSource || oldItem?.paymentSource || 'cash_drawer',
+        isSitePurchase: Boolean(item.isSitePurchase !== undefined ? item.isSitePurchase : oldItem?.isSitePurchase),
+        isCustom: Boolean(item.isCustom !== undefined ? item.isCustom : oldItem?.isCustom),
+        notes: item.notes || oldItem?.notes || '',
         sellMode: item.sellMode || oldItem?.sellMode || 'unit',
         lineTotal: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
         isService: item.isService || false
       });
     }
+
+    // فحص المواد الموقعية المسترجعة أو المحذوفة لإيداع ثمنها في القاصة أو الماستر
+    oldItems.forEach(oldItem => {
+      if (oldItem.isSitePurchase && (Number(oldItem.purchaseCost) || Number(oldItem.wholesalePrice)) > 0) {
+        const newItem = newCartItems.find(n => n.productId === oldItem.productId || (n.cartItemId && n.cartItemId === oldItem.cartItemId));
+        const oldQty = Number(oldItem.quantity) || 1;
+        const newQty = newItem ? (Number(newItem.quantity) || 0) : 0;
+        const refundedQty = Math.max(0, oldQty - newQty);
+        
+        if (refundedQty > 0) {
+          const unitCost = Number(oldItem.purchaseCost || oldItem.wholesalePrice);
+          const refundAmount = unitCost * refundedQty;
+          const pSource = oldItem.paymentSource === 'mastercard' ? 'mastercard' : 'cash_drawer';
+          
+          const incRef = doc(collection(db, 'office_incomes'));
+          transaction.set(incRef, {
+            title: `استرداد شراء موقعي: ${oldItem.name}`,
+            category: 'استرداد مشتريات موقعية',
+            amount: refundAmount,
+            paymentMethod: pSource === 'mastercard' ? 'mastercard' : 'cash',
+            receivedFrom: 'المحل / السوق',
+            invoiceNumber: saleData.invoiceNumber || null,
+            saleId,
+            cartItemId: oldItem.cartItemId || oldItem.productId,
+            productName: oldItem.name,
+            quantity: refundedQty,
+            notes: `استرجاع مادة موقعية (${refundedQty}x ${oldItem.name}) وإيداع ثمنها في ${pSource === 'mastercard' ? 'الماستركارد' : 'القاصة'} - فاتورة #${saleData.invoiceNumber || ''}`,
+            date: new Date().toISOString().slice(0, 10),
+            createdAt: new Date().toISOString(),
+            createdBy: cashierEmail || 'مرتجع المبيعات'
+          });
+
+          logs.push(`استرداد مبلغ الشراء الموقعي (${refundAmount.toLocaleString()} د.ع) إلى ${pSource === 'mastercard' ? 'الماستركارد' : 'القاصة'}`);
+        }
+      }
+    });
 
     oldItems.forEach(oldItem => {
       if (!newCartItems.find(n => n.productId === oldItem.productId)) {
@@ -1046,8 +1180,9 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
 export async function deleteConfirmedSale(saleId, userEmail = 'سالم سنان') {
   const saleRef = doc(db, SALES_COLLECTION, saleId);
   const saleSnap = await getDoc(saleRef);
+  let saleData = null;
   if (saleSnap.exists()) {
-    const saleData = saleSnap.data();
+    saleData = saleSnap.data();
     try {
       await moveToTrash({
         itemType: 'confirmed_sale',
@@ -1069,13 +1204,13 @@ export async function deleteConfirmedSale(saleId, userEmail = 'سالم سنان
       throw new Error('الفاتورة غير موجودة');
     }
 
-    const saleData = sSnap.data();
-    if (saleData.status !== 'confirmed') {
+    const currentSaleData = sSnap.data();
+    if (currentSaleData.status !== 'confirmed') {
       throw new Error('هذه الفاتورة ليست فاتورة مؤكدة');
     }
 
     // 1. جميع عمليات القراءة (Reads) أولاً
-    const items = saleData.items || [];
+    const items = currentSaleData.items || [];
     const productRefs = items.map((item) => doc(db, PRODUCTS_COLLECTION, item.productId));
     const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
 
@@ -1092,6 +1227,32 @@ export async function deleteConfirmedSale(saleId, userEmail = 'سالم سنان
     // 3. حذف الفاتورة
     transaction.delete(saleRef);
   });
+
+  // 4. تنظيف وحذف أي مصاريف شراء موقعي أو إيرادات استرداد مرتبطة بالفاتورة لإعادة الرصيد الصافي تماماً
+  try {
+    const delPromises = [];
+    const expQuery = query(collection(db, 'expenses'), where('saleId', '==', saleId));
+    const expSnaps = await getDocs(expQuery);
+    expSnaps.forEach((d) => delPromises.push(deleteDoc(d.ref)));
+
+    if (saleData?.invoiceNumber) {
+      const expByInv = query(
+        collection(db, 'expenses'),
+        where('isSitePurchase', '==', true),
+        where('invoiceNumber', '==', saleData.invoiceNumber)
+      );
+      const expByInvSnaps = await getDocs(expByInv);
+      expByInvSnaps.forEach((d) => delPromises.push(deleteDoc(d.ref)));
+    }
+
+    const incQuery = query(collection(db, 'office_incomes'), where('saleId', '==', saleId));
+    const incSnaps = await getDocs(incQuery);
+    incSnaps.forEach((d) => delPromises.push(deleteDoc(d.ref)));
+
+    await Promise.all(delPromises);
+  } catch (cleanErr) {
+    console.warn('Could not clean up site purchase records for deleted sale:', cleanErr);
+  }
 }
 
 /**
@@ -1211,5 +1372,69 @@ export async function resetCustomerDebtPayments(saleId) {
 
     return { newPaid: 0, newRemaining: total };
   });
+}
+
+/**
+ * إرجاع مباشر لمادة مشتراة موقعياً وإيداع ثمنها في القاصة أو الماستر
+ */
+export async function refundSitePurchaseDirectly({
+  saleId,
+  invoiceNumber,
+  cartItemId,
+  productName,
+  quantity = 1,
+  unitCost = 0,
+  paymentSource = 'cash_drawer',
+  cashierEmail,
+  reason = 'إرجاع شراء موقعي للسوق واسترداد ثمنه'
+}) {
+  const totalRefund = Math.max(0, Number(unitCost) * Number(quantity));
+  if (totalRefund <= 0) throw new Error('المبلغ المسترد يجب أن يكون أكبر من الصفر');
+
+  const pMethod = paymentSource === 'mastercard' ? 'mastercard' : 'cash';
+  const incRef = doc(collection(db, 'office_incomes'));
+  await setDoc(incRef, {
+    title: `استرداد شراء موقعي: ${productName}`,
+    category: 'استرداد مشتريات موقعية',
+    amount: totalRefund,
+    paymentMethod: pMethod,
+    receivedFrom: 'المحل / السوق',
+    invoiceNumber: invoiceNumber || null,
+    saleId: saleId || null,
+    notes: `${reason} (${quantity}x ${productName}) - فاتورة #${invoiceNumber || ''}`,
+    date: new Date().toISOString().slice(0, 10),
+    createdAt: new Date().toISOString(),
+    createdBy: cashierEmail || 'الكاشير'
+  });
+
+  if (saleId) {
+    const saleRef = doc(db, SALES_COLLECTION, saleId);
+    const snap = await safeGetDoc(saleRef);
+    if (snap.exists()) {
+      const sData = snap.data();
+      const logs = sData.historyLogs || [];
+      const updatedItems = (sData.items || []).map(item => {
+        if (item.cartItemId === cartItemId || item.productId === cartItemId) {
+          return {
+            ...item,
+            sitePurchaseRefunded: true,
+            sitePurchaseRefundedAt: new Date().toISOString(),
+            sitePurchaseRefundedAmount: totalRefund
+          };
+        }
+        return item;
+      });
+      await updateDoc(saleRef, {
+        items: updatedItems,
+        historyLogs: [...logs, {
+          date: new Date(),
+          cashierEmail,
+          action: `تم استرداد مبلغ الشراء الموقعي (${totalRefund.toLocaleString()} د.ع) وإيداعه في ${pMethod === 'mastercard' ? 'الماستركارد' : 'القاصة'}`
+        }]
+      });
+    }
+  }
+
+  return { success: true, amount: totalRefund };
 }
 

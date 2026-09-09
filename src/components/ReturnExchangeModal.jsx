@@ -366,7 +366,15 @@ export default function ReturnExchangeModal({ sale, cashierEmail, onClose, onSav
                     return (
                       <div key={item.productId} className={`flex gap-3 items-center p-2 rounded-lg border ${isNew ? 'border-brand-300 bg-brand-50/30' : isReduced ? 'border-warn-300 bg-warn-50/30' : 'border-ink-100 bg-white'}`}>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-ink-900 truncate" title={item.name}>{item.name}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-bold text-ink-900 truncate" title={item.name}>{item.name}</p>
+                            {item.isSitePurchase && (
+                              <span className={`inline-flex items-center gap-1 ${item.paymentSource === 'mastercard' ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-emerald-100 border-emerald-300 text-emerald-900'} border text-[10px] font-black px-1.5 py-0.5 rounded shrink-0`}>
+                                <span>{item.paymentSource === 'mastercard' ? '💳' : '🛒'}</span>
+                                <span>{item.paymentSource === 'mastercard' ? 'شراء موقعي (ماستر)' : 'شراء موقعي (قاصة)'}</span>
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <div className="flex items-center gap-1">
                               <span className="text-[10px] text-ink-500 font-bold">البيع:</span>
@@ -386,7 +394,13 @@ export default function ReturnExchangeModal({ sale, cashierEmail, onClose, onSav
                               <span className="text-[10px] text-ink-400">د.ع</span>
                             </div>
 
-                            {!item.isService && (
+                            {item.isSitePurchase ? (
+                              <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-900">
+                                <span className="text-amber-700">شراء مخصوم من {item.paymentSource === 'mastercard' ? 'الماستر' : 'القاصة'}:</span>
+                                <span className="font-mono text-amber-950 font-black">{(item.purchaseCost || item.wholesalePrice || 0).toLocaleString()} د.ع</span>
+                                <span className="text-[9px] text-amber-600 font-normal">(إرجاعه يسترد المبلغ فوراً)</span>
+                              </div>
+                            ) : !item.isService && (
                               <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-700">
                                 <span className="text-slate-500">الجملة (التكلفة):</span>
                                 <span className="font-mono text-slate-900 font-black">{(item.wholesalePrice || 0).toLocaleString()} د.ع</span>

@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { useDraftSales } from '../hooks/useDraftSales';
 import { useSales } from '../hooks/useSales';
 import { useExpenses } from '../hooks/useExpenses';
@@ -14,6 +16,7 @@ import IncomeExpensesModal from './IncomeExpensesModal';
 import CashReconciliationModal from './CashReconciliationModal';
 import AddIncomeModal from './AddIncomeModal';
 import TransferFundsModal from './TransferFundsModal';
+import SuspendedStatementModal from './SuspendedStatementModal';
 
 function toDateSafe(timestamp) {
   if (!timestamp) return null;
@@ -41,7 +44,7 @@ function formatDraftDate(timestamp) {
   });
 }
 
-export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, productsLoading }) {
+export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, productsLoading, onOpenGuide }) {
   const { drafts, loading: draftsLoading } = useDraftSales();
   const { sales, loading: salesLoading } = useSales();
   const { expenses, stats: expensesStats, loading: expensesLoading } = useExpenses();
@@ -57,6 +60,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   const [cashModalInitialTab, setCashModalInitialTab] = useState('reconcile');
   const [showAddIncomeModal, setShowAddIncomeModal] = useState(false);
   const [showTransferFundsModal, setShowTransferFundsModal] = useState(false);
+  const [showSuspendedStatementModal, setShowSuspendedStatementModal] = useState(false);
   const { toast } = useUI();
 
   const lowStock = products.filter((p) => getStockStatus(p) === STOCK_STATUS.LOW_STOCK);
@@ -67,14 +71,35 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0))
     .slice(0, 5);
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const confirmedSaleIds = useMemo(() => new Set((sales || []).map((s) => s.id)), [sales]);
+
+  // تنظيف تلقائي لأي مصاريف شراء موقعي أو إيرادات استرداد يتيمة تم حذف فاتورتها
+  useEffect(() => {
+    if (salesLoading || expensesLoading) return;
+    (expenses || []).forEach((e) => {
+      if (e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)) {
+        deleteDoc(doc(db, 'expenses', e.id)).catch(() => {});
+      }
+    });
+    (incomes || []).forEach((inc) => {
+      if (inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)) {
+        deleteDoc(doc(db, 'office_incomes', inc.id)).catch(() => {});
+      }
+    });
+  }, [sales, expenses, incomes, salesLoading, expensesLoading, confirmedSaleIds]);
+
   const todaysSales = useMemo(
     () => sales.filter((s) => isToday(toDateSafe(s.createdAt))),
     [sales]
   );
   const todaysRevenue = todaysSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
-  const todaysExpense = expensesStats?.todayTotal || 0;
-  
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaysExpense = useMemo(() => {
+    return (expenses || [])
+      .filter((e) => (e.date || e.createdAt || '').slice(0, 10) === todayStr)
+      .filter((e) => !(e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)))
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [expenses, todayStr, confirmedSaleIds]);
 
   // Mastercard / Electronic Income calculations
   const todaysMastercardSales = useMemo(() => {
@@ -98,8 +123,9 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   const todaysMastercardIncomes = useMemo(() => {
     return (incomes || [])
       .filter((inc) => (inc.date || inc.createdAt || '').slice(0, 10) === todayStr && (inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card'))
+      .filter((inc) => !(inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)))
       .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
-  }, [incomes, todayStr]);
+  }, [incomes, todayStr, confirmedSaleIds]);
 
   const todaysDebtMastercardRepayments = useMemo(() => {
     let sum = 0;
@@ -135,8 +161,9 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   const allMastercardIncomes = useMemo(() => {
     return (incomes || [])
       .filter((inc) => inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card' || String(inc.paymentMethod || '').includes('ماستر'))
+      .filter((inc) => !(inc.category === 'استرداد مشتريات موقعية' && inc.saleId && !confirmedSaleIds.has(inc.saleId)))
       .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
-  }, [incomes]);
+  }, [incomes, confirmedSaleIds]);
 
   const allDebtMastercardRepayments = useMemo(() => {
     let sum = 0;
@@ -208,7 +235,18 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         }
       });
 
-      return baseAmount + inflowSince + transfersInSince - transfersOutSince;
+      let expensesMastercardSince = 0;
+      (expenses || []).forEach((e) => {
+        if (e.paymentSource === 'mastercard') {
+          if (e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)) return;
+          const eDate = e.createdAt ? new Date(e.createdAt) : (e.date ? new Date(e.date) : null);
+          if (eDate && eDate > recDate) {
+            expensesMastercardSince += Number(e.amount || 0);
+          }
+        }
+      });
+
+      return baseAmount + inflowSince + transfersInSince - transfersOutSince - expensesMastercardSince;
     }
 
     // Cumulative calculation
@@ -223,8 +261,16 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       }
     });
 
-    return (allMastercardSales + allMastercardIncomes + allDebtMastercardRepayments + totalTransfersIn) - totalTransfersOut;
-  }, [sales, incomes, transfers, latestReconciliation, allMastercardSales, allMastercardIncomes, allDebtMastercardRepayments]);
+    let totalMastercardExpenses = 0;
+    (expenses || []).forEach((e) => {
+      if (e.paymentSource === 'mastercard') {
+        if (e.isSitePurchase && e.saleId && !confirmedSaleIds.has(e.saleId)) return;
+        totalMastercardExpenses += Number(e.amount || 0);
+      }
+    });
+
+    return (allMastercardSales + allMastercardIncomes + allDebtMastercardRepayments + totalTransfersIn) - totalTransfersOut - totalMastercardExpenses;
+  }, [sales, incomes, expenses, transfers, latestReconciliation, allMastercardSales, allMastercardIncomes, allDebtMastercardRepayments, confirmedSaleIds]);
 
   const todaysManualIncome = useMemo(() => {
     return (incomes || [])
@@ -553,6 +599,16 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => onOpenGuide && onOpenGuide()}
+            className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="فتح دليل الاستخدام والتشغيل الشامل للنظام"
+          >
+            <span className="text-sm">📖</span>
+            <span>دليل الاستخدام الشامل</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowTransferFundsModal(true)}
             className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
             title="تحويل مالي بين رصيد الماستر كارد وقاصة النقد"
@@ -833,8 +889,19 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           {/* الفواتير المعلقة */}
           <div className="card">
             <div className="p-5 border-b border-ink-100 flex items-center justify-between">
-              <h3 className="font-bold text-ink-900 tracking-tight">الفواتير المعلقة</h3>
-              <span className="bg-ink-100 text-ink-600 text-xs font-medium px-2.5 py-1 rounded-full">{drafts.length} فواتير</span>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-ink-900 tracking-tight">الفواتير المعلقة</h3>
+                <span className="bg-ink-100 text-ink-600 text-xs font-medium px-2.5 py-1 rounded-full">{drafts.length} فواتير</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSuspendedStatementModal(true)}
+                className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="فتح كشف حساب الفواتير المعلقة والمحجوزة الشامل"
+              >
+                <span>📑</span>
+                <span>كشف حساب المعلقات</span>
+              </button>
             </div>
             
             {draftsLoading ? (
@@ -1009,6 +1076,13 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           currentMastercardBalance={liveMastercardBalance}
           currentCashBalance={actualOfficeCash}
           onClose={() => setShowTransferFundsModal(false)}
+        />
+      )}
+
+      {showSuspendedStatementModal && (
+        <SuspendedStatementModal
+          onClose={() => setShowSuspendedStatementModal(false)}
+          onOpenDraft={onOpenDraft}
         />
       )}
     </div>
