@@ -1161,12 +1161,14 @@ export async function updatePurchaseInvoice(purchaseId, {
 // Subscriptions
 // ----------------------------------------------------
 
-export function subscribeToPurchases(callback, maxLimit = 100) {
-  const q = query(
-    collection(db, PURCHASES_COLLECTION),
-    orderBy('createdAt', 'desc'),
-    limit(maxLimit)
-  );
+export function subscribeToPurchases(callback, maxLimit = 1000) {
+  const q = maxLimit
+    ? query(
+        collection(db, PURCHASES_COLLECTION),
+        orderBy('createdAt', 'desc'),
+        limit(maxLimit)
+      )
+    : query(collection(db, PURCHASES_COLLECTION), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(list);
@@ -1185,12 +1187,14 @@ export function subscribeToSupplierDebts(callback) {
   });
 }
 
-export function subscribeToDebtPayments(callback, maxLimit = 100) {
-  const q = query(
-    collection(db, DEBT_PAYMENTS_COLLECTION),
-    orderBy('createdAt', 'desc'),
-    limit(maxLimit)
-  );
+export function subscribeToDebtPayments(callback, maxLimit = 1000) {
+  const q = maxLimit
+    ? query(
+        collection(db, DEBT_PAYMENTS_COLLECTION),
+        orderBy('createdAt', 'desc'),
+        limit(maxLimit)
+      )
+    : query(collection(db, DEBT_PAYMENTS_COLLECTION), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(list);

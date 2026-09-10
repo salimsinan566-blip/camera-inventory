@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, orderBy, query, where, limit } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { BACKUP_KEYS, loadLocalBackup, saveLocalBackup, recordLastKnownInvoiceNumber } from '../services/offlineDbHelper';
 
@@ -19,8 +19,7 @@ export function useSales() {
     const q = query(
       collection(db, 'sales'),
       where('status', '==', 'confirmed'),
-      orderBy('invoiceNumber', 'desc'),
-      limit(100)
+      orderBy('invoiceNumber', 'desc')
     );
     const unsubscribe = onSnapshot(
       q,

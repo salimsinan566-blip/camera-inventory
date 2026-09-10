@@ -91,8 +91,7 @@ export function subscribeToIncomes(callback) {
 
   const q = query(
     collection(db, INCOMES_COLLECTION),
-    orderBy('createdAt', 'desc'),
-    limit(100)
+    orderBy('createdAt', 'desc')
   );
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
