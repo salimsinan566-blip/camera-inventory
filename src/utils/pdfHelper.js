@@ -199,7 +199,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
   const container = document.createElement('div');
   container.style.width = '794px';
   container.style.backgroundColor = '#ffffff';
-  container.style.padding = '114px 20px 16px 20px';
+  container.style.padding = '145px 20px 16px 20px';
   container.style.boxSizing = 'border-box';
   container.style.position = 'relative';
   container.dir = 'rtl';

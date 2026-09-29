@@ -35,7 +35,7 @@ export default function InvoiceDocument({
         return (
           <div 
             key={pageIndex} 
-            className={`invoice-a4-sheet relative bg-white w-full max-w-[210mm] mx-auto flex flex-col justify-between box-border rounded-none overflow-hidden ${
+            className={`invoice-a4-sheet invoice-print-sheet relative bg-white w-full max-w-[210mm] mx-auto flex flex-col justify-between box-border rounded-none overflow-hidden ${
               isPrintOnly 
                 ? 'print:break-inside-avoid print:break-after-page h-[297mm] max-h-[297mm]' 
                 : 'min-h-[297mm] h-[297mm] max-h-[297mm] shadow-md border border-slate-200'
@@ -47,7 +47,10 @@ export default function InvoiceDocument({
               minHeight: '297mm',
               width: '210mm',
               maxWidth: '210mm',
-              padding: '30mm 4mm 3mm 4mm',
+              paddingTop: '38mm',
+              paddingBottom: '4mm',
+              paddingLeft: '4mm',
+              paddingRight: '4mm',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between'

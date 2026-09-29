@@ -1069,7 +1069,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <div 
                 key={idx} 
                 id={idx === 0 ? "invoice-receipt-capture-area" : undefined}
-                className="bg-white relative shadow-md w-full max-w-[210mm] min-h-[297mm] h-[297mm] max-h-[297mm] box-border rounded-none overflow-hidden"
+                className="invoice-print-sheet bg-white relative shadow-md w-full max-w-[210mm] min-h-[297mm] h-[297mm] max-h-[297mm] box-border rounded-none overflow-hidden"
                 style={{ 
                   height: '297mm', 
                   maxHeight: '297mm', 
@@ -1077,7 +1077,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                   width: '210mm', 
                   maxWidth: '210mm',
                   boxSizing: 'border-box', 
-                  padding: '30mm 4mm 3mm 4mm', 
+                  paddingTop: '38mm',
+                  paddingBottom: '4mm',
+                  paddingLeft: '4mm',
+                  paddingRight: '4mm',
                   display: 'flex', 
                   flexDirection: 'column', 
                   justifyContent: 'space-between' 
@@ -1104,7 +1107,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           {invoiceContent.map((page, idx) => (
             <div 
               key={idx} 
-              className="relative bg-white print:break-inside-avoid print:break-after-page w-[210mm] max-w-[210mm] h-[297mm] max-h-[297mm] min-h-[297mm] box-border overflow-hidden"
+              className="invoice-print-sheet relative bg-white print:break-inside-avoid print:break-after-page w-[210mm] max-w-[210mm] h-[297mm] max-h-[297mm] min-h-[297mm] box-border overflow-hidden"
               style={{ 
                 boxSizing: 'border-box', 
                 height: '297mm', 
@@ -1112,7 +1115,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 minHeight: '297mm',
                 width: '210mm',
                 maxWidth: '210mm',
-                padding: '30mm 4mm 3mm 4mm', 
+                paddingTop: '38mm',
+                paddingBottom: '4mm',
+                paddingLeft: '4mm',
+                paddingRight: '4mm',
                 display: 'flex', 
                 flexDirection: 'column', 
                 justifyContent: 'space-between' 
@@ -1160,6 +1166,21 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             width: 210mm !important;
             margin: 0 !important;
             padding: 0 !important;
+          }
+          .invoice-print-sheet {
+            box-sizing: border-box !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            min-height: 297mm !important;
+            width: 210mm !important;
+            max-width: 210mm !important;
+            padding-top: 38mm !important;
+            padding-bottom: 4mm !important;
+            padding-left: 4mm !important;
+            padding-right: 4mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
           }
           @page {
             size: A4 portrait;
