@@ -94,11 +94,11 @@ export default function InvoiceDocument({
                   
                   {/* اليسار: الشعار وحالة الفاتورة */}
                   <div className="flex flex-col items-end gap-1.5 pr-2 relative">
-                    <div className="h-20 sm:h-24 flex items-center justify-start relative">
+                    <div className="h-24 sm:h-28 flex items-center justify-start relative -translate-x-2">
                       <img 
                         src={settings?.logoUrl || defaultLogo} 
                         alt="الشعار" 
-                        className="h-20 sm:h-24 w-auto object-contain scale-[1.8] sm:scale-[2] origin-left" 
+                        className="h-24 sm:h-28 w-auto object-contain scale-[2] sm:scale-[2.2] origin-left print:scale-[2.1]" 
                         crossOrigin="anonymous"
                       />
                     </div>

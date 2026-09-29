@@ -127,11 +127,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-2 pr-4 relative">
-              <div className="h-24 flex items-center justify-start relative -translate-x-2">
+              <div className="h-28 flex items-center justify-start relative -translate-x-4">
                 <img 
                   src={settings?.logoUrl || defaultLogo} 
                   alt="الشعار" 
-                  className="h-24 w-auto object-contain scale-[1.7] origin-left print:scale-[1.6]" 
+                  className="h-28 w-auto object-contain scale-[2.2] origin-left print:scale-[2.1]" 
                   crossOrigin="anonymous"
                 />
               </div>
