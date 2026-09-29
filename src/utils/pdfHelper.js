@@ -206,7 +206,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
   container.innerHTML = `
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
       * {
         box-sizing: border-box !important;
         margin: 0;
@@ -445,8 +445,14 @@ export async function generateInvoicePdfBlob(sale, settings) {
           </div>
         ` : ''}
 
-        <!-- خط إغلاق الفاتورة باللون الأصفر الذهبي -->
-        <div style="width: 100%; height: 4px; background-color: #C89B3C; margin-top: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact;"></div>
+        <!-- نص شكر ختامي بخط مزخرف في نهاية الورقة -->
+        <div style="width: 100%; text-align: center; margin-top: 14px; padding-top: 8px; direction: rtl; display: flex; align-items: center; justify-content: center; gap: 12px;">
+          <span style="height: 1px; background-color: #cbd5e1; flex-grow: 1; max-width: 100px;"></span>
+          <p style="font-family: 'Aref Ruqaa', 'Amiri', 'Traditional Arabic', serif; font-size: 16px; font-weight: bold; color: #1e293b; margin: 0; letter-spacing: 0px;">
+            شكراً لثقتكم بنا
+          </p>
+          <span style="height: 1px; background-color: #cbd5e1; flex-grow: 1; max-width: 100px;"></span>
+        </div>
 
       </div>
     </div>

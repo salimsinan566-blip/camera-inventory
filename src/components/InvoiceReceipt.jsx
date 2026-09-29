@@ -366,16 +366,20 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           )}
         </div>
 
-        {/* خط إغلاق الفاتورة باللون الأصفر الذهبي */}
-        <div 
-          className="w-full flex-shrink-0 mt-2" 
-          style={{ 
-            height: '4px', 
-            backgroundColor: '#C89B3C', 
-            WebkitPrintColorAdjust: 'exact', 
-            printColorAdjust: 'exact' 
-          }} 
-        />
+        {/* نص شكر ختامي بخط مزخرف في نهاية الورقة */}
+        <div className="w-full text-center mt-auto pt-2 pb-0.5 flex items-center justify-center gap-3 flex-shrink-0" style={{ letterSpacing: '0px' }}>
+          <span className="h-px bg-slate-200/80 flex-grow max-w-[100px]"></span>
+          <p 
+            className="text-base sm:text-lg font-bold text-slate-800" 
+            style={{ 
+              fontFamily: "'Aref Ruqaa', 'Amiri', 'Traditional Arabic', serif",
+              letterSpacing: '0px'
+            }}
+          >
+            شكراً لثقتكم بنا
+          </p>
+          <span className="h-px bg-slate-200/80 flex-grow max-w-[100px]"></span>
+        </div>
       </div>
     );
   });
@@ -1146,6 +1150,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
 
       {/* Global print styles to hide everything except our print portal */}
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Aref+Ruqaa:wght@400;700&display=swap');
         @media print {
           * {
             -webkit-print-color-adjust: exact !important;
