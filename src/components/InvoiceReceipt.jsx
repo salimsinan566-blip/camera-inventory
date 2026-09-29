@@ -127,11 +127,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             
             {/* اليسار: الشعار وحالة الفاتورة */}
             <div className="flex flex-col items-end gap-2 pr-4 relative">
-              <div className="h-28 flex items-center justify-start relative -translate-x-4">
+              <div className="h-24 flex items-center justify-start relative -translate-x-2">
                 <img 
                   src={settings?.logoUrl || defaultLogo} 
                   alt="الشعار" 
-                  className="h-28 w-auto object-contain scale-[2.2] origin-left print:scale-[2]" 
+                  className="h-24 w-auto object-contain scale-[1.7] origin-left print:scale-[1.6]" 
                   crossOrigin="anonymous"
                 />
               </div>
@@ -1077,10 +1077,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                   width: '210mm', 
                   maxWidth: '210mm',
                   boxSizing: 'border-box', 
-                  paddingTop: '38mm',
-                  paddingBottom: '4mm',
-                  paddingLeft: '4mm',
-                  paddingRight: '4mm',
+                  paddingTop: '15mm',
+                  paddingBottom: '8mm',
+                  paddingLeft: '5mm',
+                  paddingRight: '5mm',
                   display: 'flex', 
                   flexDirection: 'column', 
                   justifyContent: 'space-between' 
@@ -1115,10 +1115,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                 minHeight: '297mm',
                 width: '210mm',
                 maxWidth: '210mm',
-                paddingTop: '38mm',
-                paddingBottom: '4mm',
-                paddingLeft: '4mm',
-                paddingRight: '4mm',
+                paddingTop: '15mm',
+                paddingBottom: '8mm',
+                paddingLeft: '5mm',
+                paddingRight: '5mm',
                 display: 'flex', 
                 flexDirection: 'column', 
                 justifyContent: 'space-between' 
@@ -1174,10 +1174,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             min-height: 297mm !important;
             width: 210mm !important;
             max-width: 210mm !important;
-            padding-top: 38mm !important;
-            padding-bottom: 4mm !important;
-            padding-left: 4mm !important;
-            padding-right: 4mm !important;
+            padding-top: 15mm !important;
+            padding-bottom: 8mm !important;
+            padding-left: 5mm !important;
+            padding-right: 5mm !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;

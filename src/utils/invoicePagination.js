@@ -7,18 +7,18 @@
 export function getInvoicePages(allItems, hasNotes = false) {
   if (!allItems || allItems.length === 0) return [[]];
 
-  // Up to 15-18 items comfortably fit on a single page with 30mm top margin, totals, QR, and yellow closing line
-  const SINGLE_PAGE_MAX = hasNotes ? 15 : 18;
+  // Up to 17-20 items comfortably fit on a single page with 15mm top margin, totals, QR, and yellow closing line
+  const SINGLE_PAGE_MAX = hasNotes ? 17 : 20;
 
   if (allItems.length <= SINGLE_PAGE_MAX) {
     return [allItems];
   }
 
-  // Multi-page invoices (more than 15-18 items):
-  // Page 1 and intermediate pages have no totals box, so they can take up to 20 items.
-  // The last page must have room for the totals box + footer, so it can take up to 13 items.
-  const LAST_PAGE_MAX = hasNotes ? 11 : 13;
-  const INTERMEDIATE_PAGE_MAX = 20;
+  // Multi-page invoices (more than 17-20 items):
+  // Page 1 and intermediate pages have no totals box, so they can take up to 22 items.
+  // The last page must have room for the totals box + footer, so it can take up to 15 items.
+  const LAST_PAGE_MAX = hasNotes ? 13 : 15;
+  const INTERMEDIATE_PAGE_MAX = 22;
 
   const pages = [];
   let remaining = [...allItems];
