@@ -62,6 +62,11 @@ export default function POSScreen({
   const [offerName, setOfferName] = useState('');
   const [offerNotes, setOfferNotes] = useState('');
   const [editingOfferId, setEditingOfferId] = useState(null);
+
+  // Cart items reordering state
+  const [draggedCartIndex, setDraggedCartIndex] = useState(null);
+  const [dragOverCartIndex, setDragOverCartIndex] = useState(null);
+
   const [scanError, setScanError] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
   const [draftError, setDraftError] = useState('');
@@ -353,6 +358,64 @@ export default function POSScreen({
     startTransition(() => {
       setCart((prev) => prev.filter((item) => item.cartItemId !== idOrCartItemId && (item.cartItemId || item.productId !== idOrCartItemId)));
     });
+  }
+
+  function moveCartItem(fromIndex, toIndex) {
+    if (toIndex < 0 || toIndex >= cart.length || fromIndex === toIndex) return;
+    setCart((prev) => {
+      const updated = [...prev];
+      const [movedItem] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, movedItem);
+      return updated;
+    });
+  }
+
+  function moveCartItemToTop(fromIndex) {
+    moveCartItem(fromIndex, 0);
+  }
+
+  function moveCartItemUp(fromIndex) {
+    moveCartItem(fromIndex, fromIndex - 1);
+  }
+
+  function moveCartItemDown(fromIndex) {
+    moveCartItem(fromIndex, fromIndex + 1);
+  }
+
+  function handleCartDragStart(e, index) {
+    setDraggedCartIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    try {
+      e.dataTransfer.setData('text/plain', String(index));
+    } catch {}
+  }
+
+  function handleCartDragOver(e, index) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverCartIndex !== index) {
+      setDragOverCartIndex(index);
+    }
+  }
+
+  function handleCartDragLeave(e, index) {
+    if (dragOverCartIndex === index) {
+      setDragOverCartIndex(null);
+    }
+  }
+
+  function handleCartDrop(e, targetIndex) {
+    e.preventDefault();
+    if (draggedCartIndex !== null && draggedCartIndex !== targetIndex) {
+      moveCartItem(draggedCartIndex, targetIndex);
+    }
+    setDraggedCartIndex(null);
+    setDragOverCartIndex(null);
+  }
+
+  function handleCartDragEnd() {
+    setDraggedCartIndex(null);
+    setDragOverCartIndex(null);
   }
 
   function resetOrderState() {
@@ -1460,12 +1523,30 @@ export default function POSScreen({
               {/* Row 1: Title + Quick Toolbar Actions */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-base">🛒</span>
-                  <h3 className="font-black text-ink-900 text-sm shrink-0">السلة</h3>
+                  <span className="text-base">{mode === 'offer' ? '📋' : '🛒'}</span>
+                  <h3 className="font-black text-ink-900 text-sm shrink-0">
+                    {mode === 'offer' ? (editingOfferId ? 'تعديل عرض السعر' : 'إنشاء عرض سعر جديد') : 'السلة'}
+                  </h3>
+                  {mode === 'offer' && (
+                    <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md">
+                      عروض الأسعار
+                    </span>
+                  )}
                 </div>
 
                 {/* Quick Toolbar Actions */}
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {mode === 'offer' && onCloseOfferMode && (
+                    <button
+                      type="button"
+                      onClick={onCloseOfferMode}
+                      className="px-2 py-1 text-xs font-bold text-ink-600 hover:text-ink-900 bg-ink-100 hover:bg-ink-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                      title="العودة إلى قائمة عروض الأسعار"
+                    >
+                      <span>↩️</span>
+                      <span>عروض الأسعار</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -1869,6 +1950,20 @@ export default function POSScreen({
 
             {/* Cart Items List - Ultra Robust & Responsive */}
             <div className="flex-1 overflow-y-auto p-2 min-h-0 min-w-0 bg-ink-50/30">
+              {mode === 'offer' && cart.length > 1 && (
+                <div className="mb-2 px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl flex items-center justify-between text-[11px] font-bold text-amber-950 shadow-2xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm">↕️</span>
+                    <span className="truncate">
+                      التحكم بترتيب الفاتورة: اضغط (الأول 🔝) لتحديد أول عنصر، أو استخدم الأسهم والسحب
+                    </span>
+                  </div>
+                  <span className="bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full text-[10px] font-mono shrink-0">
+                    {cart.length} مواد
+                  </span>
+                </div>
+              )}
+
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-ink-400 py-6 min-h-[100px]">
                   <svg className="w-10 h-10 mb-1 opacity-25" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
@@ -1877,17 +1972,53 @@ export default function POSScreen({
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {cart.map((item) => {
+                  {cart.map((item, index) => {
                     const itemKey = item.cartItemId || `${item.productId}_${item.source || 'store'}_${item.technicianId || ''}`;
                     const isCustody = item.source === 'custody' || item.isCustody;
                     const isWarehouse = item.source === 'warehouse';
                     const isService = item.isService;
+                    const isFirst = index === 0;
+                    const isLast = index === cart.length - 1;
+                    const isDragging = draggedCartIndex === index;
+                    const isDragOver = dragOverCartIndex === index;
 
                     return (
                       <div 
-                        key={itemKey} 
-                        className="flex items-center justify-between p-1.5 px-2 bg-white rounded-lg border border-ink-200/80 shadow-2xs hover:border-brand-300 transition-colors gap-1.5 min-w-0"
+                        key={itemKey}
+                        draggable
+                        onDragStart={(e) => handleCartDragStart(e, index)}
+                        onDragOver={(e) => handleCartDragOver(e, index)}
+                        onDragLeave={(e) => handleCartDragLeave(e, index)}
+                        onDrop={(e) => handleCartDrop(e, index)}
+                        onDragEnd={handleCartDragEnd}
+                        className={`flex items-center justify-between p-1.5 px-2 bg-white rounded-lg border transition-all gap-1.5 min-w-0 ${
+                          isDragging ? 'opacity-30 border-dashed border-brand-400 bg-brand-50/30' : ''
+                        } ${
+                          isDragOver ? 'border-brand-500 ring-2 ring-brand-300 bg-brand-50/50 scale-[1.01]' : 'border-ink-200/80 hover:border-brand-300'
+                        } ${
+                          isFirst && (mode === 'offer' || cart.length > 1) ? 'border-amber-300 bg-amber-50/15' : ''
+                        }`}
                       >
+                        {/* رقم ترتيب العنصر فقط (بدون أي أزرار تزاحم اسم المادة) */}
+                        <div className="shrink-0 select-none">
+                          <select
+                            value={index + 1}
+                            onChange={(e) => moveCartItem(index, Number(e.target.value) - 1)}
+                            className={`w-6 h-6 text-xs font-mono font-black rounded-md border text-center cursor-pointer appearance-none transition-all flex items-center justify-center p-0 ${
+                              isFirst
+                                ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                                : 'bg-slate-100 hover:bg-brand-50 text-slate-700 hover:text-brand-700 border-slate-200 hover:border-brand-300'
+                            }`}
+                            title={`ترتيب البند: ${index + 1} (اضغط لاختيار 1 أو أي رقم آخر)`}
+                          >
+                            {cart.map((_, i) => (
+                              <option key={i} value={i + 1}>
+                                {i + 1}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
                         {/* Name & Source Sticker & Price */}
                         <div className="flex-1 min-w-0 pr-0.5">
                           {/* Row 1: Source Sticker + Full Product Name */}
@@ -2093,6 +2224,30 @@ export default function POSScreen({
                     </>
                   )}
                 </button>
+                {mode === 'offer' && (
+                  <div className="flex-[1] flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPrintOptionsModal(true)}
+                      disabled={cart.length === 0}
+                      className="flex-1 py-1.5 px-2 text-xs font-bold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer"
+                      title="معاينة وطباعة عرض السعر"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                      <span>معاينة</span>
+                    </button>
+                    {onCloseOfferMode && (
+                      <button
+                        type="button"
+                        onClick={onCloseOfferMode}
+                        className="py-1.5 px-2 text-xs font-bold text-ink-600 hover:text-ink-800 bg-ink-100 hover:bg-ink-200 rounded-xl transition-colors cursor-pointer"
+                        title="إلغاء والعودة إلى شاشة عروض الأسعار"
+                      >
+                        إلغاء
+                      </button>
+                    )}
+                  </div>
+                )}
                 {mode === 'sale' && (
                   <div className="flex-[1] flex gap-1">
                     {editingDraftId && cart.length === 0 ? (

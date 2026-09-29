@@ -17,6 +17,7 @@ import {
 import { createOffer } from '../services/offersService';
 import { useUI } from '../contexts/UIContext';
 import defaultLogo from '../assets/logo.png';
+import { getInvoicePages } from '../utils/invoicePagination';
 
 export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false, isCustomerPortalView = false }) {
   if (!sale) return null;
@@ -93,19 +94,10 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
   const products = sale.items?.filter(item => !item.isService) || [];
   const services = sale.items?.filter(item => item.isService) || [];
 
-  const ITEMS_PER_PAGE = 12;
-  const allItems = [...products, ...services];
-  const pages = [];
-  
-  for (let i = 0; i < allItems.length; i += ITEMS_PER_PAGE) {
-    pages.push(allItems.slice(i, i + ITEMS_PER_PAGE));
-  }
-
-  if (pages.length === 0) {
-    pages.push([]);
-  }
-
+  const allItems = sale.isOffer ? (sale.items || []) : [...products, ...services];
   const invoiceNotes = (sale.notes || sale.offerNotes || sale.invoiceNotes || '').trim();
+  const hasNotes = Boolean(invoiceNotes);
+  const pages = getInvoicePages(allItems, hasNotes);
 
   const invoiceContent = pages.map((pageItems, pageIndex) => {
     const isLastPage = pageIndex === pages.length - 1;
@@ -113,11 +105,11 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     return (
       <div 
         key={pageIndex} 
-        className="invoice-page relative w-full flex flex-col justify-between bg-transparent print:break-after-page" 
-        style={{ minHeight: '100%', flexGrow: 1, boxSizing: 'border-box' }}
+        className="invoice-page relative w-full flex-grow flex flex-col justify-between bg-transparent h-full" 
+        style={{ minHeight: '100%', height: '100%', flexGrow: 1, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
       >
         {/* القسم العلوي: الترويسة والمنتجات */}
-        <div>
+        <div className="w-full flex-shrink-0">
           {/* الترويسة الفنية */}
           <div className="flex items-center justify-between mb-4 border-b-2 border-[#C89B3C] pb-3">
             {/* اليمين: معلومات المتجر */}
@@ -208,70 +200,80 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               </tr>
             </thead>
             <tbody className="align-top text-xs sm:text-[13px] text-right">
-              {pageItems.map((item, i) => (
-                <tr key={`${item.productId}-${i}`} className="border-b border-slate-100">
-                  <td className="py-2 px-3 text-slate-800 font-bold break-words max-w-[280px] leading-snug text-right">
-                    {item.isService && !item.isCustom && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal ml-1.5 inline-block align-middle">أجور/خدمة</span>}
-                    <bdi dir="auto" className="inline-block text-right" style={{ unicodeBidi: 'plaintext' }}>
-                      {item.name}
-                    </bdi>
-                    {item.notes && (
-                      <span className="inline-block text-[10px] text-slate-600 font-medium leading-tight mt-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
-                        📝 {item.notes}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 px-2 text-center text-slate-800 font-bold">
-                    {item.quantity}
-                    {!item.isService && item.sellMode && item.sellMode !== 'unit' && (
-                      <span className="text-[9px] text-slate-500 mr-1 font-normal">
-                        ({item.sellMode === 'meter' ? 'متر' : 'لفة'})
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 px-2 text-slate-800 font-mono text-right">
-                    {item.originalPrice && item.originalPrice > item.unitPrice ? (
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-slate-400 line-through leading-none">{Number(item.originalPrice).toLocaleString()}</span>
-                        <span className="text-red-600 font-bold leading-none mt-0.5">{Number(item.unitPrice || 0).toLocaleString()}</span>
-                      </div>
-                    ) : (
-                      Number(item.unitPrice || 0).toLocaleString()
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-slate-800 font-mono font-bold text-left">
-                    {(Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
+              {pageItems.map((item, i) => {
+                const rowPy = pageItems.length <= 6 
+                  ? "py-2.5" 
+                  : pageItems.length > 13 
+                  ? "py-1" 
+                  : "py-1.5";
+
+                return (
+                  <tr key={`${item.productId}-${i}`} className="border-b border-slate-100">
+                    <td className={`${rowPy} px-3 text-slate-800 font-bold break-words max-w-[280px] leading-snug text-right`}>
+                      {item.isService && !item.isCustom && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal ml-1.5 inline-block align-middle">أجور/خدمة</span>}
+                      <bdi dir="auto" className="inline-block text-right" style={{ unicodeBidi: 'plaintext' }}>
+                        {item.name}
+                      </bdi>
+                      {item.notes && (
+                        <span className="inline-block text-[10px] text-slate-600 font-medium leading-tight mt-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+                          📝 {item.notes}
+                        </span>
+                      )}
+                    </td>
+                    <td className={`${rowPy} px-2 text-center text-slate-800 font-bold`}>
+                      {item.quantity}
+                      {!item.isService && item.sellMode && item.sellMode !== 'unit' && (
+                        <span className="text-[9px] text-slate-500 mr-1 font-normal">
+                          ({item.sellMode === 'meter' ? 'متر' : 'لفة'})
+                        </span>
+                      )}
+                    </td>
+                    <td className={`${rowPy} px-2 text-slate-800 font-mono text-right`}>
+                      {item.originalPrice && item.originalPrice > item.unitPrice ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-slate-400 line-through leading-none">{Number(item.originalPrice).toLocaleString()}</span>
+                          <span className="text-red-600 font-bold leading-none mt-0.5">{Number(item.unitPrice || 0).toLocaleString()}</span>
+                        </div>
+                      ) : (
+                        Number(item.unitPrice || 0).toLocaleString()
+                      )}
+                    </td>
+                    <td className={`${rowPy} px-3 text-slate-800 font-mono font-bold text-left`}>
+                      {(Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         {/* القسم السفلي: المجاميع (في الصفحة الأخيرة فقط) + التذييل */}
-        <div className="mt-auto w-full pt-4">
+        <div className="mt-auto w-full pt-2 flex-shrink-0">
           {isLastPage ? (
-            <div className="flex justify-between items-end mb-4 pt-2">
-              {/* QR Code */}
+            <div className="flex justify-between items-end gap-4 mb-3 pt-1">
+              {/* رمز الاستجابة السريعة (QR Code) - بحجم متناسق وأوضح */}
               {settings?.qrCodeUrl ? (
-                <div className="w-20 h-20 rounded-lg flex items-center justify-center ml-3 bg-white border border-slate-200 p-1 shrink-0">
-                  <img src={settings.qrCodeUrl} alt="QR Code" className="w-full h-full object-contain" crossOrigin="anonymous" />
+                <div className="w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center shrink-0">
+                  <img src={settings.qrCodeUrl} alt="QR Code" className="w-full h-full object-contain block" crossOrigin="anonymous" />
                 </div>
               ) : (
-                <div className="w-20 h-20 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center bg-slate-50/50 ml-3 shrink-0">
-                  <span className="text-xs text-slate-400 font-medium">QR</span>
+                <div className="w-28 h-28 sm:w-32 sm:h-32 flex flex-col items-center justify-center bg-slate-50/50 text-slate-400 shrink-0">
+                  <span className="text-2xl mb-1">📱</span>
+                  <span className="text-xs font-bold">QR</span>
                 </div>
               )}
               
-              <div className="w-[55%] max-w-[320px] bg-transparent">
-                <div className="border border-slate-200 bg-white p-2 mb-1.5 rounded-t">
+              {/* جدول الإجماليات (بوكس المجموع) بحواف حادة */}
+              <div className="w-[52%] max-w-[340px] flex flex-col justify-between">
+                <div className="border border-slate-200 bg-white p-2.5 mb-1.5 flex-grow flex flex-col justify-center">
                   <table className="w-full text-xs font-bold text-slate-600">
                     <tbody>
                       {Number(sale.discount) > 0 ? (
                         <>
                           <tr>
                             <td className="text-right py-0.5 px-2">المجموع:</td>
-                            <td className="text-left py-0.5 px-2 font-mono">{Number(sale.subtotal || sale.total + sale.discount).toLocaleString()}</td>
+                            <td className="text-left py-0.5 px-2 font-mono">{Number(sale.subtotal || sale.total + sale.discount).toLocaleString()} د.ع</td>
                           </tr>
                           <tr className="text-red-500 border-b border-slate-100 pb-0.5">
                             <td className="text-right py-0.5 px-2">الخصم:</td>
@@ -281,21 +283,21 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                           </tr>
                           <tr>
                             <td className="text-right py-0.5 px-2">الإجمالي بعد الخصم:</td>
-                            <td className="text-left py-0.5 px-2 font-mono text-slate-900">{Number(sale.total).toLocaleString()}</td>
+                            <td className="text-left py-0.5 px-2 font-mono text-slate-900">{Number(sale.total).toLocaleString()} د.ع</td>
                           </tr>
                         </>
                       ) : (
                         <tr>
                           <td className="text-right py-0.5 px-2">المجموع:</td>
-                          <td className="text-left py-0.5 px-2 font-mono text-slate-900">{Number(sale.total).toLocaleString()}</td>
+                          <td className="text-left py-0.5 px-2 font-mono text-slate-900">{Number(sale.total).toLocaleString()} د.ع</td>
                         </tr>
                       )}
 
                       {sale.invoiceType === 'debt' && (
                         <>
                           <tr className="text-emerald-700 border-t border-slate-200">
-                            <td className="text-right pt-0.5 px-2">المدفوع:</td>
-                            <td className="text-left pt-0.5 px-2 font-mono">{Number(sale.paidAmount || 0).toLocaleString()} د.ع</td>
+                            <td className="text-right pt-1 px-2">المدفوع:</td>
+                            <td className="text-left pt-1 px-2 font-mono">{Number(sale.paidAmount || 0).toLocaleString()} د.ع</td>
                           </tr>
                           <tr className="text-rose-700 font-black">
                             <td className="text-right py-0.5 px-2">المتبقي (الدين):</td>
@@ -312,13 +314,13 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                   </table>
                 </div>
                 
-                <table className="w-full bg-[#C89B3C] text-white p-2 print:bg-[#C89B3C] print:!text-white rounded-b">
+                <table className="w-full bg-[#C89B3C] text-white p-2.5 print:bg-[#C89B3C] print:!text-white">
                   <tbody>
                     <tr>
-                      <td className="text-right py-1.5 px-2.5 font-bold text-xs sm:text-sm">
+                      <td className="text-right py-1.5 px-3 font-bold text-xs sm:text-sm">
                         {sale.invoiceType === 'debt' ? 'إجمالي الفاتورة' : 'المبلغ المستحق'}
                       </td>
-                      <td className="text-left py-1.5 px-2.5 font-bold text-base sm:text-lg font-mono">
+                      <td className="text-left py-1.5 px-3 font-bold text-base sm:text-lg font-mono">
                         {Number(sale.total).toLocaleString()} د.ع
                       </td>
                     </tr>
@@ -328,54 +330,40 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             </div>
           ) : (
             <div className="w-full flex justify-end items-center border-t border-slate-200 pt-2 mb-2">
-              <span className="text-xs text-[#C89B3C] font-bold">يتبع...</span>
+              <span className="text-xs text-[#C89B3C] font-bold">يتبع الصفحة التالية...</span>
             </div>
           )}
 
-          {/* التذييل */}
-          <div className={`pt-3 ${isLastPage ? "border-t border-slate-200" : ""}`} style={{ letterSpacing: '0px', direction: 'rtl' }}>
-            {isLastPage && invoiceNotes && (
-              <div className="text-[12px] text-slate-800 mb-3 p-3 bg-amber-50/80 border border-amber-300 rounded-xl leading-relaxed text-right shadow-2xs">
-                <strong className="text-amber-950 flex items-center gap-1.5 mb-1 font-bold text-xs">
-                  <span>📝</span>
-                  <span>{sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</span>
-                </strong>
-                <p className="whitespace-pre-wrap font-semibold text-slate-800 text-[11px] leading-relaxed pr-1">
-                  {invoiceNotes}
-                </p>
-              </div>
-            )}
-            {isLastPage && (
-              <div className="mt-3 text-center border-t border-slate-200/80 pt-3" style={{ letterSpacing: '0px' }}>
-                <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3.5 leading-relaxed">
-                  <p className="font-extrabold text-slate-900 text-xs flex items-center justify-center gap-1.5 mb-1">
-                    <span>🔒</span>
-                    <span>أمانكم واستقرار أعمالكم هو أولويتنا الأولى.</span>
-                  </p>
-                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed max-w-xl mx-auto">
-                    نسعى دائماً لتقديم أحدث تقنيات المراقبة الذكية وحلول الحماية المتقدمة بأعلى معايير الجودة والاعتمادية.
-                  </p>
-                  <p className="text-[11px] text-[#C89B3C] font-bold mt-2">
-                    شكراً لاختياركم المنطقة الامنة لأنظمة المراقبة.
+          {/* التذييل والملاحظات بحواف حادة */}
+          {isLastPage && (invoiceNotes || (sale.historyLogs && sale.historyLogs.length > 0)) && (
+            <div className="pt-2 border-t border-slate-200" style={{ letterSpacing: '0px', direction: 'rtl' }}>
+              {invoiceNotes && (
+                <div className="text-[12px] text-slate-800 mb-2 p-2.5 bg-amber-50/80 border border-amber-300 leading-relaxed text-right">
+                  <strong className="text-amber-950 flex items-center gap-1.5 mb-1 font-bold text-xs">
+                    <span>📝</span>
+                    <span>{sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</span>
+                  </strong>
+                  <p className="whitespace-pre-wrap font-semibold text-slate-800 text-[11px] leading-relaxed pr-1">
+                    {invoiceNotes}
                   </p>
                 </div>
-              </div>
-            )}
-            
-            {isLastPage && sale.historyLogs && sale.historyLogs.length > 0 && (
-              <div className="mt-4 bg-slate-50 border border-slate-200 p-3 rounded text-right relative z-20 print:hidden">
-                <h4 className="text-xs font-bold text-slate-600 mb-1.5">سجل التعديلات السابقة (لا يُطبع):</h4>
-                <ul className="text-[10px] text-slate-500 space-y-0.5">
-                  {sale.historyLogs.map((log, idx) => (
-                    <li key={idx} className="flex gap-2">
-                      <span className="font-mono opacity-70">[{formatDate(log.date)}]</span>
-                      <span>{log.action}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+              )}
+              
+              {sale.historyLogs && sale.historyLogs.length > 0 && (
+                <div className="mt-4 bg-slate-50 border border-slate-200 p-3 rounded text-right relative z-20 print:hidden">
+                  <h4 className="text-xs font-bold text-slate-600 mb-1.5">سجل التعديلات السابقة (لا يُطبع):</h4>
+                  <ul className="text-[10px] text-slate-500 space-y-0.5">
+                    {sale.historyLogs.map((log, idx) => (
+                      <li key={idx} className="flex gap-2">
+                        <span className="font-mono opacity-70">[{formatDate(log.date)}]</span>
+                        <span>{log.action}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -662,7 +650,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             body {
               font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, sans-serif !important;
               margin: 0 !important;
-              padding: 8mm 12mm !important;
+              padding: 0 !important;
               background: #ffffff !important;
               direction: rtl !important;
               display: block !important;
@@ -752,15 +740,19 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
     return (
       <div className="w-full relative m-0 p-0 bg-transparent print:break-before-page" dir="rtl">
         {invoiceContent.map((page, idx) => (
-          <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm]">
+          <div 
+            key={idx} 
+            className="relative bg-white print:break-inside-avoid print:break-after-page w-[210mm] max-w-[210mm] h-[297mm] max-h-[297mm] p-6 sm:p-8 flex flex-col justify-between box-border overflow-hidden"
+            style={{ boxSizing: 'border-box', height: '297mm', maxHeight: '297mm', width: '210mm' }}
+          >
             {settings?.logoUrl && (
               <img 
                 src={settings.logoUrl} 
                 alt="" 
-                className="fixed top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] w-[80%] max-w-[600px] h-auto object-contain filter grayscale opacity-25 z-0 pointer-events-none" 
+                className="fixed top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] w-[80%] max-w-[600px] h-auto object-contain filter grayscale opacity-20 z-0 pointer-events-none" 
               />
             )}
-            <div className="relative z-10">
+            <div className="relative z-10 flex-grow flex flex-col justify-between h-full">
               {page}
             </div>
           </div>
@@ -1066,15 +1058,27 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
               <div 
                 key={idx} 
                 id={idx === 0 ? "invoice-receipt-capture-area" : undefined}
-                className="bg-white p-8 relative shadow-sm w-full max-w-[210mm] min-h-[297mm] flex flex-col"
+                className="bg-white relative shadow-md w-full max-w-[210mm] min-h-[297mm] h-[297mm] max-h-[297mm] box-border rounded-none overflow-hidden"
+                style={{ 
+                  height: '297mm', 
+                  maxHeight: '297mm', 
+                  minHeight: '297mm',
+                  width: '210mm', 
+                  maxWidth: '210mm',
+                  boxSizing: 'border-box', 
+                  padding: '2mm 4mm 2mm 4mm', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  justifyContent: 'space-between' 
+                }}
               >
                 {/* العلامة المائية للشاشة فقط */}
                 {settings?.logoUrl && (
                   <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
-                    <img src={settings.logoUrl} alt="" className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" />
+                    <img src={settings.logoUrl} alt="" className="w-[75%] max-w-[500px] h-auto object-contain filter grayscale" crossOrigin="anonymous" />
                   </div>
                 )}
-                <div className="relative z-10 flex-grow flex flex-col">
+                <div className="relative z-10 w-full flex-grow flex flex-col justify-between" style={{ height: '100%', minHeight: '100%', flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   {page}
                 </div>
               </div>
@@ -1087,7 +1091,22 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
       {createPortal(
         <div id="print-portal" className="hidden print:block w-full relative m-0 p-0 bg-transparent" dir="rtl">
           {invoiceContent.map((page, idx) => (
-            <div key={idx} className="relative bg-white print:break-inside-avoid print:break-after-page min-h-[280mm] p-8 flex flex-col">
+            <div 
+              key={idx} 
+              className="relative bg-white print:break-inside-avoid print:break-after-page w-[210mm] max-w-[210mm] h-[297mm] max-h-[297mm] min-h-[297mm] box-border overflow-hidden"
+              style={{ 
+                boxSizing: 'border-box', 
+                height: '297mm', 
+                maxHeight: '297mm', 
+                minHeight: '297mm',
+                width: '210mm',
+                maxWidth: '210mm',
+                padding: '2mm 4mm 2mm 4mm', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                justifyContent: 'space-between' 
+              }}
+            >
               {/* العلامة المائية للطباعة فقط (تتكرر وتتوسط في كل صفحة PDF) */}
               {settings?.logoUrl && (
                 <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20 overflow-hidden">
@@ -1099,7 +1118,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
                   />
                 </div>
               )}
-              <div className="relative z-10 flex-grow flex flex-col">
+              <div className="relative z-10 w-full flex-grow flex flex-col justify-between" style={{ height: '100%', minHeight: '100%', flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 {page}
               </div>
             </div>
@@ -1115,17 +1134,25 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            width: 210mm !important;
+            height: 297mm !important;
+          }
           body > :not(#print-portal) {
             display: none !important;
           }
           #print-portal {
             display: block !important;
-            width: 100%;
-            
+            width: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           @page {
             size: A4 portrait;
-            margin: 0;
+            margin: 0mm !important;
           }
           tr {
             page-break-inside: avoid;

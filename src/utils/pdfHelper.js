@@ -368,12 +368,12 @@ export async function generateInvoicePdfBlob(sale, settings) {
           <!-- QR Code (Right) -->
           <div>
             ${safeQr ? `
-              <div style="width: 96px; height: 96px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-left: 16px; background-color: #ffffff; border: 1px solid #e2e8f0; padding: 4px;">
+              <div style="width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; margin-left: 16px;">
                 <img src="${safeQr}" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" />
               </div>
             ` : `
-              <div style="width: 96px; height: 96px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; background-color: #f8fafc; margin-left: 16px;">
-                <span style="font-size: 12px; color: #94a3b8; font-weight: 500;">QR</span>
+              <div style="width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; background-color: #f8fafc; margin-left: 16px;">
+                <span style="font-size: 14px; color: #94a3b8; font-weight: 500;">QR</span>
               </div>
             `}
           </div>
@@ -436,21 +436,14 @@ export async function generateInvoicePdfBlob(sale, settings) {
         </div>
 
         <!-- Footer Notes & Info -->
-        <div style="padding-top: 12px; border-top: 1px solid #e2e8f0; direction: rtl;">
-          ${(sale.notes || sale.offerNotes || sale.invoiceNotes) ? `
+        ${(sale.notes || sale.offerNotes || sale.invoiceNotes) ? `
+          <div style="padding-top: 12px; border-top: 1px solid #e2e8f0; direction: rtl;">
             <div style="font-size: 11px; color: #1e293b; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; line-height: 1.6;">
               <strong style="color: #78350f; display: block; margin-bottom: 2px; font-size: 11px;">📝 ${sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</strong>
               <p style="margin: 0; white-space: pre-wrap; font-weight: 500;">${sale.notes || sale.offerNotes || sale.invoiceNotes}</p>
             </div>
-          ` : ''}
-
-          <!-- عبارة أمنية ختامية -->
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-top: 8px; line-height: 1.6; text-align: center;">
-            <div style="color: #0f172a; font-weight: bold; font-size: 11px; margin-bottom: 4px;">🔒 أمانكم واستقرار أعمالكم هو أولويتنا الأولى.</div>
-            <div style="font-size: 10px; color: #475569; line-height: 1.6; margin-bottom: 6px;">نسعى دائماً لتقديم أحدث تقنيات المراقبة الذكية وحلول الحماية المتقدمة بأعلى معايير الجودة والاعتمادية.</div>
-            <div style="color: #C89B3C; font-weight: bold; font-size: 11px;">شكراً لاختياركم المنطقة الامنة لأنظمة المراقبة.</div>
           </div>
-        </div>
+        ` : ''}
 
       </div>
     </div>

@@ -1065,6 +1065,46 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
       });
     }
 
+    // تسجيل نفقات المواد الموقعية الجديدة أو التي زادت كميتها أثناء التعديل
+    newCartItems.forEach(newItem => {
+      if (newItem.isSitePurchase && (Number(newItem.purchaseCost) || Number(newItem.wholesalePrice)) > 0) {
+        const oldItem = oldItems.find(o => o.productId === newItem.productId || (o.cartItemId && o.cartItemId === newItem.cartItemId));
+        const oldQty = oldItem ? (Number(oldItem.quantity) || 0) : 0;
+        const newQty = Number(newItem.quantity) || 1;
+        const addedQty = Math.max(0, newQty - oldQty);
+        
+        if (addedQty > 0) {
+          const unitCost = Number(newItem.purchaseCost || newItem.wholesalePrice);
+          const totalCost = unitCost * addedQty;
+          const pSource = newItem.paymentSource === 'mastercard' ? 'mastercard' : 'cash_drawer';
+          
+          const expRef = doc(collection(db, 'expenses'));
+          transaction.set(expRef, {
+            title: `شراء موقعي: ${newItem.name}`,
+            category: 'مشتريات موقعية',
+            expenseType: 'daily',
+            paymentSource: pSource,
+            amount: totalCost,
+            periodCovered: '',
+            buyerName: cashierEmail || 'الكاشير',
+            invoiceNumber: saleData.invoiceNumber || null,
+            saleId,
+            cartItemId: newItem.cartItemId || newItem.productId,
+            productName: newItem.name,
+            unitCost,
+            quantity: addedQty,
+            isSitePurchase: true,
+            notes: `إضافة شراء موقعي أثناء تعديل الفاتورة (${addedQty}x ${newItem.name}) وخصم ثمنها من ${pSource === 'mastercard' ? 'الماستركارد' : 'القاصة'} - فاتورة #${saleData.invoiceNumber || ''}${newItem.notes ? ` - ملاحظات: ${newItem.notes}` : ''}`,
+            date: new Date().toISOString().slice(0, 10),
+            createdAt: new Date().toISOString(),
+            createdBy: cashierEmail || 'تعديل الفاتورة'
+          });
+
+          logs.push(`خصم شراء موقعي جديد (${totalCost.toLocaleString()} د.ع) من ${pSource === 'mastercard' ? 'الماستركارد' : 'القاصة'}`);
+        }
+      }
+    });
+
     // فحص المواد الموقعية المسترجعة أو المحذوفة لإيداع ثمنها في القاصة أو الماستر
     oldItems.forEach(oldItem => {
       if (oldItem.isSitePurchase && (Number(oldItem.purchaseCost) || Number(oldItem.wholesalePrice)) > 0) {

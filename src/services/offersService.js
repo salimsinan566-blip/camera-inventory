@@ -146,6 +146,17 @@ export async function updateOffer(offerId, cartItems, orderOptions = {}) {
 }
 
 /**
+ * تحديث ترتيب عناصر عرض السعر
+ */
+export async function updateOfferItemsOrder(offerId, reorderedItems) {
+  if (!offerId) throw new Error('معرف عرض السعر مطلوب');
+  const offerRef = doc(db, OFFERS_COLLECTION, offerId);
+  const items = buildDraftItems(reorderedItems);
+  await setDoc(offerRef, { items, updatedAt: serverTimestamp() }, { merge: true });
+  return { id: offerId, items };
+}
+
+/**
  * جلب عروض الأسعار
  */
 export async function getOffers() {
