@@ -47,7 +47,7 @@ export default function InvoiceDocument({
               minHeight: '297mm',
               width: '210mm',
               maxWidth: '210mm',
-              padding: '2mm 4mm 2mm 4mm',
+              padding: '30mm 4mm 3mm 4mm',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between'
@@ -325,6 +325,17 @@ export default function InvoiceDocument({
                   </div>
                 )}
               </div>
+
+              {/* خط إغلاق الفاتورة باللون الأصفر الذهبي */}
+              <div 
+                className="w-full flex-shrink-0 mt-2" 
+                style={{ 
+                  height: '4px', 
+                  backgroundColor: '#C89B3C', 
+                  WebkitPrintColorAdjust: 'exact', 
+                  printColorAdjust: 'exact' 
+                }} 
+              />
             </div>
           </div>
         );

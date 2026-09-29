@@ -199,7 +199,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
   const container = document.createElement('div');
   container.style.width = '794px';
   container.style.backgroundColor = '#ffffff';
-  container.style.padding = '24px 20px';
+  container.style.padding = '114px 20px 16px 20px';
   container.style.boxSizing = 'border-box';
   container.style.position = 'relative';
   container.dir = 'rtl';
@@ -444,6 +444,9 @@ export async function generateInvoicePdfBlob(sale, settings) {
             </div>
           </div>
         ` : ''}
+
+        <!-- خط إغلاق الفاتورة باللون الأصفر الذهبي -->
+        <div style="width: 100%; height: 4px; background-color: #C89B3C; margin-top: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact;"></div>
 
       </div>
     </div>
