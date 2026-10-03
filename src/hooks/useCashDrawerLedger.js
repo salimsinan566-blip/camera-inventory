@@ -443,7 +443,7 @@ export function useCashDrawerLedger(selectedDateStr) {
 
     // و) المشتريات المسددة نقداً من القاصة (Cash Purchases)
     (purchases || []).forEach((p) => {
-      const pDate = toDateSafe(p.date || p.createdAt);
+      const pDate = toDateSafe(p.createdAt || p.date);
       const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
         ? Number(p.paidFromCashDrawerAmount)
         : Number(p.paidAmount || 0);

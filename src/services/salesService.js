@@ -83,7 +83,8 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
 
   // إيجاد/إنشاء العميل للعملاء المسجلين والديون فقط (تجاوز الزبائن النقديين لتسريع العملية فوراً)
   const isGeneric = !customerName || customerName.trim() === 'زبون عام' || customerName.trim() === 'زبون نقدي';
-  const customerId = !isGeneric ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
+  const customerType = orderOptions.customerType === 'client' ? 'client' : 'customer';
+  const customerId = !isGeneric ? await findOrCreateCustomer(customerName, phone1, phone2, customerType) : null;
 
   const counterRef = doc(db, ...SALES_COUNTER_PATH);
   const salesRef = doc(collection(db, SALES_COLLECTION));

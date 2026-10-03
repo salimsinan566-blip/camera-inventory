@@ -6,6 +6,7 @@ import { useLaborCharges } from '../hooks/useLaborCharges';
 import { addLaborCharge, updateLaborCharge, deleteLaborCharge } from '../services/laborChargesService';
 import { useUI } from '../contexts/UIContext';
 import { uploadProductImage } from '../services/storageService';
+import { exportAllData } from '../utils/backup';
 import { generateFullBackupBundle, downloadBackupZip, uploadBackupToGoogleDrive } from '../services/googleDriveService';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -251,6 +252,19 @@ export default function SettingsScreen() {
   const [showFileList, setShowFileList] = useState(false);
   const [connectingOAuth, setConnectingOAuth] = useState(false);
   const [testingSinglePdf, setTestingSinglePdf] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState(false);
+
+  const handleExportBackup = async (format) => {
+    try {
+      setExportingFormat(format);
+      await exportAllData(format);
+      toast('تم تحميل النسخة الاحتياطية بنجاح!', 'success');
+    } catch (err) {
+      toast('حدث خطأ أثناء تحميل النسخة الاحتياطية.', 'error');
+    } finally {
+      setExportingFormat(false);
+    }
+  };
   
   // Store info state
   const [storeInfo, setStoreInfo] = useState({
@@ -1795,6 +1809,69 @@ export default function SettingsScreen() {
                 </div>
                 <span className="text-xl font-black transition-transform group-hover:-translate-x-1">➔</span>
               </button>
+            </div>
+
+            {/* Quick Export Tools & Customer Portal Link */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* تصدير فوري إكسل وجيسون */}
+              <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg">
+                    📊
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-ink-900 text-sm">تصدير يدوي سريع للبيانات</h3>
+                    <p className="text-ink-500 text-xs">تنزيل نسخة من كافة السجلات والمنتجات بصيغة فورية</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleExportBackup('excel')}
+                    disabled={exportingFormat}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <span>📗</span>
+                    <span>{exportingFormat === 'excel' ? 'جاري التحميل...' : 'نسخة Excel (.xlsx)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportBackup('json')}
+                    disabled={exportingFormat}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <span>🗂️</span>
+                    <span>{exportingFormat === 'json' ? 'جاري التحميل...' : 'نسخة JSON كاملة'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* بوابة كشف حساب العملاء */}
+              <div className="bg-gradient-to-br from-teal-50 to-emerald-50/50 border border-teal-200 rounded-2xl p-5 shadow-2xs space-y-3 flex flex-col justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-lg">
+                    🌐
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-teal-950 text-sm">بوابة كشف حساب وفواتير العملاء</h3>
+                    <p className="text-teal-700 text-xs">الرابط المباشر للعملاء لمتابعة الفواتير والدفعات إلكترونياً</p>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <a
+                    href={`${window.location.origin}${window.location.pathname}?portal=customer`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>فتح البوابة في نافذة جديدة</span>
+                    <span>➔</span>
+                  </a>
+                </div>
+              </div>
             </div>
 
             {/* Daily Schedule Card */}

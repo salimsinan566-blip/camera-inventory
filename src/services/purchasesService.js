@@ -32,6 +32,17 @@ const DEBT_PAYMENTS_COLLECTION = 'debt_payments';
 const SUPPLIERS_COLLECTION = 'suppliers';
 
 /**
+ * فحص وتأكيد سلامة المرفق لتفادي تجاوز حد فايربيس (1 ميجابايت)
+ */
+function sanitizeInvoiceAttachment(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== 'string') return null;
+  if (imageUrl.length > 1040000) {
+    throw new Error('حجم مرفق الفاتورة كبير جداً ويتجاوز سعة المستند في قاعدة البيانات (1 ميجابايت). يرجى ضغط الصورة أو تصوير الفاتورة بحجم أصغر.');
+  }
+  return imageUrl;
+}
+
+/**
  * حفظ أو تحديث بيانات مورد
  */
 export async function saveOrUpdateSupplier(name, phone = '', notes = '') {
@@ -143,7 +154,7 @@ export async function saveDraftPurchase({
     outOfPocketAmount: numOutOfPocket,
     outOfPocketEmployeeName: (outOfPocketEmployeeName || '').trim(),
     paidFromCashDrawerAmount: drawerPaid,
-    invoiceImageUrl: invoiceImageUrl || null,
+    invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
     invoiceFileType: detectedFileType || null,
     invoiceFileName: invoiceFileName || '',
     notes: (notes || '').trim(),
@@ -265,9 +276,9 @@ export async function createPurchaseInvoice({
         ? Number(item.unitShippingCost)
         : fallbackUnitShip;
         
-      const effectiveCostPrice = item.effectiveCostPrice !== undefined && item.effectiveCostPrice !== null
-        ? Number(item.effectiveCostPrice)
-        : (distributeShippingToCost ? (baseCost + unitShippingCost) : baseCost);
+      const effectiveCostPrice = distributeShippingToCost
+        ? (baseCost + unitShippingCost)
+        : (baseCost > 0 ? baseCost : (Number(item.effectiveCostPrice) || 0));
 
       let targetProductId = item.productId;
 
@@ -324,9 +335,11 @@ export async function createPurchaseInvoice({
         const currentStoreQty = Number(existingData.storeQty) || 0;
         const currentWarehouseQty = Number(existingData.warehouseQty) || 0;
 
+        const newWholesale = effectiveCostPrice > 0 ? effectiveCostPrice : (baseCost > 0 ? baseCost : (Number(existingData.wholesalePrice) || 0));
+
         const updatePayload = {
           updatedAt: new Date().toISOString(),
-          wholesalePrice: effectiveCostPrice > 0 ? effectiveCostPrice : (Number(existingData.wholesalePrice) || 0)
+          wholesalePrice: newWholesale
         };
 
         if (retail > 0) {
@@ -404,7 +417,7 @@ export async function createPurchaseInvoice({
       outOfPocketAmount: numOutOfPocket,
       outOfPocketEmployeeName: cleanOutOfPocketEmployee,
       paidFromCashDrawerAmount: drawerPaid,
-      invoiceImageUrl: invoiceImageUrl || null,
+      invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
       invoiceFileType: detectedFileType || null,
       invoiceFileName: invoiceFileName || '',
       notes: notes.trim(),
@@ -574,7 +587,7 @@ export async function recordSupplierOpeningDebt({
       outOfPocketAmount: 0,
       outOfPocketEmployeeName: '',
       paidFromCashDrawerAmount: 0, // Opening debt itself is not paid from current drawer
-      invoiceImageUrl: invoiceImageUrl || null,
+      invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
       invoiceFileType: detectedFileType || null,
       invoiceFileName: invoiceFileName || '',
       notes: (notes || '').trim() || 'دين سابق مرحل قبل تشغيل النظام (رصيد افتتاحي)',
@@ -939,9 +952,9 @@ export async function updatePurchaseInvoice(purchaseId, {
       const unitShippingCost = item.unitShippingCost !== undefined && item.unitShippingCost !== null
         ? Number(item.unitShippingCost)
         : 0;
-      const effectiveCostPrice = item.effectiveCostPrice !== undefined && item.effectiveCostPrice !== null
-        ? Number(item.effectiveCostPrice)
-        : (distributeShippingToCost ? (baseCost + unitShippingCost) : baseCost);
+      const effectiveCostPrice = distributeShippingToCost
+        ? (baseCost + unitShippingCost)
+        : (baseCost > 0 ? baseCost : (Number(item.effectiveCostPrice) || 0));
 
       let targetProductId = item.productId;
 
@@ -994,13 +1007,13 @@ export async function updatePurchaseInvoice(purchaseId, {
         } else {
           stockDeltas[targetProductId].storeDelta += qty;
         }
-        stockDeltas[targetProductId].newWholesale = effectiveCostPrice > 0 ? effectiveCostPrice : baseCost;
+        const pEntry = productReads[targetProductId];
+        const existingData = pEntry && pEntry.snap.exists() ? pEntry.snap.data() : {};
+        const newWholesale = effectiveCostPrice > 0 ? effectiveCostPrice : (baseCost > 0 ? baseCost : (Number(existingData.wholesalePrice) || 0));
+        stockDeltas[targetProductId].newWholesale = newWholesale;
         if (retail > 0) {
           stockDeltas[targetProductId].newRetail = retail;
         }
-
-        const pEntry = productReads[targetProductId];
-        const existingData = pEntry && pEntry.snap.exists() ? pEntry.snap.data() : {};
 
         processedItems.push({
           productId: targetProductId,
@@ -1130,7 +1143,7 @@ export async function updatePurchaseInvoice(purchaseId, {
       outOfPocketAmount: numOutOfPocket,
       outOfPocketEmployeeName: cleanOutOfPocketEmployee,
       paidFromCashDrawerAmount: drawerPaid,
-      invoiceImageUrl: invoiceImageUrl || null,
+      invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
       invoiceFileType: detectedFileType || null,
       invoiceFileName: invoiceFileName || '',
       notes: notes.trim(),
@@ -1171,6 +1184,7 @@ export function subscribeToPurchases(callback, maxLimit = 1000) {
     : query(collection(db, PURCHASES_COLLECTION), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    saveLocalBackup(BACKUP_KEYS.PURCHASES, list);
     callback(list);
   }, (err) => {
     console.error('Error subscribing to purchases:', err);
@@ -1181,6 +1195,7 @@ export function subscribeToSupplierDebts(callback) {
   const q = query(collection(db, SUPPLIER_DEBTS_COLLECTION), orderBy('remainingDebt', 'desc'));
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    saveLocalBackup(BACKUP_KEYS.SUPPLIER_DEBTS || 'offline_backup_supplier_debts', list);
     callback(list);
   }, (err) => {
     console.error('Error subscribing to supplier debts:', err);
@@ -1215,3 +1230,71 @@ export function subscribeToDraftPurchases(callback) {
     console.error('Error subscribing to draft purchases:', err);
   });
 }
+
+/**
+ * تطبيق وتحديث أسعار الجملة (التكلفة) لجميع مواد فاتورة شراء محددة على المخزون مباشرة
+ */
+export async function syncInvoicePricesToInventory(invoice) {
+  if (!invoice || !invoice.items || invoice.items.length === 0) {
+    throw new Error('الفاتورة لا تحتوي على مواد لتحديث أسعارها');
+  }
+
+  const distributeShipping = invoice.distributeShippingToCost !== false;
+  const updates = [];
+
+  for (const item of invoice.items) {
+    const baseCost = Number(item.costPrice || item.baseCostPrice) || 0;
+    const unitShip = Number(item.unitShippingCost) || 0;
+    const targetPrice = (distributeShipping && unitShip > 0)
+      ? (baseCost + unitShip)
+      : (baseCost > 0 ? baseCost : (Number(item.effectiveCostPrice) || 0));
+
+    if (targetPrice <= 0) continue;
+
+    let prodId = item.productId;
+    let matchedDoc = null;
+
+    if (prodId && !prodId.startsWith('new_')) {
+      const pRef = doc(db, 'products', prodId);
+      const snap = await safeGetDoc(pRef);
+      if (snap && snap.exists()) {
+        matchedDoc = { ref: pRef, data: snap.data() };
+      }
+    }
+
+    if (!matchedDoc && item.barcode) {
+      const q = query(collection(db, 'products'), where('barcode', '==', item.barcode.trim()));
+      const snap = await safeGetDocs(q);
+      if (snap && !snap.empty) {
+        matchedDoc = { ref: snap.docs[0].ref, data: snap.docs[0].data() };
+      }
+    }
+
+    if (!matchedDoc && item.sku) {
+      const q = query(collection(db, 'products'), where('sku', '==', item.sku.trim()));
+      const snap = await safeGetDocs(q);
+      if (snap && !snap.empty) {
+        matchedDoc = { ref: snap.docs[0].ref, data: snap.docs[0].data() };
+      }
+    }
+
+    if (!matchedDoc && item.name) {
+      const q = query(collection(db, 'products'), where('name', '==', item.name.trim()));
+      const snap = await safeGetDocs(q);
+      if (snap && !snap.empty) {
+        matchedDoc = { ref: snap.docs[0].ref, data: snap.docs[0].data() };
+      }
+    }
+
+    if (matchedDoc) {
+      await updateDoc(matchedDoc.ref, {
+        wholesalePrice: targetPrice,
+        updatedAt: new Date().toISOString()
+      });
+      updates.push({ name: item.name, newPrice: targetPrice });
+    }
+  }
+
+  return updates;
+}
+

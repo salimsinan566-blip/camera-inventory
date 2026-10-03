@@ -198,6 +198,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
 
   const container = document.createElement('div');
   container.style.width = '794px';
+  container.style.minHeight = '1123px';
   container.style.backgroundColor = '#ffffff';
   container.style.padding = '57px 20px 30px 20px';
   container.style.boxSizing = 'border-box';
@@ -241,7 +242,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
       </div>
     ` : ''}
 
-    <div style="position: relative; z-index: 10; min-height: 1020px; display: flex; flex-direction: column; justify-content: space-between;">
+    <div style="position: relative; z-index: 10; min-height: 1036px; height: 1036px; display: flex; flex-direction: column; justify-content: space-between;">
       
       <!-- Top Section: Header & Items -->
       <div>
@@ -333,6 +334,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
                 <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
                   <td style="padding: 8px 8px; font-weight: bold; color: #1e293b; text-align: right; max-width: 260px; word-break: break-word; line-height: 1.35; letter-spacing: 0px;">
                     ${item.isService && !item.isCustom ? '<span style="font-size: 9px; background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: normal;">أجور/خدمة</span>' : ''}
+                    ${Number(item.unitPrice || 0) === 0 ? '<span style="display: inline-block; margin-left: 6px; font-size: 10px; font-weight: bold; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 5px; border-radius: 4px;">🎁 هدية</span>' : ''}
                     <bdi dir="auto" style="unicode-bidi: plaintext !important;">${item.name || 'منتج'}</bdi>
                     ${item.notes ? `<div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 2px;">${item.notes}</div>` : ''}
                   </td>
@@ -345,15 +347,15 @@ export async function generateInvoicePdfBlob(sale, settings) {
                     ` : ''}
                   </td>
                   <td style="padding: 8px 8px; text-align: right; color: #1e293b; font-family: monospace; letter-spacing: 0px;">
-                    ${item.originalPrice && item.originalPrice > item.unitPrice ? `
+                    ${Number(item.unitPrice || 0) === 0 ? '0' : (item.originalPrice && item.originalPrice > item.unitPrice ? `
                       <div style="display: flex; flex-direction: column; align-items: flex-end;">
                         <span style="font-size: 10px; color: #94a3b8; text-decoration: line-through; line-height: 1;">${Number(item.originalPrice).toLocaleString()}</span>
                         <span style="color: #dc2626; font-weight: bold; line-height: 1; margin-top: 2px;">${Number(item.unitPrice || 0).toLocaleString()}</span>
                       </div>
-                    ` : Number(item.unitPrice || 0).toLocaleString()}
+                    ` : Number(item.unitPrice || 0).toLocaleString())}
                   </td>
                   <td style="padding: 8px 8px; text-align: left; font-weight: bold; color: #1e293b; font-family: monospace; letter-spacing: 0px;">
-                    ${lineTotal.toLocaleString()}
+                    ${Number(item.unitPrice || 0) === 0 ? '0' : lineTotal.toLocaleString()}
                   </td>
                 </tr>
               `;

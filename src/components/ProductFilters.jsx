@@ -50,7 +50,6 @@ export default function ProductFilters({ filters, onChange, products = [] }) {
     filters.search !== '' ||
     filters.category !== 'all' ||
     filters.location !== 'all' ||
-    filters.stockStatus !== 'all' ||
     (currentSort && currentSort !== 'custom');
 
   const { settings } = useSettings();
@@ -71,26 +70,33 @@ export default function ProductFilters({ filters, onChange, products = [] }) {
   }, [settings?.categories, settings?.deletedCategories, products]);
 
   return (
-    <div className="bg-white border border-brand-100 rounded-xl shadow-sm p-4 mb-4">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-2xs p-3 sm:p-4 mb-3">
       
-      {/* 4 Compact Filter Controls */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* عناصر التحكم والتصفية: شريط البحث على اليمين (مكبر)، وبعده القسم، وبعده الترتيب */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-end gap-3">
         
-        {/* 1. Search */}
-        <div>
-          <label className="block text-xs font-bold text-ink-700 mb-1">بحث في المخزون</label>
+        {/* 1. شريط البحث المكبر والموسع (على اليمين) */}
+        <div className="flex-1 min-w-[280px]">
+          <label className="block text-xs font-bold text-ink-700 mb-1.5">بحث في المخزون</label>
           <div className="relative">
             <input
               type="text"
-              placeholder="ابحث بالاسم، SKU، أو الباركود..."
+              placeholder="ابحث باسم المنتج، الموديل، SKU، أو رمز الباركود..."
               value={filters.search}
               onChange={(e) => update('search', e.target.value)}
-              className="input pl-7 text-xs"
+              className="w-full h-11 pr-10 pl-9 text-sm text-ink-900 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all placeholder:text-slate-400 font-medium shadow-2xs"
             />
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
             {filters.search && (
               <button
+                type="button"
                 onClick={() => update('search', '')}
-                className="absolute left-2 top-2 text-xs text-ink-400 hover:text-ink-700"
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-xs text-slate-400 hover:text-slate-700 bg-slate-200/60 hover:bg-slate-300 rounded-full transition-colors cursor-pointer"
+                title="مسح البحث"
               >
                 ✕
               </button>
@@ -98,34 +104,13 @@ export default function ProductFilters({ filters, onChange, products = [] }) {
           </div>
         </div>
 
-        {/* 2. Custom Sort */}
-        <div>
-          <label className="block text-xs font-bold text-ink-700 mb-1 flex items-center justify-between">
-            <span>ترتيب / تصفيط المواد:</span>
-            {currentSort === 'custom' && (
-              <span className="text-[10px] text-brand-700 font-bold bg-brand-50 px-1.5 py-0.2 rounded">ترتيب مخصص</span>
-            )}
-          </label>
-          <select
-            value={currentSort}
-            onChange={(e) => update('sortBy', e.target.value)}
-            className="input font-bold text-xs bg-slate-50 border-brand-300 focus:ring-brand-500"
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* 3. Category Filter */}
-        <div>
-          <label className="block text-xs font-bold text-ink-700 mb-1">نوع المنتج (القسم)</label>
+        {/* 2. نوع المنتج (القسم) */}
+        <div className="w-full md:w-52 lg:w-60 shrink-0">
+          <label className="block text-xs font-bold text-ink-700 mb-1.5">نوع المنتج (القسم)</label>
           <select
             value={filters.category}
             onChange={(e) => update('category', e.target.value)}
-            className="input text-xs"
+            className="w-full h-11 px-3 text-xs bg-slate-50 hover:bg-white border border-slate-300 rounded-xl text-slate-800 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors cursor-pointer shadow-2xs"
           >
             <option value="all">كافة الأقسام</option>
             {dynamicCategories.map((c) => (
@@ -136,18 +121,22 @@ export default function ProductFilters({ filters, onChange, products = [] }) {
           </select>
         </div>
 
-        {/* 4. Stock Status Filter */}
-        <div>
-          <label className="block text-xs font-bold text-ink-700 mb-1">حالة المخزون</label>
+        {/* 3. ترتيب العناصر (الترتيب) */}
+        <div className="w-full md:w-64 lg:w-72 shrink-0">
+          <label className="block text-xs font-bold text-ink-700 mb-1.5 flex items-center justify-between">
+            <span>ترتيب العناصر:</span>
+            {currentSort === 'custom' && (
+              <span className="text-[10px] text-brand-700 font-bold bg-brand-50 border border-brand-200 px-1.5 py-0.5 rounded-md">ترتيب مخصص</span>
+            )}
+          </label>
           <select
-            value={filters.stockStatus}
-            onChange={(e) => update('stockStatus', e.target.value)}
-            className="input text-xs"
+            value={currentSort}
+            onChange={(e) => update('sortBy', e.target.value)}
+            className="w-full h-11 px-3 font-bold text-xs bg-slate-50 hover:bg-white border border-brand-300 rounded-xl text-slate-800 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors cursor-pointer shadow-2xs"
           >
-            <option value="all">كافة الحالات (الكل)</option>
-            {Object.values(STOCK_STATUS).map((status) => (
-              <option key={status} value={status}>
-                {STOCK_STATUS_LABELS_AR[status]}
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
@@ -156,7 +145,7 @@ export default function ProductFilters({ filters, onChange, products = [] }) {
       </div>
 
       {hasActiveFilters && (
-        <div className="mt-3 flex items-center justify-between pt-2 border-t border-ink-100 text-xs">
+        <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-slate-100 text-xs">
           <span className="text-ink-500">
             الترتيب المعتمد: <strong className="text-ink-900">{SORT_OPTIONS.find(o => o.value === currentSort)?.label}</strong>
           </span>
@@ -164,9 +153,9 @@ export default function ProductFilters({ filters, onChange, products = [] }) {
             onClick={() => {
               const defaultSort = 'custom';
               try { localStorage.setItem('inventory_sort_by', defaultSort); } catch (e) {}
-              onChange({ ...DEFAULT_FILTERS, sortBy: defaultSort });
+              onChange({ ...DEFAULT_FILTERS, sortBy: defaultSort, stockStatus: 'all' });
             }}
-            className="text-xs text-brand-600 hover:text-brand-800 font-bold hover:underline"
+            className="text-xs text-brand-600 hover:text-brand-800 font-bold hover:underline cursor-pointer"
           >
             إعادة تعيين الفلاتر
           </button>

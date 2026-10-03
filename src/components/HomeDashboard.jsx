@@ -48,7 +48,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   const { drafts, loading: draftsLoading } = useDraftSales();
   const { sales, loading: salesLoading } = useSales();
   const { expenses, stats: expensesStats, loading: expensesLoading } = useExpenses();
-  const { purchases, debtPayments: supplierDebtPayments } = usePurchases();
+  const { purchases, debtPayments: supplierDebtPayments, loading: purchasesLoading } = usePurchases();
   const { latestReconciliation } = useCashReconciliation();
   const { incomes, stats: incomesStats, loading: incomesLoading } = useIncomes();
   const { reimbursements } = useEmployeeReimbursements();
@@ -673,7 +673,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
           <div>
             <div className="flex items-baseline gap-1">
               <span className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${actualOfficeCash >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
-                {salesLoading || expensesLoading || incomesLoading ? '...' : actualOfficeCash.toLocaleString()}
+                {salesLoading || expensesLoading || incomesLoading || purchasesLoading ? '...' : actualOfficeCash.toLocaleString()}
               </span>
               <span className="text-[11px] font-bold text-emerald-200/70">د.ع</span>
             </div>

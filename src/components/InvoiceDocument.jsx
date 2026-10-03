@@ -6,7 +6,7 @@ import { getInvoicePages } from '../utils/invoicePagination';
 function formatDate(timestamp) {
   if (!timestamp) return '';
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  return date.toLocaleString('ar-IQ');
+  return date.toLocaleDateString('ar-IQ');
 }
 
 export default function InvoiceDocument({ 
@@ -190,6 +190,11 @@ export default function InvoiceDocument({
                                 أجور/خدمة
                               </span>
                             )}
+                            {Number(item.unitPrice || 0) === 0 && (
+                              <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold px-1.5 py-0.5 rounded ml-1.5 inline-block align-middle print:border-emerald-600">
+                                🎁 هدية
+                              </span>
+                            )}
                             <bdi dir="auto" className="inline-block text-right" style={{ unicodeBidi: 'plaintext' }}>
                               {item.name}
                             </bdi>
@@ -208,7 +213,9 @@ export default function InvoiceDocument({
                             )}
                           </td>
                           <td className={`${rowPy} px-2 text-slate-800 font-mono text-right`}>
-                            {item.originalPrice && item.originalPrice > item.unitPrice ? (
+                            {Number(item.unitPrice || 0) === 0 ? (
+                              '0'
+                            ) : item.originalPrice && item.originalPrice > item.unitPrice ? (
                               <div className="flex flex-col items-end">
                                 <span className="text-[10px] text-slate-400 line-through leading-none">{Number(item.originalPrice).toLocaleString()}</span>
                                 <span className="text-red-600 font-bold leading-none mt-0.5">{Number(item.unitPrice || 0).toLocaleString()}</span>
@@ -218,7 +225,11 @@ export default function InvoiceDocument({
                             )}
                           </td>
                           <td className={`${rowPy} px-3 text-slate-800 font-mono font-bold text-left`}>
-                            {(Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()}
+                            {Number(item.unitPrice || 0) === 0 ? (
+                              '0'
+                            ) : (
+                              (Number(item.lineTotal) || (Number(item.unitPrice || 0) * Number(item.quantity || 1))).toLocaleString()
+                            )}
                           </td>
                         </tr>
                       );
@@ -227,17 +238,17 @@ export default function InvoiceDocument({
                 </table>
               </div>
 
-              {/* القسم السفلي: المجاميع (في الصفحة الأخيرة فقط) + التذييل */}
-              <div className="mt-auto w-full pt-2 flex-shrink-0">
+              {/* القسم السفلي الكامل: المجاميع والباركود والملاحظات والتذييل - مثبتة في نهاية الصفحة تماماً */}
+              <div className="mt-auto w-full flex-shrink-0 flex flex-col justify-end pt-2">
                 {isLastPage ? (
-                  <div className="flex justify-between items-end gap-4 mb-3 pt-1">
+                  <div className="flex justify-between items-end gap-4 mb-2 pt-1">
                     {/* رمز الاستجابة السريعة (QR Code) - بحجم متناسق وأوضح */}
                     {settings?.qrCodeUrl ? (
                       <div className="w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center shrink-0">
                         <img src={settings.qrCodeUrl} alt="QR Code" className="w-full h-full object-contain block" crossOrigin="anonymous" />
                       </div>
                     ) : (
-                      <div className="w-28 h-28 sm:w-32 sm:h-32 flex flex-col items-center justify-center bg-slate-50/50 text-slate-400 shrink-0">
+                      <div className="w-28 h-28 sm:w-32 sm:h-32 flex flex-col items-center justify-center bg-slate-50/50 text-slate-400 shrink-0 border border-slate-200/60 rounded">
                         <span className="text-2xl mb-1">📱</span>
                         <span className="text-xs font-bold">QR</span>
                       </div>
@@ -315,7 +326,7 @@ export default function InvoiceDocument({
 
                 {/* التذييل والملاحظات بحواف حادة */}
                 {isLastPage && invoiceNotes && (
-                  <div className="pt-2 border-t border-slate-200" style={{ letterSpacing: '0px', direction: 'rtl' }}>
+                  <div className="pt-2 border-t border-slate-200 mb-1" style={{ letterSpacing: '0px', direction: 'rtl' }}>
                     <div className="text-[12px] text-slate-800 mb-2 p-2.5 bg-amber-50/80 border border-amber-300 leading-relaxed text-right">
                       <strong className="text-amber-950 flex items-center gap-1.5 mb-1 font-bold text-xs">
                         <span>📝</span>
@@ -327,21 +338,21 @@ export default function InvoiceDocument({
                     </div>
                   </div>
                 )}
-              </div>
 
-              {/* نص شكر ختامي بخط مزخرف في نهاية الورقة */}
-              <div className="w-full text-center mt-auto pt-2 pb-0.5 flex items-center justify-center gap-3 flex-shrink-0" style={{ letterSpacing: '0px' }}>
-                <span className="h-px bg-slate-200/80 flex-grow max-w-[100px]"></span>
-                <p 
-                  className="text-base sm:text-lg font-bold text-slate-800" 
-                  style={{ 
-                    fontFamily: "'Aref Ruqaa', 'Amiri', 'Traditional Arabic', serif",
-                    letterSpacing: '0px'
-                  }}
-                >
-                  شكراً لثقتكم بنا
-                </p>
-                <span className="h-px bg-slate-200/80 flex-grow max-w-[100px]"></span>
+                {/* نص شكر ختامي بخط مزخرف في نهاية الورقة مباشرة بدون فراغ */}
+                <div className="w-full text-center pt-2 pb-0 flex items-center justify-center gap-3 flex-shrink-0" style={{ letterSpacing: '0px' }}>
+                  <span className="h-px bg-slate-200/80 flex-grow max-w-[100px]"></span>
+                  <p 
+                    className="text-base sm:text-lg font-bold text-slate-800" 
+                    style={{ 
+                      fontFamily: "'Aref Ruqaa', 'Amiri', 'Traditional Arabic', serif",
+                      letterSpacing: '0px'
+                    }}
+                  >
+                    شكراً لثقتكم بنا
+                  </p>
+                  <span className="h-px bg-slate-200/80 flex-grow max-w-[100px]"></span>
+                </div>
               </div>
             </div>
           </div>

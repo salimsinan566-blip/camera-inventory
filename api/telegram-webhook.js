@@ -431,8 +431,8 @@ async function generateInvoicePdfBuffer(sale, storeInfo = {}) {
     currentY -= 20;
   });
 
-  // Summary Box
-  const summaryTop = Math.max(currentY - 15, 140);
+  // Summary Box - pinned to the bottom of the invoice page
+  const summaryTop = currentY - 15 < 175 ? currentY - 15 : 175;
   const boxWidth = 240;
   const boxX = width - 30 - boxWidth;
 

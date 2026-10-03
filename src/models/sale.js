@@ -148,18 +148,22 @@ export function createSitePurchaseCartItem({
   };
 }
 
-/** يحوّل عناصر فاتورة مؤقتة محفوظة إلى شكل سلة قابل للتعديل بشاشة نقطة البيع */
-export function cartItemsFromDraft(draftItems, productsList = []) {
-  return (draftItems || []).map((item) => {
+/** يحوّل عناصر فاتورة مؤقتة محفوظة أو عرض سعر إلى شكل سلة قابل للتعديل بشاشة نقطة البيع */
+export function cartItemsFromDraft(draftItemsOrObject, productsList = []) {
+  const items = Array.isArray(draftItemsOrObject)
+    ? draftItemsOrObject
+    : (Array.isArray(draftItemsOrObject?.items) ? draftItemsOrObject.items : []);
+
+  return items.map((item) => {
     let ws = item.wholesalePrice;
-    if ((ws === undefined || ws === null || ws === 0) && productsList.length > 0) {
+    if ((ws === undefined || ws === null || ws === 0) && Array.isArray(productsList) && productsList.length > 0) {
       const prod = productsList.find(p => p.id === item.productId || p.sku === item.sku);
       if (prod) ws = Number(prod.wholesalePrice) || 0;
     }
     const source = item.source || (item.isCustody ? 'custody' : (item.isSitePurchase ? 'site_purchase' : 'store'));
     const technicianId = item.technicianId || null;
     const technicianName = item.technicianName || '';
-    const cartItemId = item.cartItemId || `${item.productId}_${source}_${technicianId || ''}`;
+    const cartItemId = item.cartItemId || `${item.productId || 'item'}_${source}_${technicianId || ''}_${Math.random().toString(36).substring(2, 6)}`;
 
     return {
       cartItemId,
@@ -168,11 +172,11 @@ export function cartItemsFromDraft(draftItems, productsList = []) {
       name: item.name || '',
       notes: item.notes || '',
       cameraType: item.cameraType || (item.isSitePurchase ? 'مشتريات موقعية' : ''),
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      originalPrice: item.originalPrice || item.unitPrice,
-      wholesalePrice: ws || 0,
-      purchaseCost: Number(item.purchaseCost !== undefined ? item.purchaseCost : ws) || 0,
+      quantity: Math.max(1, Number(item.quantity) || 1),
+      unitPrice: Math.max(0, Number(item.unitPrice) || 0),
+      originalPrice: Math.max(0, Number(item.originalPrice !== undefined ? item.originalPrice : (item.retailPrice !== undefined ? item.retailPrice : item.unitPrice)) || 0),
+      wholesalePrice: Math.max(0, Number(ws) || 0),
+      purchaseCost: Math.max(0, Number(item.purchaseCost !== undefined ? item.purchaseCost : ws) || 0),
       paymentSource: item.paymentSource || 'cash_drawer',
       isSitePurchase: Boolean(item.isSitePurchase),
       sellMode: item.sellMode || 'unit',

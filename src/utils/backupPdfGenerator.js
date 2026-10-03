@@ -415,9 +415,22 @@ export async function generateInvoicePDF(sale, storeSettings = {}) {
               .join('')}
           </tbody>
         </table>
+      </div>
 
-        <!-- Totals & Gold Bar -->
-        <div style="display: flex; justify-content: flex-end;">
+      <!-- Bottom Section: Totals, Barcode/QR, Notes, and Footer all pinned to the bottom -->
+      <div style="margin-top: auto; width: 100%;">
+        <!-- Totals & QR Code -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">
+          <!-- QR Code if available -->
+          <div>
+            ${storeSettings?.qrCodeUrl ? `
+              <img src="${storeSettings.qrCodeUrl}" alt="QR" style="width: 80px; height: 80px; border: 1px solid #e2e8f0; padding: 2px; border-radius: 4px;" />
+            ` : `
+              <div style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: bold; color: #94a3b8; font-size: 11px;">QR</div>
+            `}
+          </div>
+
+          <!-- Totals Box -->
           <div style="width: 280px;">
             <div style="border: 1px solid #e2e8f0; background: #ffffff; padding: 8px 12px; margin-bottom: 6px; border-radius: 4px;">
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
@@ -440,14 +453,14 @@ export async function generateInvoicePDF(sale, storeSettings = {}) {
         </div>
 
         ${(sale.notes || sale.offerNotes || sale.invoiceNotes) ? `
-          <div style="margin-top: 15px; padding: 8px 12px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; font-size: 11px; color: #1e293b;">
+          <div style="margin-top: 8px; margin-bottom: 8px; padding: 8px 12px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; font-size: 11px; color: #1e293b;">
             <strong style="color: #78350f; display: block; margin-bottom: 2px; font-size: 11px;">📝 ${sale.isOffer ? 'ملاحظات وشروط العرض:' : 'ملاحظات الفاتورة:'}</strong>
             <p style="margin: 0; white-space: pre-wrap; font-weight: 500;">${sale.notes || sale.offerNotes || sale.invoiceNotes}</p>
           </div>
         ` : ''}
-      </div>
 
-      ${renderBrandFooter(storeSettings)}
+        ${renderBrandFooter(storeSettings)}
+      </div>
     </div>
   `;
 

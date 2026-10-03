@@ -56,7 +56,9 @@ export function usePurchases() {
 
   const totalRemainingDebt = supplierDebts.reduce((sum, d) => sum + (Number(d.remainingDebt) || 0), 0);
   const totalPurchasesAmount = purchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
-  const totalPaidToSuppliers = purchases.reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
+  const totalPaidFromDebts = supplierDebts.reduce((sum, d) => sum + (Number(d.totalPaid) || 0), 0);
+  const totalPaidFromPurchases = purchases.reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
+  const totalPaidToSuppliers = Math.max(totalPaidFromDebts, totalPaidFromPurchases);
 
   const stats = {
     totalRemainingDebt,

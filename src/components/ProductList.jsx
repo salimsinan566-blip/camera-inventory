@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getStockStatus, getTotalQuantity, STOCK_STATUS } from '../models/product';
 import { moveProductPosition } from '../services/productsService';
 
@@ -6,6 +6,32 @@ const STATUS_BADGE = {
   [STOCK_STATUS.IN_STOCK]: { label: 'متوفر', className: 'bg-emerald-50 text-emerald-700 border border-emerald-100' },
   [STOCK_STATUS.LOW_STOCK]: { label: 'منخفض', className: 'bg-warn-50 text-warn-700 border border-warn-100' },
   [STOCK_STATUS.OUT_OF_STOCK]: { label: 'نافذ', className: 'bg-danger-50 text-danger-700 border border-danger-100' },
+};
+
+export const COLUMN_DEFINITIONS = [
+  { key: 'index', label: 'ترتيب وتسلسل المادة', icon: '🔢' },
+  { key: 'image', label: 'صورة المادة', icon: '🖼️' },
+  { key: 'category', label: 'النوع (القسم)', icon: '📁' },
+  { key: 'storeQty', label: 'كمية المحل', icon: '🏪' },
+  { key: 'warehouseQty', label: 'كمية المخزن', icon: '🏢' },
+  { key: 'totalQty', label: 'المجموع الكلي', icon: '📦' },
+  { key: 'wholesalePrice', label: 'سعر الجملة (التكلفة)', icon: '🏷️' },
+  { key: 'retailPrice', label: 'سعر المفرد (البيع)', icon: '💰' },
+  { key: 'status', label: 'حالة المخزون', icon: '🟢' },
+  { key: 'barcode', label: 'رمز الباركود', icon: '📱' },
+];
+
+export const DEFAULT_VISIBLE_COLUMNS = {
+  index: true,
+  image: true,
+  category: true,
+  storeQty: true,
+  warehouseQty: true,
+  totalQty: true,
+  wholesalePrice: true,
+  retailPrice: true,
+  status: true,
+  barcode: true,
 };
 
 /**
@@ -28,6 +54,49 @@ export default function ProductList({
   generatingId,
 }) {
   const [reorderingId, setReorderingId] = useState(null);
+  const [showColumnsMenu, setShowColumnsMenu] = useState(false);
+  const columnsMenuRef = useRef(null);
+
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inventory_table_columns');
+      if (saved) return { ...DEFAULT_VISIBLE_COLUMNS, ...JSON.parse(saved) };
+    } catch (e) {}
+    return DEFAULT_VISIBLE_COLUMNS;
+  });
+
+  const toggleColumn = (key) => {
+    setVisibleColumns((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem('inventory_table_columns', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const showAllColumns = () => {
+    setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+    try {
+      localStorage.setItem('inventory_table_columns', JSON.stringify(DEFAULT_VISIBLE_COLUMNS));
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(event.target)) {
+        setShowColumnsMenu(false);
+      }
+    };
+    if (showColumnsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showColumnsMenu]);
 
   const getProductPendingBreakdown = (productId) => {
     if (!draftSales || draftSales.length === 0) return [];
@@ -114,69 +183,143 @@ export default function ProductList({
         <table className="w-full text-sm text-right whitespace-nowrap">
           <thead className="bg-ink-50/50 text-ink-500 text-xs uppercase tracking-wider select-none">
             <tr>
-              <th className="p-3 text-center font-medium rounded-tr-xl w-16" title="ترتيب وتسلسل المادة">
-                ترتيب
-              </th>
+              {visibleColumns.index !== false && (
+                <th className="p-3 text-center font-medium rounded-tr-xl w-16" title="ترتيب وتسلسل المادة">
+                  ترتيب
+                </th>
+              )}
               <th 
                 onClick={() => handleHeaderSort('name')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                className={`p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th ${visibleColumns.index === false ? 'rounded-tr-xl' : ''}`}
                 title="ترتيب حسب اسم المنتج"
               >
                 <span>المنتج</span>
                 {renderSortIndicator('name_asc', 'name_desc')}
               </th>
-              <th 
-                onClick={() => handleHeaderSort('category')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
-                title="ترتيب حسب القسم"
-              >
-                <span>النوع</span>
-                {renderSortIndicator('category_asc', '')}
+              {visibleColumns.category !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('category')}
+                  className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                  title="ترتيب حسب القسم"
+                >
+                  <span>النوع</span>
+                  {renderSortIndicator('category_asc', '')}
+                </th>
+              )}
+              {visibleColumns.storeQty !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('storeQty')}
+                  className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                  title="ترتيب حسب كمية المحل"
+                >
+                  <span>المحل</span>
+                  {renderSortIndicator('storeQty_asc', 'storeQty_desc')}
+                </th>
+              )}
+              {visibleColumns.warehouseQty !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('warehouseQty')}
+                  className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                  title="ترتيب حسب كمية المخزن"
+                >
+                  <span>المخزن</span>
+                  {renderSortIndicator('', 'warehouseQty_desc')}
+                </th>
+              )}
+              {visibleColumns.totalQty !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('totalQty')}
+                  className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                  title="ترتيب حسب المجموع الكلي"
+                >
+                  <span>المجموع الكلي</span>
+                  {renderSortIndicator('totalQty_asc', 'totalQty_desc')}
+                </th>
+              )}
+              {visibleColumns.wholesalePrice !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('wholesalePrice')}
+                  className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                  title="ترتيب حسب سعر الجملة"
+                >
+                  <span>الجملة</span>
+                  {renderSortIndicator('wholesalePrice_asc', 'wholesalePrice_desc')}
+                </th>
+              )}
+              {visibleColumns.retailPrice !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('retailPrice')}
+                  className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
+                  title="ترتيب حسب سعر المفرد"
+                >
+                  <span>المفرد</span>
+                  {renderSortIndicator('retailPrice_asc', 'retailPrice_desc')}
+                </th>
+              )}
+              {visibleColumns.status !== false && (
+                <th className="p-4 font-medium">الحالة</th>
+              )}
+              {visibleColumns.barcode !== false && (
+                <th className="p-4 font-medium">الباركود</th>
+              )}
+              <th className="p-4 font-medium rounded-tl-xl text-left">
+                <div className="flex items-center justify-between gap-2.5 min-w-[140px]">
+                  <span>إجراءات</span>
+                  
+                  {/* فلتر إظهار وإخفاء عناصر وأعمدة الجدول */}
+                  <div className="relative inline-block text-right" ref={columnsMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowColumnsMenu((prev) => !prev)}
+                      className="px-2 py-1 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      title="فلتر تخصيص عناصر وأعمدة الجدول (إظهار / إخفاء)"
+                    >
+                      <svg className="w-3.5 h-3.5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                      </svg>
+                      <span className="hidden sm:inline">أعمدة</span>
+                      <svg className={`w-3 h-3 text-slate-400 transition-transform ${showColumnsMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* القائمة المنسدلة للتحكم بالأعمدة */}
+                    {showColumnsMenu && (
+                      <div className="absolute left-0 mt-2 w-56 sm:w-60 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-2.5 text-slate-800 text-right animate-in fade-in duration-100">
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                          <span className="font-bold text-xs text-slate-900">إظهار / إخفاء العناصر</span>
+                          <button
+                            type="button"
+                            onClick={showAllColumns}
+                            className="text-[11px] font-bold text-brand-600 hover:text-brand-800 hover:underline cursor-pointer"
+                          >
+                            إظهار الكل
+                          </button>
+                        </div>
+                        <div className="space-y-1 max-h-72 overflow-y-auto pl-1">
+                          {COLUMN_DEFINITIONS.map((col) => (
+                            <label
+                              key={col.key}
+                              className="flex items-center justify-between px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs transition-colors select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={visibleColumns[col.key] !== false}
+                                  onChange={() => toggleColumn(col.key)}
+                                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <span className="font-medium text-slate-700">{col.label}</span>
+                              </div>
+                              <span className="text-slate-400 text-xs">{col.icon}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </th>
-              <th 
-                onClick={() => handleHeaderSort('storeQty')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
-                title="ترتيب حسب كمية المحل"
-              >
-                <span>المحل</span>
-                {renderSortIndicator('storeQty_asc', 'storeQty_desc')}
-              </th>
-              <th 
-                onClick={() => handleHeaderSort('warehouseQty')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
-                title="ترتيب حسب كمية المخزن"
-              >
-                <span>المخزن</span>
-                {renderSortIndicator('', 'warehouseQty_desc')}
-              </th>
-              <th className="p-4 font-medium">السيارات 🚚</th>
-              <th 
-                onClick={() => handleHeaderSort('totalQty')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
-                title="ترتيب حسب المجموع الكلي"
-              >
-                <span>المجموع الكلي</span>
-                {renderSortIndicator('totalQty_asc', 'totalQty_desc')}
-              </th>
-              <th 
-                onClick={() => handleHeaderSort('wholesalePrice')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
-                title="ترتيب حسب سعر الجملة"
-              >
-                <span>الجملة</span>
-                {renderSortIndicator('wholesalePrice_asc', 'wholesalePrice_desc')}
-              </th>
-              <th 
-                onClick={() => handleHeaderSort('retailPrice')}
-                className="p-4 font-medium cursor-pointer hover:bg-brand-50 hover:text-brand-800 transition-colors group/th"
-                title="ترتيب حسب سعر المفرد"
-              >
-                <span>المفرد</span>
-                {renderSortIndicator('retailPrice_asc', 'retailPrice_desc')}
-              </th>
-              <th className="p-4 font-medium">الحالة</th>
-              <th className="p-4 font-medium">الباركود</th>
-              <th className="p-4 font-medium rounded-tl-xl text-left">إجراءات</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
@@ -184,61 +327,63 @@ export default function ProductList({
               const status = getStockStatus(product);
               const badge = STATUS_BADGE[status];
               const pendingBreakdown = Number(product.pendingQty) > 0 ? getProductPendingBreakdown(product.id) : [];
-              const custodyInfo = productCustodyMap[product.id];
-              const vanQty = Number(custodyInfo?.totalQty) || 0;
               const storeQty = Number(product.storeQty) || 0;
               const warehouseQty = Number(product.warehouseQty) || 0;
-              const grandTotal = storeQty + warehouseQty + vanQty;
+              const grandTotal = storeQty + warehouseQty;
               const isMoving = reorderingId === product.id;
 
               return (
                 <tr key={product.id} className={`hover:bg-ink-50/50 transition-colors group ${isMoving ? 'opacity-50 bg-brand-50' : ''}`}>
-                  <td className="p-2 text-center">
-                    <div className="flex items-center justify-center gap-0.5">
-                      <span className="font-mono text-xs text-ink-400 font-bold ml-1">{idx + 1}</span>
-                      <div className="flex flex-col gap-0.5">
-                        <button
-                          type="button"
-                          disabled={idx === 0 || isMoving}
-                          onClick={() => handleMove(idx, 'up')}
-                          className="w-5 h-4 bg-slate-100 hover:bg-brand-500 hover:text-white disabled:opacity-20 text-slate-700 rounded text-[9px] flex items-center justify-center transition-colors cursor-pointer"
-                          title="تحريك القطعة للأعلى ⬆️"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          disabled={idx === products.length - 1 || isMoving}
-                          onClick={() => handleMove(idx, 'down')}
-                          className="w-5 h-4 bg-slate-100 hover:bg-brand-500 hover:text-white disabled:opacity-20 text-slate-700 rounded text-[9px] flex items-center justify-center transition-colors cursor-pointer"
-                          title="تحريك القطعة للأسفل ⬇️"
-                        >
-                          ▼
-                        </button>
+                  {visibleColumns.index !== false && (
+                    <td className="p-2 text-center">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <span className="font-mono text-xs text-ink-400 font-bold ml-1">{idx + 1}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            disabled={idx === 0 || isMoving}
+                            onClick={() => handleMove(idx, 'up')}
+                            className="w-5 h-4 bg-slate-100 hover:bg-brand-500 hover:text-white disabled:opacity-20 text-slate-700 rounded text-[9px] flex items-center justify-center transition-colors cursor-pointer"
+                            title="تحريك القطعة للأعلى ⬆️"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === products.length - 1 || isMoving}
+                            onClick={() => handleMove(idx, 'down')}
+                            className="w-5 h-4 bg-slate-100 hover:bg-brand-500 hover:text-white disabled:opacity-20 text-slate-700 rounded text-[9px] flex items-center justify-center transition-colors cursor-pointer"
+                            title="تحريك القطعة للأسفل ⬇️"
+                          >
+                            ▼
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
+                  )}
                   <td className="p-4">
                     <div className="flex items-start gap-3">
-                      {product.imageUrl ? (
-                        <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-ink-100 bg-ink-50 mt-0.5">
-                           <img 
-                            src={product.imageUrl} 
-                            alt={product.name} 
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
-                            }}
-                          />
-                          <span className="hidden w-full h-full items-center justify-center text-ink-300 font-bold text-sm">
+                      {visibleColumns.image !== false && (
+                        product.imageUrl ? (
+                          <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-ink-100 bg-ink-50 mt-0.5">
+                             <img 
+                              src={product.imageUrl} 
+                              alt={product.name} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                            <span className="hidden w-full h-full items-center justify-center text-ink-300 font-bold text-sm">
+                              {product.name?.charAt(0) || '?'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg shrink-0 border border-ink-100 bg-ink-50 flex items-center justify-center text-ink-300 font-bold text-sm mt-0.5">
                             {product.name?.charAt(0) || '?'}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg shrink-0 border border-ink-100 bg-ink-50 flex items-center justify-center text-ink-300 font-bold text-sm mt-0.5">
-                          {product.name?.charAt(0) || '?'}
-                        </div>
+                          </div>
+                        )
                       )}
                       <div>
                         <p className="font-medium text-ink-900 truncate max-w-[240px] text-right" dir="ltr" title={product.name}>{product.name}</p>
@@ -261,80 +406,78 @@ export default function ProductList({
                       </div>
                     </div>
                   </td>
-                  <td className="p-4 text-ink-600">{product.cameraType}</td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-1.5">
-                      <span className="bg-ink-50 text-ink-700 px-2.5 py-1 rounded-md font-medium text-xs border border-ink-100">
-                        {product.storeQty}
-                      </span>
-                      {Number(product.pendingQty) > 0 && (
-                        <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold text-[11px] border border-amber-200" title="معلق في فواتير محجوزة">
-                          ({product.pendingQty} معلق)
+                  {visibleColumns.category !== false && (
+                    <td className="p-4 text-ink-600">{product.cameraType}</td>
+                  )}
+                  {visibleColumns.storeQty !== false && (
+                    <td className="p-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className="bg-ink-50 text-ink-700 px-2.5 py-1 rounded-md font-medium text-xs border border-ink-100">
+                          {product.storeQty}
                         </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="bg-ink-50 text-ink-700 px-2.5 py-1 rounded-md font-medium text-xs border border-ink-100">
-                      {product.warehouseQty}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    {vanQty > 0 ? (
-                      <div
-                        className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-md font-bold text-xs shadow-2xs cursor-help"
-                        title={custodyInfo.breakdown?.map(b => `${b.techName}: ${b.qty} قطع`).join(' | ')}
-                      >
-                        <span>🚚</span>
-                        <span className="font-mono">{vanQty}</span>
+                        {Number(product.pendingQty) > 0 && (
+                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold text-[11px] border border-amber-200" title="معلق في فواتير محجوزة">
+                            ({product.pendingQty} معلق)
+                          </span>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-ink-400 font-mono text-xs">0</span>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <span className="font-bold text-ink-900 font-mono text-sm block">
-                      {grandTotal}
-                    </span>
-                    {vanQty > 0 && (
-                      <span className="text-[10px] text-indigo-600 font-medium block">
-                        (محل: {storeQty} | مخزن: {warehouseQty} | سيارة: {vanQty})
+                    </td>
+                  )}
+                  {visibleColumns.warehouseQty !== false && (
+                    <td className="p-4">
+                      <span className="bg-ink-50 text-ink-700 px-2.5 py-1 rounded-md font-medium text-xs border border-ink-100">
+                        {product.warehouseQty}
                       </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-ink-600 font-medium font-mono">{Number(product.wholesalePrice).toLocaleString()}</td>
-                  <td className="p-4 text-ink-600 font-medium font-mono">{Number(product.retailPrice).toLocaleString()}</td>
-                  <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${badge.className}`}>
-                      {badge.label}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    {product.barcode ? (
-                      <button
-                        onClick={() => onPrintBarcode(product)}
-                        className="text-brand-600 hover:text-brand-700 font-medium text-xs flex items-center gap-1 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                        {product.barcode}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => onGenerateBarcode(product)}
-                        disabled={generatingId === product.id}
-                        className="text-ink-500 hover:text-ink-700 font-medium text-xs bg-ink-50 hover:bg-ink-100 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {generatingId === product.id ? 'جارٍ التوليد...' : 'توليد باركود'}
-                      </button>
-                    )}
-                  </td>
+                    </td>
+                  )}
+                  {visibleColumns.totalQty !== false && (
+                    <td className="p-4">
+                      <span className="font-bold text-ink-900 font-mono text-sm block">
+                        {grandTotal}
+                      </span>
+                    </td>
+                  )}
+                  {visibleColumns.wholesalePrice !== false && (
+                    <td className="p-4 text-ink-600 font-medium font-mono">{Number(product.wholesalePrice).toLocaleString()}</td>
+                  )}
+                  {visibleColumns.retailPrice !== false && (
+                    <td className="p-4 text-ink-600 font-medium font-mono">{Number(product.retailPrice).toLocaleString()}</td>
+                  )}
+                  {visibleColumns.status !== false && (
+                    <td className="p-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+                  )}
+                  {visibleColumns.barcode !== false && (
+                    <td className="p-4">
+                      {product.barcode ? (
+                        <button
+                          onClick={() => onPrintBarcode(product)}
+                          className="text-brand-600 hover:text-brand-700 font-medium text-xs flex items-center gap-1 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                          {product.barcode}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onGenerateBarcode(product)}
+                          disabled={generatingId === product.id}
+                          className="text-ink-500 hover:text-ink-700 font-medium text-xs bg-ink-50 hover:bg-ink-100 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {generatingId === product.id ? 'جارٍ التوليد...' : 'توليد باركود'}
+                        </button>
+                      )}
+                    </td>
+                  )}
                   <td className="p-4 text-left">
                     <div className="flex items-center justify-end gap-1">
                       {onHistory && (
                         <button
                           onClick={() => onHistory(product)}
                           className="px-2.5 py-1 flex items-center gap-1 text-xs font-bold text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                          title="كشف حركة وتاريخ هذه المادة الشامل (تحميل سيارات، بيع، شراء، نقل)"
+                          title="كشف حركة وتاريخ هذه المادة الشامل (بيع، شراء، نقل، تسويات)"
                         >
                           <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

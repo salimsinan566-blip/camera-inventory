@@ -5,7 +5,7 @@ import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 /**
- * بطاقات إحصائيات سريعة أعلى لوحة التحكم مع تقرير جرد متكامل يشمل المحل والمخزن وعُهدة السيارات والمعلقات بتفصيل دقيق.
+ * بطاقات إحصائيات سريعة أعلى لوحة التحكم مع تقرير جرد متكامل يشمل المحل والمخزن والمعلقات بتفصيل دقيق.
  */
 export default function StatsDashboard({ 
   products = [], 
@@ -14,10 +14,12 @@ export default function StatsDashboard({
   draftSales = [],
   productCustodyMap = {},
   custodies = {},
-  technicians = []
+  technicians = [],
+  onFilterByStatus,
+  activeStockStatus = 'all',
 }) {
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [reportViewMode, setReportViewMode] = useState('category'); // 'category' | 'list' | 'custody'
+  const [reportViewMode, setReportViewMode] = useState('category'); // 'category' | 'list'
   const [scope, setScope] = useState('all'); // 'all' (كافة الأقسام والمخزون) | 'filtered' (المفلتر)
 
   // Use drafts passed from props
@@ -106,12 +108,10 @@ export default function StatsDashboard({
 
   const storeUnitsText = formatTotalUnits(products, 'storeQty');
   const warehouseUnitsText = formatTotalUnits(products, 'warehouseQty');
-  const custodyUnitsText = formatTotalUnits(products, null, true);
 
   const storeCapital = products.reduce((sum, p) => sum + ((Number(p.storeQty) || 0) * (Number(p.wholesalePrice) || 0)), 0);
   const warehouseCapital = products.reduce((sum, p) => sum + ((Number(p.warehouseQty) || 0) * (Number(p.wholesalePrice) || 0)), 0);
-  const custodyCapital = products.reduce((sum, p) => sum + ((Number(productCustodyMap[p.id]?.totalQty) || 0) * (Number(p.wholesalePrice) || 0)), 0);
-  const totalCapital = storeCapital + warehouseCapital + custodyCapital;
+  const totalCapital = storeCapital + warehouseCapital;
   
   const formatIQD = (num) => Math.round(num).toLocaleString('en-US');
 
@@ -168,11 +168,9 @@ export default function StatsDashboard({
   // Report specific metrics matching the active displayProducts
   const reportStoreCapital = useMemo(() => displayProducts.reduce((sum, p) => sum + ((Number(p.storeQty) || 0) * (Number(p.wholesalePrice) || 0)), 0), [displayProducts]);
   const reportWarehouseCapital = useMemo(() => displayProducts.reduce((sum, p) => sum + ((Number(p.warehouseQty) || 0) * (Number(p.wholesalePrice) || 0)), 0), [displayProducts]);
-  const reportCustodyCapital = useMemo(() => displayProducts.reduce((sum, p) => sum + ((Number(productCustodyMap[p.id]?.totalQty) || 0) * (Number(p.wholesalePrice) || 0)), 0), [displayProducts, productCustodyMap]);
 
   const reportStoreUnitsText = useMemo(() => formatTotalUnits(displayProducts, 'storeQty'), [displayProducts]);
   const reportWarehouseUnitsText = useMemo(() => formatTotalUnits(displayProducts, 'warehouseQty'), [displayProducts]);
-  const reportCustodyUnitsText = useMemo(() => formatTotalUnits(displayProducts, null, true), [displayProducts, productCustodyMap]);
 
   // Grouped products preserving the custom order within each category
   const groupedProducts = useMemo(() => {
@@ -189,116 +187,58 @@ export default function StatsDashboard({
     return Object.keys(groupedProducts).sort((a, b) => a.localeCompare(b, 'ar', { sensitivity: 'base' }));
   }, [groupedProducts]);
 
-  // Active Custody breakdown by Technician / Vehicle
-  const activeCustodiesList = useMemo(() => {
-    return Object.entries(custodies || {})
-      .map(([techId, cDoc]) => {
-        const tech = technicians.find(t => t.id === techId) || {};
-        const items = (cDoc.items || []).filter(it => (Number(it.quantity) || 0) > 0);
-        const totalItems = items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
-        const totalCostVal = items.reduce((sum, it) => {
-          const prod = productMap.get(it.productId);
-          const price = prod?.wholesalePrice !== undefined ? Number(prod.wholesalePrice) : (Number(it.wholesalePrice) || 0);
-          return sum + ((Number(it.quantity) || 0) * price);
-        }, 0);
-
-        return {
-          techId,
-          techName: cDoc.technicianName || tech.name || 'فني',
-          vehicleNumber: tech.vehicleNumber || cDoc.vehicleNumber || '—',
-          phone: tech.phone || cDoc.phone || '—',
-          items,
-          totalItems,
-          totalCostVal
-        };
-      })
-      .filter(c => c.items.length > 0);
-  }, [custodies, technicians, productMap]);
-
-  const cards = [
-    { id: 'total', label: 'إجمالي المنتجات', value: total, className: 'text-ink-900', interactive: false },
-    { id: 'low', label: 'منخفضة المخزون', value: lowCount, className: 'text-warn-700', interactive: false },
-    { id: 'out', label: 'نافذة المخزون', value: outCount, className: 'text-danger-700', interactive: false },
-    {
-      id: 'inventory',
-      label: 'المحل / المخزن / السيارات',
-      value: (
-        <div className="flex flex-col text-xs font-bold gap-1 mt-1" dir="rtl">
-          <span className="text-brand-700">محل: {storeUnitsText}</span>
-          <span className="text-indigo-700">مخزن: {warehouseUnitsText}</span>
-          {custodyUnitsText && custodyUnitsText !== '0 ق' && (
-            <span className="text-amber-800">سيارات 🚚: {custodyUnitsText}</span>
-          )}
-        </div>
-      ),
-      className: '',
-      interactive: true,
-      onClick: () => {
-        setScope('all');
-        setShowPrintModal(true);
-      }
-    },
-    {
-      id: 'capital',
-      label: 'إجمالي رأس المال',
-      value: (
-        <div className="flex flex-col text-sm font-bold gap-1 mt-1" dir="rtl">
-          <span className="text-base text-ink-900">{formatIQD(totalCapital)} د.ع</span>
-          <div className="flex flex-wrap gap-2 text-[11px] mt-1 border-t border-ink-100 pt-1">
-            <span className="text-emerald-700">محل: {formatIQD(storeCapital)}</span>
-            <span className="text-teal-700">مخزن: {formatIQD(warehouseCapital)}</span>
-            {custodyCapital > 0 && (
-              <span className="text-amber-800">سيارات: {formatIQD(custodyCapital)}</span>
-            )}
-          </div>
-        </div>
-      ),
-      className: '',
-      interactive: false
-    }
-  ];
-
   const hasFilterActive = filteredProducts && filteredProducts.length > 0 && filteredProducts.length < products.length;
 
   return (
     <>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
-        {cards.map((card) => {
-          const CardContent = (
-            <>
-              <p className="text-xs text-ink-500 font-medium">{card.label}</p>
-              {typeof card.value === 'object' ? (
-                card.value
-              ) : (
-                <p className={`text-2xl font-bold mt-1 ${card.className}`}>{card.value}</p>
-              )}
-            </>
-          );
+      {/* أزرار التنبيهات المدمجة وطباعة التقرير مدمجة بدون أي فراغات ميتة */}
+      <div className="flex items-center gap-1.5 select-none" dir="rtl">
+        {/* زر طباعة تقرير المخزون */}
+        <button
+          type="button"
+          onClick={() => {
+            setScope('all');
+            setShowPrintModal(true);
+          }}
+          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
+          title="طباعة تقرير جرد المخزون الشامل"
+        >
+          <svg className="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          <span className="hidden lg:inline">تقرير المخزون</span>
+        </button>
 
-          if (card.interactive) {
-            return (
-              <button
-                key={card.id}
-                onClick={card.onClick}
-                className="bg-white border border-brand-100 rounded-xl shadow-sm p-4 text-center hover:bg-brand-50 hover:border-brand-300 hover:shadow-md transition-all cursor-pointer ring-2 ring-transparent focus:ring-brand-500 focus:outline-none"
-                title="اضغط لعرض تفاصيل المخزون وطباعتها بنفس الترتيب الحالي"
-              >
-                {CardContent}
-                <div className="mt-2 flex items-center justify-center gap-1 text-[10px] font-bold text-brand-600 bg-brand-100/50 py-1 px-2 rounded-md">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                  طباعة التقرير
-                </div>
-              </button>
-            );
-          }
+        {/* كارت التنبيهات المدمج: رقمين بمستطيلين (برتقالي للمنخفض، أحمر للنافذ) بدون أي نص وزر قابل للضغط */}
+        <div className="flex items-center gap-1 bg-slate-100/90 p-0.5 rounded-lg border border-slate-200/80 shrink-0">
+          {/* المستطيل البرتقالي للمنخفض */}
+          <button
+            type="button"
+            onClick={() => onFilterByStatus?.(activeStockStatus === STOCK_STATUS.LOW_STOCK ? 'all' : STOCK_STATUS.LOW_STOCK)}
+            className={`min-w-[40px] sm:min-w-[46px] h-7 sm:h-8 px-2 rounded-md flex items-center justify-center font-black font-mono text-xs sm:text-sm transition-all cursor-pointer shadow-2xs ${
+              activeStockStatus === STOCK_STATUS.LOW_STOCK
+                ? 'bg-amber-600 text-white ring-2 ring-amber-400 ring-offset-1 scale-105'
+                : 'bg-amber-500 hover:bg-amber-600 text-white active:scale-95'
+            }`}
+            title={`منخفض: ${lowCount}`}
+          >
+            {lowCount}
+          </button>
 
-          const isLast = card.id === 'capital';
-          return (
-            <div key={card.id} className={`bg-white border border-brand-100 rounded-xl shadow-sm p-4 text-center ${isLast ? 'col-span-2 lg:col-span-1' : ''}`}>
-              {CardContent}
-            </div>
-          );
-        })}
+          {/* المستطيل الأحمر للنافذ */}
+          <button
+            type="button"
+            onClick={() => onFilterByStatus?.(activeStockStatus === STOCK_STATUS.OUT_OF_STOCK ? 'all' : STOCK_STATUS.OUT_OF_STOCK)}
+            className={`min-w-[40px] sm:min-w-[46px] h-7 sm:h-8 px-2 rounded-md flex items-center justify-center font-black font-mono text-xs sm:text-sm transition-all cursor-pointer shadow-2xs ${
+              activeStockStatus === STOCK_STATUS.OUT_OF_STOCK
+                ? 'bg-rose-700 text-white ring-2 ring-rose-400 ring-offset-1 scale-105'
+                : 'bg-rose-600 hover:bg-rose-700 text-white active:scale-95'
+            }`}
+            title={`نافذ: ${outCount}`}
+          >
+            {outCount}
+          </button>
+        </div>
       </div>
 
       {showPrintModal && createPortal(
@@ -319,8 +259,8 @@ export default function StatsDashboard({
                 margin: 0 !important;
                 padding: 0 !important;
                 background: white !important;
-                font-size: 10px !important;
-                line-height: 1.2 !important;
+                font-size: 12px !important;
+                line-height: 1.35 !important;
               }
               body > :not(#print-inventory-portal) {
                 display: none !important;
@@ -384,7 +324,7 @@ export default function StatsDashboard({
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-ink-900">تقرير المخزون المطبوع</h2>
-                    <p className="text-xs text-brand-600 font-medium">يشمل المحل والمخزن وعُهدة السيارات والمعلقات بالتفصيل</p>
+                    <p className="text-xs text-brand-600 font-medium">يشمل المحل والمخزن والمعلقات بالتفصيل</p>
                   </div>
                 </div>
 
@@ -430,14 +370,6 @@ export default function StatsDashboard({
                     >
                       📋 تسلسل المخزون
                     </button>
-                    <button
-                      onClick={() => setReportViewMode('custody')}
-                      className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
-                        reportViewMode === 'custody' ? 'bg-amber-600 text-white shadow-2xs' : 'text-amber-800 bg-amber-50'
-                      }`}
-                    >
-                      🚚 عهدة السيارات ({activeCustodiesList.length})
-                    </button>
                   </div>
 
                   <button 
@@ -458,42 +390,56 @@ export default function StatsDashboard({
                 <div className="hidden print:block text-center mb-4 border-b-2 border-ink-900 pb-3">
                   <div className="flex justify-between items-center">
                     <h1 className="text-xl font-black text-ink-900 tracking-wide">
-                      {reportViewMode === 'custody' ? 'كشف عهدة سيارات الفنيين' : 'تقرير جرد المخزون العام'}
+                      تقرير جرد المخزون العام
                     </h1>
                     <p className="text-ink-700 text-xs font-bold font-mono">تاريخ التقرير: {new Date().toLocaleDateString('ar-IQ')}</p>
                   </div>
                 </div>
                 
-                {/* Prominent, Large Summary Cards (6 Cards grid including Cars) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-5 print:mb-3 print:gap-1.5 print:page-break-after-auto">
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-1.5">
-                    <p className="text-xs font-bold text-ink-600 mb-0.5 print:text-[10px]">إجمالي المواد</p>
-                    <p className="text-lg font-black text-ink-900 font-mono print:text-sm">{displayProducts.length}</p>
+                {/* بطاقات الإحصائيات المدمجة: المحل (قطع ورأس مال) والمخزن (قطع ورأس مال) وإجمالي المواد ورأس المال */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 print:mb-3 print:gap-2">
+                  {/* كارت 1: إجمالي المواد ورأس المال الكلي */}
+                  <div className="bg-slate-50 p-3 sm:p-3.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-2">
+                    <p className="text-xs sm:text-sm font-bold text-ink-700 mb-1 print:text-[11px]">إجمالي المواد والأصناف</p>
+                    <p className="text-xl sm:text-2xl font-black text-ink-900 font-mono print:text-base leading-tight">
+                      {displayProducts.length} <span className="text-xs font-bold text-ink-600">صنف</span>
+                    </p>
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-200">
+                      <span className="text-xs sm:text-sm font-bold text-brand-800 font-mono print:text-[11px]">
+                        إجمالي رأس المال: <strong>{formatIQD(reportStoreCapital + reportWarehouseCapital)}</strong> د.ع
+                      </span>
+                    </div>
                     {formattedTotalPendingUnits !== '0' && (
-                      <span className="inline-block mt-0.5 text-[9.5px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300">
+                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
                         ⏳ معلق: {formattedTotalPendingUnits}
                       </span>
                     )}
                   </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-1.5" dir="rtl">
-                    <p className="text-xs font-bold text-brand-800 mb-0.5 print:text-[10px]">قطع المحل</p>
-                    <p className="text-xs font-black text-brand-700 font-mono print:text-[11px] leading-snug">{reportStoreUnitsText}</p>
+
+                  {/* كارت 2: المحل (دمج قطع المحل مع رأس مال المحل) */}
+                  <div className="bg-brand-50/50 p-3 sm:p-3.5 rounded-xl border border-brand-200 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-2" dir="rtl">
+                    <p className="text-xs sm:text-sm font-bold text-brand-900 mb-1 print:text-[11px]">🏪 مخزون ورأس مال المحل</p>
+                    <p className="text-lg sm:text-xl font-black text-brand-700 font-mono print:text-base leading-snug">
+                      {reportStoreUnitsText}
+                    </p>
+                    <div className="mt-1.5 pt-1.5 border-t border-brand-200/80">
+                      <span className="text-xs sm:text-sm font-bold text-emerald-800 font-mono print:text-[11px]">
+                        رأس المال: <strong className="font-black">{formatIQD(reportStoreCapital)}</strong> د.ع
+                      </span>
+                    </div>
                   </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-1.5" dir="rtl">
-                    <p className="text-xs font-bold text-indigo-800 mb-0.5 print:text-[10px]">قطع المخزن</p>
-                    <p className="text-xs font-black text-indigo-700 font-mono print:text-[11px] leading-snug">{reportWarehouseUnitsText}</p>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-1.5" dir="rtl">
-                    <p className="text-xs font-bold text-amber-900 mb-0.5 print:text-[10px]">السيارات 🚚</p>
-                    <p className="text-xs font-black text-amber-800 font-mono print:text-[11px] leading-snug">{reportCustodyUnitsText || '0 ق'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-1.5" dir="rtl">
-                    <p className="text-xs font-bold text-emerald-800 mb-0.5 print:text-[10px]">رأس مال المحل</p>
-                    <p className="text-xs font-black text-emerald-700 font-mono print:text-[11px]">{formatIQD(reportStoreCapital)} د.ع</p>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-1.5" dir="rtl">
-                    <p className="text-xs font-bold text-teal-800 mb-0.5 print:text-[10px]">رأس مال المخزن</p>
-                    <p className="text-xs font-black text-teal-700 font-mono print:text-[11px]">{formatIQD(reportWarehouseCapital)} د.ع</p>
+
+                  {/* كارت 3: المخزن (دمج قطع المخزن مع رأس مال المخزن) */}
+                  <div className="bg-indigo-50/50 p-3 sm:p-3.5 rounded-xl border border-indigo-200 shadow-2xs text-center print:border-ink-500 print:bg-white print:p-2" dir="rtl">
+                    <p className="text-xs sm:text-sm font-bold text-indigo-900 mb-1 print:text-[11px]">🏢 مخزون ورأس مال المخزن</p>
+                    <p className="text-lg sm:text-xl font-black text-indigo-700 font-mono print:text-base leading-snug">
+                      {reportWarehouseUnitsText}
+                    </p>
+                    <div className="mt-1.5 pt-1.5 border-t border-indigo-200/80">
+                      <span className="text-xs sm:text-sm font-bold text-teal-800 font-mono print:text-[11px]">
+                        رأس المال: <strong className="font-black">{formatIQD(reportWarehouseCapital)}</strong> د.ع
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -503,53 +449,54 @@ export default function StatsDashboard({
                     const catProducts = groupedProducts[category];
                     const catStoreCapital = catProducts.reduce((sum, p) => sum + ((Number(p.storeQty) || 0) * (Number(p.wholesalePrice) || 0)), 0);
                     const catWarehouseCapital = catProducts.reduce((sum, p) => sum + ((Number(p.warehouseQty) || 0) * (Number(p.wholesalePrice) || 0)), 0);
-                    const catCustodyCapital = catProducts.reduce((sum, p) => sum + ((Number(productCustodyMap[p.id]?.totalQty) || 0) * (Number(p.wholesalePrice) || 0)), 0);
+                    const catStoreUnits = formatTotalUnits(catProducts, 'storeQty');
+                    const catWarehouseUnits = formatTotalUnits(catProducts, 'warehouseQty');
                     
                     return (
-                      <div key={category} className="mb-4 print:mb-3 category-section-wrap">
-                        <div className="category-header-wrap pb-1 mb-1 border-b border-brand-400 flex justify-between items-center flex-wrap gap-1 print:py-0.5">
-                          <h3 className="text-xs font-bold text-ink-900 print:text-[11px]">
+                      <div key={category} className="mb-5 print:mb-4 category-section-wrap">
+                        <div className="category-header-wrap pb-1.5 mb-2 border-b-2 border-brand-400 flex justify-between items-center flex-wrap gap-2 print:py-1">
+                          <h3 className="text-sm sm:text-base font-extrabold text-ink-900 print:text-[13px]">
                             قسم: {category} ({catProducts.length} صنف)
                           </h3>
-                          <div className="text-[10px] font-bold flex flex-wrap gap-1.5 print:text-[9px]" dir="rtl">
-                            <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-mono">محل: {formatIQD(catStoreCapital)} د.ع</span>
-                            <span className="text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 font-mono">مخزن: {formatIQD(catWarehouseCapital)} د.ع</span>
-                            {catCustodyCapital > 0 && (
-                              <span className="text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-mono">سيارات 🚚: {formatIQD(catCustodyCapital)} د.ع</span>
-                            )}
+                          <div className="text-xs sm:text-sm font-bold flex flex-wrap gap-2 print:text-[11px]" dir="rtl">
+                            <span className="text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 font-mono">
+                              المحل: {catStoreUnits} | {formatIQD(catStoreCapital)} د.ع
+                            </span>
+                            <span className="text-teal-900 bg-teal-50 px-2 py-0.5 rounded border border-teal-300 font-mono">
+                              المخزن: {catWarehouseUnits} | {formatIQD(catWarehouseCapital)} د.ع
+                            </span>
                           </div>
                         </div>
 
-                        <table className="w-full text-[11px] text-right border-collapse table-fixed">
+                        <table className="w-full text-xs sm:text-sm text-right border-collapse table-fixed print:text-[12.5px]">
                           <thead>
-                            <tr className="bg-ink-100 border-b border-ink-300 font-bold text-ink-900 print:bg-slate-100">
-                              <th style={{ width: '4%' }} className="py-1 px-1 text-center print:py-0.5">#</th>
-                              <th style={{ width: '38%' }} className="py-1 px-2 print:py-0.5">اسم المنتج / SKU</th>
-                              <th style={{ width: '11%' }} className="py-1 px-1 text-center text-brand-700 print:py-0.5">المحل</th>
-                              <th style={{ width: '11%' }} className="py-1 px-1 text-center text-indigo-700 print:py-0.5">المخزن</th>
-                              <th style={{ width: '12%' }} className="py-1 px-1 text-center text-amber-800 print:py-0.5">السيارات 🚚</th>
-                              <th style={{ width: '12%' }} className="py-1 px-1 text-center print:py-0.5">التكلفة (جملة)</th>
-                              <th style={{ width: '12%' }} className="py-1 px-1 text-center text-brand-700 print:py-0.5">البيع (مفرد)</th>
+                            <tr className="bg-slate-100 border-b-2 border-slate-300 font-bold text-slate-900 print:bg-slate-100">
+                              <th style={{ width: '4%' }} className="py-2 px-1 text-center font-bold print:py-1">#</th>
+                              <th style={{ width: '38%' }} className="py-2 px-2.5 font-bold print:py-1">اسم المنتج / SKU</th>
+                              <th style={{ width: '15%' }} className="py-2 px-1.5 text-center font-bold text-brand-800 print:py-1">المحل (قطع / رأس مال)</th>
+                              <th style={{ width: '15%' }} className="py-2 px-1.5 text-center font-bold text-indigo-800 print:py-1">المخزن (قطع / رأس مال)</th>
+                              <th style={{ width: '14%' }} className="py-2 px-1.5 text-center font-bold print:py-1">التكلفة (جملة)</th>
+                              <th style={{ width: '14%' }} className="py-2 px-1.5 text-center font-bold text-brand-700 print:py-1">البيع (مفرد)</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-ink-100">
+                          <tbody className="divide-y divide-slate-200">
                             {catProducts.map((product, idx) => {
                               const pendingBreakdown = getProductPendingBreakdown(product.id);
-                              const custodyInfo = productCustodyMap[product.id];
-                              const custodyQty = Number(custodyInfo?.totalQty) || 0;
+                              const storeCapitalVal = (Number(product.storeQty) || 0) * (Number(product.wholesalePrice) || 0);
+                              const whCapitalVal = (Number(product.warehouseQty) || 0) * (Number(product.wholesalePrice) || 0);
 
                               return (
-                                <tr key={product.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-ink-50/40'}>
-                                  <td className="py-1 px-1 text-center font-mono font-bold text-ink-400 print:py-0.5">{idx + 1}</td>
-                                  <td className="py-1 px-2 print:py-0.5">
-                                    <div className="font-bold text-ink-900 leading-tight">{product.name}</div>
-                                    <div className="text-[9px] text-ink-400 font-mono leading-none mt-0.5">{product.sku}</div>
+                                <tr key={product.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                                  <td className="py-2 px-1 text-center font-mono font-bold text-slate-500 print:py-1">{idx + 1}</td>
+                                  <td className="py-2 px-2.5 print:py-1">
+                                    <div className="font-bold text-slate-900 text-xs sm:text-sm leading-snug print:text-[12px]">{product.name}</div>
+                                    <div className="text-[11px] text-slate-500 font-mono leading-none mt-0.5 print:text-[9.5px]">{product.sku}</div>
                                     
                                     {/* Prominent Pending Breakdown with Customer Name & Formatted Pieces / Meters */}
                                     {pendingBreakdown.length > 0 && (
                                       <div className="mt-1 flex flex-wrap gap-1 items-center">
                                         {pendingBreakdown.map((pb, pidx) => (
-                                          <span key={pidx} className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded text-[9.5px] font-bold">
+                                          <span key={pidx} className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded text-[10px] font-bold">
                                             <span>⏳ معلق لـ {pb.name}:</span>
                                             <strong className="text-amber-950 font-mono">({pb.formattedText})</strong>
                                           </span>
@@ -557,24 +504,28 @@ export default function StatsDashboard({
                                       </div>
                                     )}
                                   </td>
-                                  <td className="py-1 px-1 text-center font-bold font-mono text-brand-700 print:py-0.5">{Number(product.storeQty || 0).toLocaleString()}</td>
-                                  <td className="py-1 px-1 text-center font-bold font-mono text-indigo-700 print:py-0.5">{Number(product.warehouseQty || 0).toLocaleString()}</td>
-                                  <td className="py-1 px-1 text-center font-bold font-mono text-amber-800 print:py-0.5">
-                                    {custodyQty > 0 ? (
-                                      <div>
-                                        <span>{custodyQty.toLocaleString()}</span>
-                                        {custodyInfo?.breakdown?.length > 0 && (
-                                          <div className="text-[8.5px] font-normal text-amber-900 leading-none mt-0.5">
-                                            {custodyInfo.breakdown.map(b => `${b.techName} (${b.qty})`).join('، ')}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="text-ink-300">—</span>
-                                    )}
+                                  <td className="py-2 px-1.5 text-center font-mono print:py-1">
+                                    <span className="font-black text-brand-700 text-sm sm:text-base block">
+                                      {Number(product.storeQty || 0).toLocaleString()}
+                                    </span>
+                                    <span className="text-[10.5px] font-bold text-emerald-800 block leading-tight print:text-[9.5px]">
+                                      {formatIQD(storeCapitalVal)} د.ع
+                                    </span>
                                   </td>
-                                  <td className="py-1 px-1 text-center font-mono text-ink-700 print:py-0.5">{formatIQD(product.wholesalePrice)}</td>
-                                  <td className="py-1 px-1 text-center font-bold font-mono text-brand-700 print:py-0.5">{formatIQD(product.retailPrice)}</td>
+                                  <td className="py-2 px-1.5 text-center font-mono print:py-1">
+                                    <span className="font-black text-indigo-700 text-sm sm:text-base block">
+                                      {Number(product.warehouseQty || 0).toLocaleString()}
+                                    </span>
+                                    <span className="text-[10.5px] font-bold text-teal-800 block leading-tight print:text-[9.5px]">
+                                      {formatIQD(whCapitalVal)} د.ع
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-1.5 text-center font-mono text-slate-800 font-bold text-xs sm:text-sm print:py-1">
+                                    {formatIQD(product.wholesalePrice)}
+                                  </td>
+                                  <td className="py-2 px-1.5 text-center font-black font-mono text-brand-700 text-xs sm:text-sm print:py-1">
+                                    {formatIQD(product.retailPrice)}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -587,37 +538,36 @@ export default function StatsDashboard({
 
                 {/* VIEW 2: Full Unified Ordered List (1 to N strictly matching table sequence) */}
                 {reportViewMode === 'list' && (
-                  <table className="w-full text-[11px] text-right border-collapse table-fixed">
+                  <table className="w-full text-xs sm:text-sm text-right border-collapse table-fixed print:text-[12.5px]">
                     <thead>
-                      <tr className="bg-ink-100 border-b-2 border-ink-400 font-bold text-ink-900 print:bg-slate-100">
-                        <th style={{ width: '4%' }} className="py-1.5 px-1 text-center print:py-0.5">#</th>
-                        <th style={{ width: '35%' }} className="py-1.5 px-2 print:py-0.5">اسم المنتج</th>
-                        <th style={{ width: '15%' }} className="py-1.5 px-1 print:py-0.5">القسم</th>
-                        <th style={{ width: '9%' }} className="py-1.5 px-1 text-center text-brand-700 print:py-0.5">المحل</th>
-                        <th style={{ width: '9%' }} className="py-1.5 px-1 text-center text-indigo-700 print:py-0.5">المخزن</th>
-                        <th style={{ width: '10%' }} className="py-1.5 px-1 text-center text-amber-800 print:py-0.5">السيارات 🚚</th>
-                        <th style={{ width: '9%' }} className="py-1.5 px-1 text-center print:py-0.5">التكلفة</th>
-                        <th style={{ width: '9%' }} className="py-1.5 px-1 text-center text-brand-700 print:py-0.5">المفرد</th>
+                      <tr className="bg-slate-100 border-b-2 border-slate-300 font-bold text-slate-900 print:bg-slate-100">
+                        <th style={{ width: '4%' }} className="py-2 px-1 text-center font-bold print:py-1">#</th>
+                        <th style={{ width: '32%' }} className="py-2 px-2.5 font-bold print:py-1">اسم المنتج</th>
+                        <th style={{ width: '14%' }} className="py-2 px-1 font-bold print:py-1">القسم</th>
+                        <th style={{ width: '13%' }} className="py-2 px-1.5 text-center font-bold text-brand-800 print:py-1">المحل (قطع / رأس مال)</th>
+                        <th style={{ width: '13%' }} className="py-2 px-1.5 text-center font-bold text-indigo-800 print:py-1">المخزن (قطع / رأس مال)</th>
+                        <th style={{ width: '12%' }} className="py-2 px-1.5 text-center font-bold print:py-1">التكلفة</th>
+                        <th style={{ width: '12%' }} className="py-2 px-1.5 text-center font-bold text-brand-700 print:py-1">المفرد</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ink-100">
+                    <tbody className="divide-y divide-slate-200">
                       {displayProducts.map((product, idx) => {
                         const pendingBreakdown = getProductPendingBreakdown(product.id);
-                        const custodyInfo = productCustodyMap[product.id];
-                        const custodyQty = Number(custodyInfo?.totalQty) || 0;
+                        const storeCapitalVal = (Number(product.storeQty) || 0) * (Number(product.wholesalePrice) || 0);
+                        const whCapitalVal = (Number(product.warehouseQty) || 0) * (Number(product.wholesalePrice) || 0);
 
                         return (
-                          <tr key={product.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-ink-50/40'}>
-                            <td className="py-1 px-1 text-center font-mono font-bold text-ink-500 print:py-0.5">{idx + 1}</td>
-                            <td className="py-1 px-2 print:py-0.5">
-                              <span className="font-bold text-ink-900">{product.name}</span>
-                              <span className="text-[9px] text-ink-400 font-mono mr-1">({product.sku})</span>
+                          <tr key={product.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                            <td className="py-2 px-1 text-center font-mono font-bold text-slate-500 print:py-1">{idx + 1}</td>
+                            <td className="py-2 px-2.5 print:py-1">
+                              <span className="font-bold text-slate-900 text-xs sm:text-sm">{product.name}</span>
+                              <span className="text-[10.5px] text-slate-500 font-mono mr-1 print:text-[9.5px]">({product.sku})</span>
 
                               {/* Prominent Pending Breakdown with Customer Name & Pieces / Meters */}
                               {pendingBreakdown.length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1 items-center">
                                   {pendingBreakdown.map((pb, pidx) => (
-                                    <span key={pidx} className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded text-[9.5px] font-bold">
+                                    <span key={pidx} className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded text-[10px] font-bold">
                                       <span>⏳ معلق لـ {pb.name}:</span>
                                       <strong className="text-amber-950 font-mono">({pb.formattedText})</strong>
                                     </span>
@@ -625,125 +575,30 @@ export default function StatsDashboard({
                                 </div>
                               )}
                             </td>
-                            <td className="py-1 px-1 text-ink-600 truncate print:py-0.5">{product.cameraType || '—'}</td>
-                            <td className="py-1 px-1 text-center font-bold font-mono text-brand-700 print:py-0.5">{Number(product.storeQty || 0).toLocaleString()}</td>
-                            <td className="py-1 px-1 text-center font-bold font-mono text-indigo-700 print:py-0.5">{Number(product.warehouseQty || 0).toLocaleString()}</td>
-                            <td className="py-1 px-1 text-center font-bold font-mono text-amber-800 print:py-0.5">
-                              {custodyQty > 0 ? (
-                                <div>
-                                  <span>{custodyQty.toLocaleString()}</span>
-                                  {custodyInfo?.breakdown?.length > 0 && (
-                                    <div className="text-[8.5px] font-normal text-amber-900 leading-none mt-0.5">
-                                      {custodyInfo.breakdown.map(b => `${b.techName} (${b.qty})`).join('، ')}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-ink-300">—</span>
-                              )}
+                            <td className="py-2 px-1 text-slate-600 truncate text-xs sm:text-sm print:py-1">{product.cameraType || '—'}</td>
+                            <td className="py-2 px-1.5 text-center font-mono print:py-1">
+                              <span className="font-black text-brand-700 text-sm sm:text-base block">
+                                {Number(product.storeQty || 0).toLocaleString()}
+                              </span>
+                              <span className="text-[10.5px] font-bold text-emerald-800 block leading-tight print:text-[9.5px]">
+                                {formatIQD(storeCapitalVal)} د.ع
+                              </span>
                             </td>
-                            <td className="py-1 px-1 text-center font-mono text-ink-700 print:py-0.5">{formatIQD(product.wholesalePrice)}</td>
-                            <td className="py-1 px-1 text-center font-bold font-mono text-brand-700 print:py-0.5">{formatIQD(product.retailPrice)}</td>
+                            <td className="py-2 px-1.5 text-center font-mono print:py-1">
+                              <span className="font-black text-indigo-700 text-sm sm:text-base block">
+                                {Number(product.warehouseQty || 0).toLocaleString()}
+                              </span>
+                              <span className="text-[10.5px] font-bold text-teal-800 block leading-tight print:text-[9.5px]">
+                                {formatIQD(whCapitalVal)} د.ع
+                              </span>
+                            </td>
+                            <td className="py-2 px-1.5 text-center font-mono text-slate-800 font-bold text-xs sm:text-sm print:py-1">{formatIQD(product.wholesalePrice)}</td>
+                            <td className="py-2 px-1.5 text-center font-black font-mono text-brand-700 text-xs sm:text-sm print:py-1">{formatIQD(product.retailPrice)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                )}
-
-                {/* VIEW 3: Dedicated Vehicle Custody Sheet per Technician (كشف عهدة السيارات التفصيلي) */}
-                {(reportViewMode === 'custody' || (reportViewMode !== 'custody' && activeCustodiesList.length > 0)) && (
-                  <div className="mt-8 pt-4 border-t-2 border-dashed border-slate-300 print:mt-6 print:pt-4">
-                    <div className="mb-4 bg-amber-50/80 p-2.5 rounded-xl border border-amber-300 flex justify-between items-center print:bg-white print:border-ink-600">
-                      <div>
-                        <h2 className="text-sm font-black text-amber-950 flex items-center gap-1.5 print:text-ink-900">
-                          <span>🚚</span>
-                          <span>كشف المواد الموجودة في عهدة سيارات الفنيين ({activeCustodiesList.length} سيارة)</span>
-                        </h2>
-                        <p className="text-[10px] text-amber-850 print:text-ink-600">تفصيل المواد والكميات المحملة حالياً في كل مركبة</p>
-                      </div>
-                      <div className="text-xs font-bold text-amber-950 font-mono print:text-ink-900" dir="rtl">
-                        إجمالي رأس مال السيارات: {formatIQD(reportCustodyCapital)} د.ع
-                      </div>
-                    </div>
-
-                    {activeCustodiesList.length === 0 ? (
-                      <p className="text-center text-xs text-ink-500 py-4">لا توجد مواد محملة بالسيارات حالياً.</p>
-                    ) : (
-                      activeCustodiesList.map((c) => (
-                        <div key={c.techId} className="mb-6 print:mb-4 category-section-wrap bg-white rounded-xl border border-slate-200 p-3 print:p-0 print:border-none">
-                          <div className="pb-1.5 mb-2 border-b border-slate-300 flex justify-between items-center flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="bg-amber-100 text-amber-950 font-bold px-2 py-0.5 rounded text-xs">
-                                🚗 {c.techName}
-                              </span>
-                              <span className="text-[11px] text-slate-600 font-mono">
-                                مركبة: {c.vehicleNumber}
-                              </span>
-                              {c.phone && c.phone !== '—' && (
-                                <span className="text-[11px] text-slate-500 font-mono">
-                                  📞 {c.phone}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] font-bold flex gap-2" dir="rtl">
-                              <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">
-                                {c.items.length} صنف ({c.totalItems.toLocaleString()} مادة)
-                              </span>
-                              <span className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
-                                القيمة: {formatIQD(c.totalCostVal)} د.ع
-                              </span>
-                            </div>
-                          </div>
-
-                          <table className="w-full text-[11px] text-right border-collapse table-fixed">
-                            <thead>
-                              <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-900 print:bg-slate-100">
-                                <th style={{ width: '6%' }} className="py-1 px-1 text-center">#</th>
-                                <th style={{ width: '46%' }} className="py-1 px-2">اسم المادة / SKU</th>
-                                <th style={{ width: '16%' }} className="py-1 px-1 text-center text-amber-900">الكمية المحملة</th>
-                                <th style={{ width: '16%' }} className="py-1 px-1 text-center">سعر التكلفة</th>
-                                <th style={{ width: '16%' }} className="py-1 px-1 text-center text-emerald-800">إجمالي القيمة</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {c.items.map((it, iIdx) => {
-                                const prod = productMap.get(it.productId);
-                                const qty = Number(it.quantity) || 0;
-                                const unitCost = prod?.wholesalePrice !== undefined ? Number(prod.wholesalePrice) : (Number(it.wholesalePrice) || 0);
-                                const itemTotal = qty * unitCost;
-
-                                let formattedQty = `${qty} ق`;
-                                if (prod && prod.sellMode === 'meter') {
-                                  const mpr = Number(prod.metersPerRoll) || 305;
-                                  if (mpr > 0 && qty >= mpr) {
-                                    const rolls = Math.floor(qty / mpr);
-                                    const meters = qty % mpr;
-                                    formattedQty = `${rolls} لفة${meters > 0 ? ` + ${meters} م` : ''}`;
-                                  } else {
-                                    formattedQty = `${qty} م`;
-                                  }
-                                }
-
-                                return (
-                                  <tr key={iIdx} className={iIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
-                                    <td className="py-1 px-1 text-center font-mono font-bold text-slate-400">{iIdx + 1}</td>
-                                    <td className="py-1 px-2">
-                                      <div className="font-bold text-slate-900 leading-tight">{it.productName || prod?.name || 'مادة'}</div>
-                                      <div className="text-[9px] text-slate-400 font-mono">{it.sku || prod?.sku || '—'}</div>
-                                    </td>
-                                    <td className="py-1 px-1 text-center font-bold font-mono text-amber-900">{formattedQty}</td>
-                                    <td className="py-1 px-1 text-center font-mono text-slate-700">{formatIQD(unitCost)}</td>
-                                    <td className="py-1 px-1 text-center font-bold font-mono text-emerald-700">{formatIQD(itemTotal)} د.ع</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ))
-                    )}
-                  </div>
                 )}
 
               </div>
