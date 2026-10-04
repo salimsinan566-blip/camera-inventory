@@ -110,7 +110,9 @@ export async function saveDraftPurchase({
   paidOutOfPocket = false,
   outOfPocketAmount = 0,
   outOfPocketEmployeeName = '',
+  paymentMethod = 'نقدي',
   paidFromCashDrawerAmount = null,
+  paidFromMastercardAmount = null,
   notes = '',
   date = new Date().toISOString(),
   createdBy = ''
@@ -135,9 +137,13 @@ export async function saveDraftPurchase({
 
   const numOutOfPocket = paidOutOfPocket ? Math.max(0, Number(outOfPocketAmount) || 0) : 0;
   const numPaid = Number(paidAmount) || 0;
+  const isMastercard = paymentMethod === 'ماستر كارد' || paymentMethod === 'mastercard';
   const drawerPaid = paidFromCashDrawerAmount !== null && paidFromCashDrawerAmount !== undefined
-    ? Number(paidFromCashDrawerAmount)
-    : Math.max(0, numPaid - numOutOfPocket);
+    ? Math.max(0, Number(paidFromCashDrawerAmount) || 0)
+    : (isMastercard ? 0 : Math.max(0, numPaid - numOutOfPocket));
+  const cardPaid = paidFromMastercardAmount !== null && paidFromMastercardAmount !== undefined
+    ? Math.max(0, Number(paidFromMastercardAmount) || 0)
+    : (isMastercard ? Math.max(0, numPaid - numOutOfPocket) : 0);
 
   const draftData = {
     supplierName: cleanSupplierName,
@@ -145,6 +151,7 @@ export async function saveDraftPurchase({
     invoiceNumber: (invoiceNumber || '').trim(),
     items: items || [],
     paymentStatus: paymentStatus || 'paid',
+    paymentMethod: paymentMethod || (isMastercard ? 'ماستر كارد' : 'نقدي'),
     itemsTotalAmount: itemsTotal,
     shippingCost: numShipping,
     distributeShippingToCost: Boolean(distributeShippingToCost),
@@ -154,6 +161,7 @@ export async function saveDraftPurchase({
     outOfPocketAmount: numOutOfPocket,
     outOfPocketEmployeeName: (outOfPocketEmployeeName || '').trim(),
     paidFromCashDrawerAmount: drawerPaid,
+    paidFromMastercardAmount: cardPaid,
     invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
     invoiceFileType: detectedFileType || null,
     invoiceFileName: invoiceFileName || '',
@@ -200,7 +208,9 @@ export async function createPurchaseInvoice({
   paidOutOfPocket = false,
   outOfPocketAmount = 0,
   outOfPocketEmployeeName = '',
+  paymentMethod = 'نقدي',
   paidFromCashDrawerAmount = null,
+  paidFromMastercardAmount = null,
   invoiceImageUrl = null,
   invoiceFileType = null,
   invoiceFileName = '',
@@ -397,9 +407,13 @@ export async function createPurchaseInvoice({
 
     const numOutOfPocket = paidOutOfPocket ? Math.max(0, Number(outOfPocketAmount) || 0) : 0;
     const cleanOutOfPocketEmployee = paidOutOfPocket ? (outOfPocketEmployeeName || '').trim() || createdBy || 'الموظف' : '';
+    const isMastercard = paymentMethod === 'ماستر كارد' || paymentMethod === 'mastercard';
     const drawerPaid = paidFromCashDrawerAmount !== null && paidFromCashDrawerAmount !== undefined
       ? Math.max(0, Number(paidFromCashDrawerAmount) || 0)
-      : Math.max(0, numPaid - numOutOfPocket);
+      : (isMastercard ? 0 : Math.max(0, numPaid - numOutOfPocket));
+    const cardPaid = paidFromMastercardAmount !== null && paidFromMastercardAmount !== undefined
+      ? Math.max(0, Number(paidFromMastercardAmount) || 0)
+      : (isMastercard ? Math.max(0, numPaid - numOutOfPocket) : 0);
 
     transaction.set(purchaseRef, {
       invoiceNumber: generatedInvoiceNumber,
@@ -413,10 +427,12 @@ export async function createPurchaseInvoice({
       paidAmount: numPaid,
       remainingAmount,
       paymentStatus, // 'paid' | 'debt' | 'partial'
+      paymentMethod: paymentMethod || (isMastercard ? 'ماستر كارد' : 'نقدي'),
       paidOutOfPocket: Boolean(paidOutOfPocket && numOutOfPocket > 0),
       outOfPocketAmount: numOutOfPocket,
       outOfPocketEmployeeName: cleanOutOfPocketEmployee,
       paidFromCashDrawerAmount: drawerPaid,
+      paidFromMastercardAmount: cardPaid,
       invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
       invoiceFileType: detectedFileType || null,
       invoiceFileName: invoiceFileName || '',
@@ -721,8 +737,10 @@ export async function recordSupplierDebtPayment({
       supplierName: cleanSupplierName,
       purchaseId: purchaseInvoiceId || null,
       amount: numAmount,
-      paymentDate: new Date().toISOString(),
+      paymentDate: paymentIsoDate,
+      date: paymentIsoDate,
       paymentMethod,
+      paymentSource: paymentSource || (paymentMethod === 'ماستر كارد' ? 'mastercard' : 'cash_drawer'),
       notes: notes.trim(),
       createdAt: new Date().toISOString(),
       createdBy: createdBy || 'المسؤول'
@@ -853,7 +871,9 @@ export async function updatePurchaseInvoice(purchaseId, {
   paidOutOfPocket = false,
   outOfPocketAmount = 0,
   outOfPocketEmployeeName = '',
+  paymentMethod = 'نقدي',
   paidFromCashDrawerAmount = null,
+  paidFromMastercardAmount = null,
   invoiceImageUrl = null,
   invoiceFileType = null,
   invoiceFileName = '',
@@ -1123,9 +1143,13 @@ export async function updatePurchaseInvoice(purchaseId, {
 
     const numOutOfPocket = paidOutOfPocket ? Math.max(0, Number(outOfPocketAmount) || 0) : 0;
     const cleanOutOfPocketEmployee = paidOutOfPocket ? (outOfPocketEmployeeName || '').trim() || updatedBy || 'الموظف' : '';
+    const isMastercard = paymentMethod === 'ماستر كارد' || paymentMethod === 'mastercard';
     const drawerPaid = paidFromCashDrawerAmount !== null && paidFromCashDrawerAmount !== undefined
       ? Math.max(0, Number(paidFromCashDrawerAmount) || 0)
-      : Math.max(0, numPaid - numOutOfPocket);
+      : (isMastercard ? 0 : Math.max(0, numPaid - numOutOfPocket));
+    const cardPaid = paidFromMastercardAmount !== null && paidFromMastercardAmount !== undefined
+      ? Math.max(0, Number(paidFromMastercardAmount) || 0)
+      : (isMastercard ? Math.max(0, numPaid - numOutOfPocket) : 0);
 
     transaction.update(pRef, {
       supplierName: cleanSupplierName,
@@ -1139,10 +1163,12 @@ export async function updatePurchaseInvoice(purchaseId, {
       paidAmount: numPaid,
       remainingAmount,
       paymentStatus,
+      paymentMethod: paymentMethod || (isMastercard ? 'ماستر كارد' : 'نقدي'),
       paidOutOfPocket: Boolean(paidOutOfPocket && numOutOfPocket > 0),
       outOfPocketAmount: numOutOfPocket,
       outOfPocketEmployeeName: cleanOutOfPocketEmployee,
       paidFromCashDrawerAmount: drawerPaid,
+      paidFromMastercardAmount: cardPaid,
       invoiceImageUrl: sanitizeInvoiceAttachment(invoiceImageUrl),
       invoiceFileType: detectedFileType || null,
       invoiceFileName: invoiceFileName || '',

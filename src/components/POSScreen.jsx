@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { checkoutSale, findProductByBarcode } from '../services/salesService';
-import { createOffer } from '../services/offersService';
+import { createOffer, updateOffer } from '../services/offersService';
 import { createCartItem, cartItemsFromDraft } from '../models/sale';
 import { useCustomers } from '../hooks/useCustomers';
 import { useUI } from '../contexts/UIContext';
@@ -111,12 +111,33 @@ export default function POSScreen({
     return carts.find((c) => c.id === activeCartId) || carts[0] || createInitialCart(1);
   }, [carts, activeCartId]);
 
+  // Determine if we are in offer mode (either from Offers section or selected from customerType dropdown)
+  const isOfferMode = mode === 'offer' || activeCart.customerType === 'offer';
+
   // Update active cart properties
   const updateActiveCart = useCallback((updates) => {
     setCarts((prevCarts) =>
       prevCarts.map((c) => (c.id === activeCartId ? { ...c, ...updates } : c))
     );
   }, [activeCartId]);
+
+  // Sanitize initial carts from localStorage: ensure non-offer carts never show "عرض سعر" as their name
+  useEffect(() => {
+    setCarts((prevCarts) => {
+      let changed = false;
+      const cleaned = prevCarts.map((c, i) => {
+        if (c.customerType !== 'offer' && c.name && c.name.includes('عرض')) {
+          changed = true;
+          return {
+            ...c,
+            name: `سلة ${i + 1}`,
+          };
+        }
+        return c;
+      });
+      return changed ? cleaned : prevCarts;
+    });
+  }, []);
 
   // Handle external draft to open
   useEffect(() => {
@@ -147,7 +168,8 @@ export default function POSScreen({
     if (offerToOpen && mode === 'offer') {
       const offerItems = cartItemsFromDraft(offerToOpen, products);
       updateActiveCart({
-        name: `عرض #${offerToOpen.offerNumber || 'معدل'}`,
+        name: offerToOpen.offerName || `عرض #${offerToOpen.offerNumber || 'معدل'}`,
+        offerName: offerToOpen.offerName || '',
         customerType: 'offer',
         items: offerItems,
         customerName: offerToOpen.customerName || '',
@@ -155,10 +177,37 @@ export default function POSScreen({
         discount: Number(offerToOpen.discount) || 0,
         notes: offerToOpen.notes || '',
         editingSaleId: offerToOpen.id || null,
+        invoiceNumber: offerToOpen.offerNumber || null,
       });
       onOfferOpened?.();
     }
   }, [offerToOpen, mode, products, updateActiveCart, onOfferOpened]);
+
+  // Handle fresh offer initialization when entering in offer mode without offerToOpen
+  useEffect(() => {
+    if (mode === 'offer' && !offerToOpen) {
+      if (activeCart.customerType === 'offer') return;
+
+      const newOfferCartId = `offer_cart_${Date.now()}`;
+      const newCart = {
+        ...createInitialCart(carts.length + 1),
+        id: newOfferCartId,
+        name: 'عرض سعر جديد',
+        offerName: '',
+        customerType: 'offer',
+        items: [],
+        customerName: '',
+        phone1: '',
+        discount: 0,
+        notes: '',
+        editingSaleId: null,
+        invoiceNumber: null,
+        invoiceDate: new Date().toISOString().slice(0, 10),
+      };
+      setCarts((prev) => [newCart, ...prev]);
+      setActiveCartId(newOfferCartId);
+    }
+  }, [mode, offerToOpen, activeCart.customerType, carts.length]);
 
   // Switch customer type (زبون / عميل / عرض سعر) and adjust item prices
   const handleChangeCustomerType = (newType) => {
@@ -185,7 +234,17 @@ export default function POSScreen({
     updateActiveCart({
       customerType: newType,
       items: updatedItems,
+      ...(newType !== 'offer' ? { offerName: '' } : {}),
     });
+  };
+
+  // Exit offer mode: returns to offers screen if in dedicated offer mode, or switches to retail if in normal POS
+  const handleExitOfferMode = () => {
+    if (mode === 'offer') {
+      onCloseOfferMode?.();
+    } else {
+      handleChangeCustomerType('retail');
+    }
   };
 
   // Handle choosing an existing customer: auto-detects if client or retail and switches prices
@@ -399,9 +458,14 @@ export default function POSScreen({
   // Add new empty cart
   const handleAddNewCart = () => {
     const newCart = createInitialCart(carts.length + 1);
+    if (isOfferMode) {
+      newCart.customerType = 'offer';
+      newCart.name = 'عرض سعر جديد';
+      newCart.offerName = '';
+    }
     setCarts((prev) => [...prev, newCart]);
     setActiveCartId(newCart.id);
-    toast('تم فتح سلة جديدة فارغة', 'success');
+    toast(isOfferMode ? 'تم فتح عرض سعر جديد' : 'تم فتح سلة جديدة فارغة', 'success');
   };
 
   // Rename cart
@@ -525,40 +589,67 @@ export default function POSScreen({
     }
   };
 
-  // Save Quotation / Offer & Print
-  const handleSaveOffer = async () => {
+  // Save Quotation / Offer (حفظ العرض أو طباعة العرض)
+  const handleSaveOffer = async ({ printAfterSave = false } = {}) => {
     if ((activeCart.items || []).length === 0) {
       toast('السلة فارغة، أضف مواد لحفظ عرض السعر', 'error');
       return;
     }
 
+    const offerTitle = (activeCart.offerName !== undefined ? activeCart.offerName : activeCart.name || '').trim();
+    const finalOfferName = offerTitle && !offerTitle.startsWith('سلة')
+      ? offerTitle 
+      : (activeCart.customerName ? `عرض سعر - ${activeCart.customerName}` : 'عرض سعر جديد');
+
     try {
       setProcessingAction(true);
       const offerOptions = {
-        offerName: activeCart.name || 'عرض سعر',
+        offerName: finalOfferName,
         customerName: activeCart.customerName || 'زبون عام',
         discount: Number(activeCart.discount) || 0,
         notes: activeCart.notes || '',
         cashierEmail,
       };
 
-      const result = await createOffer(activeCart.items, offerOptions);
+      let result;
+      if (activeCart.editingSaleId) {
+        result = await updateOffer(activeCart.editingSaleId, activeCart.items, offerOptions);
+      } else {
+        result = await createOffer(activeCart.items, offerOptions);
+      }
 
-      // Prepare receipt preview for offer
-      const completedOffer = {
-        ...result,
-        isOffer: true,
-        offerNumber: result.offerNumber,
-        invoiceNumber: result.offerNumber,
-        items: activeCart.items,
-        total: result.total,
-        customerName: offerOptions.customerName,
-        createdAt: new Date(),
-      };
+      const offerNumber = result?.offerNumber || (activeCart.editingSaleId ? activeCart.invoiceNumber : null);
 
-      setLastCompletedSale(completedOffer);
-      closeActiveCartAfterPayment();
-      toast(`✅ تم حفظ عرض السعر بنجاح برقم: #${result.offerNumber}`, 'success');
+      if (printAfterSave) {
+        // Prepare receipt preview for offer
+        const completedOffer = {
+          ...result,
+          id: result?.id || activeCart.editingSaleId,
+          isOffer: true,
+          offerNumber: offerNumber,
+          invoiceNumber: offerNumber,
+          offerName: finalOfferName,
+          items: activeCart.items,
+          total: result?.total !== undefined ? result.total : activeCart.items.reduce((s, it) => s + (Number(it.lineTotal) || (it.quantity * it.unitPrice)), 0) - (Number(activeCart.discount) || 0),
+          customerName: offerOptions.customerName,
+          phone1: activeCart.phone1 || '',
+          customerPhone: activeCart.phone1 || '',
+          notes: offerOptions.notes,
+          discount: offerOptions.discount,
+          cashierEmail,
+          createdAt: new Date(),
+        };
+
+        setLastCompletedSale(completedOffer);
+        closeActiveCartAfterPayment();
+        toast(`✅ تم حفظ عرض السعر بنجاح برقم: #${offerNumber || ''}`, 'success');
+      } else {
+        closeActiveCartAfterPayment();
+        toast(`✅ تم حفظ عرض السعر بنجاح برقم: #${offerNumber || ''}`, 'success');
+        if (mode === 'offer') {
+          onCloseOfferMode?.();
+        }
+      }
     } catch (err) {
       toast(`فشل حفظ عرض السعر: ${err.message}`, 'error');
     } finally {
@@ -620,6 +711,8 @@ export default function POSScreen({
         onSelectCustomer={handleSelectCustomer}
         onSetNewCustomer={handleSetNewCustomer}
         onClearCustomer={handleClearCustomer}
+        isOfferMode={isOfferMode}
+        onCloseOfferMode={handleExitOfferMode}
       />
 
       {/* 2. جدول السلة الرئيسي (Cart Table) */}
@@ -638,9 +731,11 @@ export default function POSScreen({
         activeCart={activeCart}
         onUpdateDiscount={(newDiscount) => updateActiveCart({ discount: newDiscount })}
         onCheckout={() => setShowCheckoutModal(true)}
-        onSaveOffer={handleSaveOffer}
+        onSaveOffer={() => handleSaveOffer({ printAfterSave: false })}
+        onPrintOffer={() => handleSaveOffer({ printAfterSave: true })}
         onPrintDraft={handlePrintDraftSale}
         processing={processingAction}
+        isOfferMode={isOfferMode}
       />
 
       {/* النوافذ المنبثقة واللوحات الجانبية */}
@@ -702,7 +797,13 @@ export default function POSScreen({
       {lastCompletedSale && (
         <InvoiceReceipt
           sale={lastCompletedSale}
-          onClose={() => setLastCompletedSale(null)}
+          onClose={() => {
+            const wasOffer = Boolean(lastCompletedSale.isOffer);
+            setLastCompletedSale(null);
+            if (wasOffer && mode === 'offer') {
+              onCloseOfferMode?.();
+            }
+          }}
           inlinePrintMode={false}
         />
       )}

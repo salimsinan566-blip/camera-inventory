@@ -152,7 +152,16 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
           <div className="flex justify-between items-start mb-2.5">
             {/* يمين: فاتورة إلى */}
             <div className="text-sm text-right">
-              <h3 className="font-bold text-slate-500 mb-0.5 text-xs" style={{ letterSpacing: '0px' }}>فاتورة إلى</h3>
+              {sale.isOffer && sale.offerName && (
+                <div className="mb-1">
+                  <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2.5 py-0.5 rounded-lg inline-block">
+                    🏷️ {sale.offerName}
+                  </span>
+                </div>
+              )}
+              <h3 className="font-bold text-slate-500 mb-0.5 text-xs" style={{ letterSpacing: '0px' }}>
+                {sale.isOffer ? 'عرض مقدم إلى' : 'فاتورة إلى'}
+              </h3>
               <p className="text-slate-900 font-extrabold text-xl sm:text-2xl" style={{ letterSpacing: '0px' }}>
                 <bdi dir="auto">{sale.customerName || 'زبون عام'}</bdi>
               </p>

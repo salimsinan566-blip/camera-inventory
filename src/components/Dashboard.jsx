@@ -64,20 +64,34 @@ export default function Dashboard({ user }) {
   });
 
   // Navigation function with browser history support
-  const navigateToTab = (tabId) => {
+  const navigateToTab = (tabId, targetPosMode = null) => {
     try {
       const url = new URL(window.location);
       if (!tabId || tabId === 'launcher') {
         url.searchParams.delete('tab');
+        url.searchParams.delete('mode');
         window.history.pushState({ tab: null }, '', url.pathname + (url.search ? url.search : ''));
         setActiveTab(null);
       } else {
-        if (tabId === 'pos') setPosMode('sale');
+        if (tabId === 'pos') {
+          const effectiveMode = targetPosMode || 'sale';
+          setPosMode(effectiveMode);
+          if (effectiveMode === 'offer') {
+            url.searchParams.set('mode', 'offer');
+          } else {
+            url.searchParams.delete('mode');
+          }
+        } else {
+          url.searchParams.delete('mode');
+        }
         url.searchParams.set('tab', tabId);
         window.history.pushState({ tab: tabId }, '', url.toString());
         setActiveTab(tabId);
       }
     } catch (e) {
+      if (tabId === 'pos') {
+        setPosMode(targetPosMode || 'sale');
+      }
       setActiveTab(tabId || null);
     }
   };
@@ -87,7 +101,12 @@ export default function Dashboard({ user }) {
     function handlePopState() {
       try {
         const params = new URLSearchParams(window.location.search);
-        setActiveTab(params.get('tab') || null);
+        const t = params.get('tab') || null;
+        const m = params.get('mode') === 'offer' ? 'offer' : 'sale';
+        setActiveTab(t);
+        if (t === 'pos') {
+          setPosMode(m);
+        }
       } catch (e) {
         setActiveTab(null);
       }
@@ -97,7 +116,14 @@ export default function Dashboard({ user }) {
   }, []);
 
   const [inventorySubTab, setInventorySubTab] = useState('products'); // 'products' | 'history'
-  const [posMode, setPosMode] = useState('sale'); // 'sale' | 'offer'
+  const [posMode, setPosMode] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mode') === 'offer' ? 'offer' : 'sale';
+    } catch (e) {
+      return 'sale';
+    }
+  });
   const [draftToOpen, setDraftToOpen] = useState(null);
   const [offerToOpen, setOfferToOpen] = useState(null);
   const [custodyTechToOpen, setCustodyTechToOpen] = useState(null);
@@ -311,26 +337,30 @@ export default function Dashboard({ user }) {
             onOfferOpened={() => setOfferToOpen(null)}
             custodyTechToOpen={custodyTechToOpen}
             onCustodyTechOpened={() => setCustodyTechToOpen(null)}
-            onCloseOfferMode={() => navigateToTab('offers')}
+            onCloseOfferMode={() => {
+              setPosMode('sale');
+              navigateToTab('offers');
+            }}
           />
         </div>
 
         <div className={activeTab === 'offers' ? 'block h-full' : 'hidden'}>
           <OffersScreen 
             onCreateOffer={() => {
+              setOfferToOpen(null);
               setPosMode('offer');
-              navigateToTab('pos');
+              navigateToTab('pos', 'offer');
             }}
             onEditOffer={(offer) => {
               setOfferToOpen(offer);
               setPosMode('offer');
-              navigateToTab('pos');
+              navigateToTab('pos', 'offer');
             }}
             onConvertOfferToSale={(offer) => {
               // Load it as a draft in sale mode
               setDraftToOpen(offer);
               setPosMode('sale');
-              navigateToTab('pos');
+              navigateToTab('pos', 'sale');
             }}
           />
         </div>

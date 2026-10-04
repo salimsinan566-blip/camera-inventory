@@ -18,6 +18,7 @@ export default function PurchaseCheckoutModal({
   user,
   initialPaymentStatus = 'paid',
   initialPaidAmount = '',
+  initialPaymentMethod = 'نقدي',
   initialOutOfPocket = false,
   initialOutOfPocketAmount = '',
   initialOutOfPocketEmployee = '',
@@ -30,7 +31,7 @@ export default function PurchaseCheckoutModal({
 }) {
   const [paymentStatus, setPaymentStatus] = useState(initialPaymentStatus); // 'paid' | 'debt' | 'partial'
   const [paidAmount, setPaidAmount] = useState(initialPaidAmount ? String(initialPaidAmount) : '');
-  const [paymentMethod, setPaymentMethod] = useState('نقدي'); // 'نقدي' | 'ماستر كارد' | 'تحويل مالي'
+  const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod || 'نقدي'); // 'نقدي' | 'ماستر كارد'
   const [paidOutOfPocket, setPaidOutOfPocket] = useState(initialOutOfPocket);
   const [outOfPocketAmount, setOutOfPocketAmount] = useState(
     initialOutOfPocketAmount ? String(initialOutOfPocketAmount) : ''
@@ -59,6 +60,7 @@ export default function PurchaseCheckoutModal({
           ? String(totalAmount)
           : ''
       );
+      setPaymentMethod(initialPaymentMethod || 'نقدي');
       setPaidOutOfPocket(Boolean(initialOutOfPocket));
       setOutOfPocketAmount(initialOutOfPocketAmount ? String(initialOutOfPocketAmount) : '');
       setOutOfPocketEmployee(
@@ -70,6 +72,7 @@ export default function PurchaseCheckoutModal({
     isOpen,
     initialPaymentStatus,
     initialPaidAmount,
+    initialPaymentMethod,
     initialOutOfPocket,
     initialOutOfPocketAmount,
     initialOutOfPocketEmployee,
@@ -89,8 +92,11 @@ export default function PurchaseCheckoutModal({
 
   const remainingDebt = Math.max(0, totalAmount - calculatedPaid);
 
+  const isMastercard = paymentMethod === 'ماستر كارد' || paymentMethod === 'mastercard';
   const numOOP = paidOutOfPocket ? Math.max(0, Math.min(calculatedPaid, Number(outOfPocketAmount) || 0)) : 0;
-  const cashDrawerDeduction = Math.max(0, calculatedPaid - numOOP);
+  const netPaidAfterOOP = Math.max(0, calculatedPaid - numOOP);
+  const cashDrawerDeduction = isMastercard ? 0 : netPaidAfterOOP;
+  const mastercardDeduction = isMastercard ? netPaidAfterOOP : 0;
 
   const handleConfirm = (e) => {
     e.preventDefault();
@@ -103,6 +109,7 @@ export default function PurchaseCheckoutModal({
       outOfPocketAmount: numOOP,
       outOfPocketEmployeeName: outOfPocketEmployee.trim(),
       paidFromCashDrawerAmount: cashDrawerDeduction,
+      paidFromMastercardAmount: mastercardDeduction,
       notes: notes.trim(),
     });
   };
@@ -243,6 +250,12 @@ export default function PurchaseCheckoutModal({
                   <option value="نقدي">نقدي</option>
                   <option value="ماستر كارد">ماستر كارد</option>
                 </select>
+                {isMastercard && calculatedPaid > 0 && (
+                  <p className="text-[10px] text-indigo-700 font-bold mt-1 bg-indigo-50 border border-indigo-200 rounded p-1 flex items-center gap-1">
+                    <span>💳</span>
+                    <span>خصم من الماستركارد ({formatIQD(mastercardDeduction)} د.ع) بدون المساس بالقاصة</span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -363,9 +376,11 @@ export default function PurchaseCheckoutModal({
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200 font-bold">
-                      <span className="text-slate-800">الصافي المخصوم من القاصة اليومية:</span>
-                      <span className="font-black text-slate-950 font-mono">
-                        {formatIQD(cashDrawerDeduction)} د.ع
+                      <span className={isMastercard ? 'text-indigo-800' : 'text-slate-800'}>
+                        {isMastercard ? 'الصافي المخصوم من رصيد الماستركارد:' : 'الصافي المخصوم من القاصة اليومية:'}
+                      </span>
+                      <span className={`font-black font-mono ${isMastercard ? 'text-indigo-950' : 'text-slate-950'}`}>
+                        {formatIQD(isMastercard ? mastercardDeduction : cashDrawerDeduction)} د.ع
                       </span>
                     </div>
                   </div>

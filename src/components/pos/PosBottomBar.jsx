@@ -5,8 +5,10 @@ export default function PosBottomBar({
   onUpdateDiscount,
   onCheckout,
   onSaveOffer,
+  onPrintOffer,
   onPrintDraft,
   processing = false,
+  isOfferMode: isOfferModeProp,
 }) {
   const items = activeCart.items || [];
   
@@ -21,7 +23,9 @@ export default function PosBottomBar({
   const discount = Number(activeCart.discount) || 0;
   const grandTotal = Math.max(0, subtotal - discount);
 
-  const isOfferMode = activeCart.customerType === 'offer';
+  const isOfferMode = isOfferModeProp !== undefined
+    ? Boolean(isOfferModeProp)
+    : (activeCart.customerType === 'offer');
   const isCartEmpty = items.length === 0;
 
   return (
@@ -86,18 +90,34 @@ export default function PosBottomBar({
           </div>
         </div>
 
-        {/* الجهة اليسرى: زر "طباعة فاتورة غير مؤكدة" وزر "حاسب" أو "حفظ عرض السعر" */}
+        {/* الجهة اليسرى: أزرار العمليات */}
         <div className="flex items-center gap-2 shrink-0">
           {isOfferMode ? (
-            <button
-              type="button"
-              disabled={isCartEmpty || processing}
-              onClick={onSaveOffer}
-              className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white font-black text-sm md:text-base rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed"
-            >
-              <span>🖨️</span>
-              <span>{processing ? 'جاري الحفظ...' : 'حفظ عرض السعر وطباعة'}</span>
-            </button>
+            <>
+              {/* زر حفظ العرض */}
+              <button
+                type="button"
+                disabled={isCartEmpty || processing}
+                onClick={onSaveOffer}
+                className="flex items-center gap-1.5 px-4 sm:px-5 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white font-black text-xs sm:text-sm md:text-base rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed"
+                title="حفظ عرض السعر"
+              >
+                <span>💾</span>
+                <span>{processing ? 'جاري الحفظ...' : 'حفظ العرض'}</span>
+              </button>
+
+              {/* زر طباعة العرض */}
+              <button
+                type="button"
+                disabled={isCartEmpty || processing}
+                onClick={onPrintOffer}
+                className="flex items-center gap-1.5 px-4 sm:px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-black text-xs sm:text-sm md:text-base rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed"
+                title="حفظ وطباعة عرض السعر"
+              >
+                <span>🖨️</span>
+                <span>{processing ? 'جاري الحفظ والطباعة...' : 'طباعة العرض'}</span>
+              </button>
+            </>
           ) : (
             <>
               {/* زر طباعة فاتورة غير مؤكدة */}

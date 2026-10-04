@@ -146,7 +146,15 @@ export default function DebtPaymentModal({
               <label className="block text-xs font-bold text-slate-700 mb-1">طريقة الدفع</label>
               <select
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
+                onChange={(e) => {
+                  const m = e.target.value;
+                  setPaymentMethod(m);
+                  if (m === 'ماستر كارد') {
+                    setPaymentSource('mastercard');
+                  } else if (paymentSource === 'mastercard') {
+                    setPaymentSource('cash_drawer');
+                  }
+                }}
                 className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-400"
               >
                 <option value="نقدي">نقدي</option>
@@ -162,6 +170,7 @@ export default function DebtPaymentModal({
                 className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-400"
               >
                 <option value="cash_drawer">القاصة اليومية (خصم من الصندوق)</option>
+                <option value="mastercard">بطاقة الماستركارد (خصم من رصيد الماستر)</option>
                 <option value="management">حساب الإدارة (خارج الصندوق)</option>
               </select>
             </div>

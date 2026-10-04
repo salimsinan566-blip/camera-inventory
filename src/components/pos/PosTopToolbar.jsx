@@ -18,6 +18,8 @@ export default function PosTopToolbar({
   onSelectCustomer,
   onSetNewCustomer,
   onClearCustomer,
+  isOfferMode = false,
+  onCloseOfferMode,
 }) {
   const [searchInput, setSearchInput] = useState('');
   const [showResults, setShowResults] = useState(false);
@@ -74,9 +76,18 @@ export default function PosTopToolbar({
     }
   };
 
-  const invoiceLabel = activeCart.customerType === 'offer'
-    ? 'عرض سعر'
-    : (activeCart.invoiceNumber ? `فاتورة #${activeCart.invoiceNumber}` : (activeCart.name || 'سلة جديدة'));
+  const invoiceLabel = useMemo(() => {
+    if (isOfferMode) {
+      return activeCart.offerName || 'عرض سعر جديد';
+    }
+    if (activeCart.invoiceNumber) {
+      return `فاتورة #${activeCart.invoiceNumber}`;
+    }
+    if (activeCart.name && !activeCart.name.includes('عرض')) {
+      return activeCart.name;
+    }
+    return 'سلة 1';
+  }, [isOfferMode, activeCart.offerName, activeCart.invoiceNumber, activeCart.name]);
 
   return (
     <header className="bg-white border-b border-slate-200 px-3 md:px-5 py-2.5 shadow-xs shrink-0 select-none safe-top z-30 flex flex-col gap-2">
@@ -84,25 +95,47 @@ export default function PosTopToolbar({
       <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 flex-wrap sm:flex-nowrap">
         {/* المجموعة اليمنى: أدوات الفاتورة */}
         <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
-          {/* 1. رقم الفاتورة */}
-          <div 
-            className="h-9 flex items-center gap-1 px-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-800 font-black text-xs shrink-0 shadow-2xs"
-            title="رقم السلة / الفاتورة الحالية"
-          >
-            <span className="text-slate-400">#</span>
-            <span className="truncate max-w-[120px]">{invoiceLabel}</span>
-          </div>
+          {/* 1. رقم الفاتورة أو شارة وضع عرض السعر */}
+          {isOfferMode ? (
+            <div 
+              className="h-9 flex items-center gap-1.5 px-3 bg-amber-500 text-white font-black text-xs rounded-xl shadow-xs shrink-0 animate-fade-in"
+              title="أنت الآن في وضع إعداد عرض سعر"
+            >
+              <span>📑</span>
+              <span>وضع عرض السعر</span>
+              {onCloseOfferMode && (
+                <button
+                  type="button"
+                  onClick={onCloseOfferMode}
+                  className="mr-1 bg-amber-600/90 hover:bg-amber-700 px-2 py-0.5 rounded-lg text-[11px] font-bold text-white transition-colors cursor-pointer"
+                  title="الرجوع لقائمة عروض الأسعار"
+                >
+                  ✕ خروج
+                </button>
+              )}
+            </div>
+          ) : (
+            <div 
+              className="h-9 flex items-center gap-1 px-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-800 font-black text-xs shrink-0 shadow-2xs"
+              title="رقم السلة / الفاتورة الحالية"
+            >
+              <span className="text-slate-400">#</span>
+              <span className="truncate max-w-[120px]">{invoiceLabel}</span>
+            </div>
+          )}
 
-          {/* 2. تعديل فاتورة سابقة */}
-          <button
-            type="button"
-            onClick={onOpenEditInvoiceModal}
-            className="h-9 flex items-center gap-1 px-2.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-xl text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
-            title="تعديل فاتورة سابقة"
-          >
-            <span>🔍</span>
-            <span>تعديل فاتورة</span>
-          </button>
+          {/* 2. تعديل فاتورة سابقة (تظهر في وضع البيع العادي) */}
+          {!isOfferMode && (
+            <button
+              type="button"
+              onClick={onOpenEditInvoiceModal}
+              className="h-9 flex items-center gap-1 px-2.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-xl text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+              title="تعديل فاتورة سابقة"
+            >
+              <span>🔍</span>
+              <span>تعديل فاتورة</span>
+            </button>
+          )}
 
           {/* 3. تاريخ الفاتورة */}
           <div className="h-9 flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 shrink-0 shadow-2xs hover:border-slate-300 transition-colors">
@@ -167,20 +200,40 @@ export default function PosTopToolbar({
         </div>
       </div>
 
-      {/* السطر الثاني: شريط تسجيل اسم العميل، فئة السعر، وشريط بحث المواد والباركود (ارتفاع موحد h-10) */}
+      {/* السطر الثاني: شريط تسجيل اسم العميل، اسم العرض، فئة السعر، وشريط بحث المواد والباركود (ارتفاع موحد h-10) */}
       <div className="flex items-center gap-2 md:gap-3">
         {/* 1. شريط تسجيل اسم الزبون / العميل (حقل إدخال مباشر h-10) */}
         <PosCustomerSelector
           customerName={activeCart.customerName || ''}
           customerPhone={activeCart.phone1 || ''}
-          customerType={activeCart.customerType || 'retail'}
+          customerType={activeCart.customerType || (isOfferMode ? 'offer' : 'retail')}
           customers={customers}
           onSelectCustomer={onSelectCustomer}
           onSetNewCustomer={onSetNewCustomer}
           onClearCustomer={onClearCustomer}
         />
 
-        {/* 2. فئة السعر (قائمة منسدلة h-10) */}
+        {/* 2. حقل اسم أو عنوان عرض السعر */}
+        {isOfferMode && (
+          <div className="relative shrink-0 w-44 sm:w-56 md:w-64">
+            <div className="relative flex items-center">
+              <span className="absolute right-3 text-amber-500 text-xs pointer-events-none font-bold">🏷️</span>
+              <input
+                type="text"
+                value={activeCart.offerName !== undefined ? activeCart.offerName : (activeCart.name && !activeCart.name.startsWith('سلة') ? activeCart.name : '')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onUpdateActiveCart({ offerName: val, name: val || 'عرض سعر جديد' });
+                }}
+                placeholder="اسم العرض (مثال: كاميرات المجمع)..."
+                className="w-full h-10 bg-amber-50/80 hover:bg-white focus:bg-white border border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-xl pr-8 pl-3 text-xs md:text-sm font-bold text-amber-950 placeholder-amber-400 outline-none transition-all shadow-2xs"
+                title="اسم أو عنوان عرض السعر"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 3. فئة السعر (قائمة منسدلة h-10) */}
         <div className="relative shrink-0">
           <select
             value={activeCart.customerType || 'retail'}

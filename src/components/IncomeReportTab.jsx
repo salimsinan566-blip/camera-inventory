@@ -339,10 +339,10 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       purchases.forEach((p) => {
         const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
         if (pDate && pDate > recDate) {
-          // استخدام نفس المنطق في لوحة التحكم: paidFromCashDrawerAmount له الأولوية
+          const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
           const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
             ? Number(p.paidFromCashDrawerAmount)
-            : Number(p.paidAmount || 0);
+            : (isCard ? 0 : Number(p.paidAmount || 0));
           cashOutflowSince += actualDrawerPaid;
         }
       });
@@ -391,7 +391,13 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
     });
 
     const allExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const allCashPurchases = purchases.reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
+    const allCashPurchases = purchases.reduce((sum, p) => {
+      const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
+      const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
+        ? Number(p.paidFromCashDrawerAmount)
+        : (isCard ? 0 : Number(p.paidAmount || 0));
+      return sum + actualDrawerPaid;
+    }, 0);
     const allSupplierDebtPayments = supplierDebtPayments
       .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening')
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);

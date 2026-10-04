@@ -1053,6 +1053,7 @@ export default function PurchaseRegisterScreen({
         user={user}
         initialPaymentStatus={editingInvoice?.paymentStatus || 'paid'}
         initialPaidAmount={editingInvoice?.paidAmount || ''}
+        initialPaymentMethod={editingInvoice?.paymentMethod || 'نقدي'}
         initialOutOfPocket={editingInvoice?.paidOutOfPocket || false}
         initialOutOfPocketAmount={editingInvoice?.outOfPocketAmount || ''}
         initialOutOfPocketEmployee={editingInvoice?.outOfPocketEmployeeName || ''}

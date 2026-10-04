@@ -157,9 +157,10 @@ export function useCashDrawerLedger(selectedDateStr) {
       (purchases || []).forEach((p) => {
         const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
         if (pDate && pDate > recDate) {
+          const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
           const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
             ? Number(p.paidFromCashDrawerAmount)
-            : Number(p.paidAmount || 0);
+            : (isCard ? 0 : Number(p.paidAmount || 0));
           outflowSince += actualDrawerPaid;
         }
       });
@@ -249,9 +250,10 @@ export function useCashDrawerLedger(selectedDateStr) {
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     const allCashPurchases = (purchases || []).reduce((sum, p) => {
+      const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
       const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
         ? Number(p.paidFromCashDrawerAmount)
-        : Number(p.paidAmount || 0);
+        : (isCard ? 0 : Number(p.paidAmount || 0));
       return sum + actualDrawerPaid;
     }, 0);
 
@@ -444,9 +446,10 @@ export function useCashDrawerLedger(selectedDateStr) {
     // و) المشتريات المسددة نقداً من القاصة (Cash Purchases)
     (purchases || []).forEach((p) => {
       const pDate = toDateSafe(p.createdAt || p.date);
+      const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
       const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
         ? Number(p.paidFromCashDrawerAmount)
-        : Number(p.paidAmount || 0);
+        : (isCard ? 0 : Number(p.paidAmount || 0));
 
       if (pDate && actualDrawerPaid > 0) {
         events.push({

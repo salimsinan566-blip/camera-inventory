@@ -246,7 +246,29 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         }
       });
 
-      return baseAmount + inflowSince + transfersInSince - transfersOutSince - expensesMastercardSince;
+      let purchasesMastercardSince = 0;
+      (purchases || []).forEach((p) => {
+        const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard' || Number(p.paidFromMastercardAmount || 0) > 0;
+        if (isCard) {
+          const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
+          if (pDate && pDate > recDate) {
+            const cardAmt = Number(p.paidFromMastercardAmount || 0) || (p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard' ? Number(p.paidAmount || 0) : 0);
+            purchasesMastercardSince += cardAmt;
+          }
+        }
+      });
+
+      let supplierDebtPaymentsMastercardSince = 0;
+      (supplierDebtPayments || []).forEach((sp) => {
+        if (sp.paymentSource === 'mastercard' || sp.paymentMethod === 'ماستر كارد' || sp.paymentMethod === 'mastercard') {
+          const spDate = sp.createdAt ? new Date(sp.createdAt) : (sp.paymentDate || sp.date ? new Date(sp.paymentDate || sp.date) : null);
+          if (spDate && spDate > recDate) {
+            supplierDebtPaymentsMastercardSince += Number(sp.amount || 0);
+          }
+        }
+      });
+
+      return baseAmount + inflowSince + transfersInSince - transfersOutSince - expensesMastercardSince - purchasesMastercardSince - supplierDebtPaymentsMastercardSince;
     }
 
     // Cumulative calculation
@@ -269,8 +291,24 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       }
     });
 
-    return (allMastercardSales + allMastercardIncomes + allDebtMastercardRepayments + totalTransfersIn) - totalTransfersOut - totalMastercardExpenses;
-  }, [sales, incomes, expenses, transfers, latestReconciliation, allMastercardSales, allMastercardIncomes, allDebtMastercardRepayments, confirmedSaleIds]);
+    let totalMastercardPurchases = 0;
+    (purchases || []).forEach((p) => {
+      const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard' || Number(p.paidFromMastercardAmount || 0) > 0;
+      if (isCard) {
+        const cardAmt = Number(p.paidFromMastercardAmount || 0) || (p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard' ? Number(p.paidAmount || 0) : 0);
+        totalMastercardPurchases += cardAmt;
+      }
+    });
+
+    let totalMastercardSupplierDebts = 0;
+    (supplierDebtPayments || []).forEach((sp) => {
+      if (sp.paymentSource === 'mastercard' || sp.paymentMethod === 'ماستر كارد' || sp.paymentMethod === 'mastercard') {
+        totalMastercardSupplierDebts += Number(sp.amount || 0);
+      }
+    });
+
+    return (allMastercardSales + allMastercardIncomes + allDebtMastercardRepayments + totalTransfersIn) - totalTransfersOut - totalMastercardExpenses - totalMastercardPurchases - totalMastercardSupplierDebts;
+  }, [sales, incomes, expenses, purchases, supplierDebtPayments, transfers, latestReconciliation, allMastercardSales, allMastercardIncomes, allDebtMastercardRepayments, confirmedSaleIds]);
 
   const todaysManualIncome = useMemo(() => {
     return (incomes || [])
@@ -311,9 +349,10 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     const pCash = purchases
       .filter((p) => (p.date || '').slice(0, 10) === todayStr)
       .reduce((sum, p) => {
+        const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
         const actualFromDrawer = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
           ? Number(p.paidFromCashDrawerAmount)
-          : Number(p.paidAmount || 0);
+          : (isCard ? 0 : Number(p.paidAmount || 0));
         return sum + actualFromDrawer;
       }, 0);
     const spCash = (supplierDebtPayments || [])
@@ -440,9 +479,10 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       purchases.forEach((p) => {
         const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
         if (pDate && pDate > recDate) {
+          const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
           const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
             ? Number(p.paidFromCashDrawerAmount)
-            : Number(p.paidAmount || 0);
+            : (isCard ? 0 : Number(p.paidAmount || 0));
           outflowSince += actualDrawerPaid;
         }
       });
@@ -532,9 +572,10 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     const allCashPurchases = purchases.reduce((sum, p) => {
+      const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
       const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
         ? Number(p.paidFromCashDrawerAmount)
-        : Number(p.paidAmount || 0);
+        : (isCard ? 0 : Number(p.paidAmount || 0));
       return sum + actualDrawerPaid;
     }, 0);
     const allSupplierDebtPayments = (supplierDebtPayments || [])
