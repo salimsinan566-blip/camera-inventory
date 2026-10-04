@@ -203,12 +203,12 @@ export default function ExpensesScreen({ user }) {
     });
   }, [expenses, activeTab, searchTerm, categoryFilter, paymentSourceFilter, dateFilter]);
 
-  // Totals & Breakdown: Today & Current Month (Fixed commitments + Variable sundries)
+  // Totals & Breakdown: Today (Variable Sundries Only) & Current Month (Fixed commitments vs Variable sundries)
   const {
-    todayTotal,
-    todayCount,
-    todayDrawer,
-    todayManagement,
+    todayVarTotal,
+    todayVarCount,
+    todayVarDrawer,
+    todayVarMgmt,
     monthTotal,
     monthCount,
     monthFixedTotal,
@@ -219,10 +219,10 @@ export default function ExpensesScreen({ user }) {
     const todayStr = new Date().toISOString().slice(0, 10);
     const currentMonthStr = new Date().toISOString().slice(0, 7);
 
-    let tTotal = 0;
-    let tCount = 0;
-    let tDrawer = 0;
-    let tMgmt = 0;
+    let tVarTotal = 0;
+    let tVarCount = 0;
+    let tVarDrawer = 0;
+    let tVarMgmt = 0;
 
     let mTotal = 0;
     let mCount = 0;
@@ -241,14 +241,14 @@ export default function ExpensesScreen({ user }) {
         SHOP_EXPENSE_PRESETS.some((p) => p.category === e.category) ||
         ['إيجار عقار', 'كهرباء ومولد', 'خدمات وإنترنت', 'بلدية ورسوم', 'رسوم حكومية', 'صيانة وتجهيزات'].includes(e.category);
 
-      // Today
-      if (dateStr === todayStr) {
-        tTotal += amt;
-        tCount += 1;
+      // Today: ONLY variable sundries (نثريات فقط - لا تجمع معها الثابتة)
+      if (dateStr === todayStr && !isFixed) {
+        tVarTotal += amt;
+        tVarCount += 1;
         if (source === 'management' || source === 'mastercard') {
-          tMgmt += amt;
+          tVarMgmt += amt;
         } else {
-          tDrawer += amt;
+          tVarDrawer += amt;
         }
       }
 
@@ -271,10 +271,10 @@ export default function ExpensesScreen({ user }) {
     });
 
     return {
-      todayTotal: tTotal,
-      todayCount: tCount,
-      todayDrawer: tDrawer,
-      todayManagement: tMgmt,
+      todayVarTotal: tVarTotal,
+      todayVarCount: tVarCount,
+      todayVarDrawer: tVarDrawer,
+      todayVarMgmt: tVarMgmt,
       monthTotal: mTotal,
       monthCount: mCount,
       monthFixedTotal: mFixed,
@@ -287,174 +287,149 @@ export default function ExpensesScreen({ user }) {
   const activePresets = expenseType === 'shop' ? SHOP_EXPENSE_PRESETS : DAILY_EXPENSE_PRESETS;
 
   return (
-    <div className="space-y-6 animate-fade-in p-2 md:p-6" dir="rtl">
-      {/* Stats Cards: Exactly 2 Cards (Today Only + Monthly Fixed & Variable) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Card 1: كارت مصاريف اليوم فقط */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-white to-amber-500/5 p-5 rounded-3xl border-2 border-amber-300 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-700 flex items-center justify-center text-xl shadow-2xs">
-                  ☀️
-                </span>
-                <div>
-                  <h3 className="text-sm font-black text-amber-950">
-                    مصاريف اليوم فقط
-                  </h3>
-                  <p className="text-[11px] font-bold text-amber-700/80">
-                    {new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                  </p>
-                </div>
+    <div className="space-y-4 animate-fade-in p-2 md:p-5" dir="rtl">
+      {/* Stats Cards: Compact & Streamlined 2 Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+        {/* Card 1: مصاريف اليوم (نثريات فقط - بدون الثابتة) */}
+        <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-white to-amber-500/5 p-4 rounded-2xl border border-amber-300 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center text-base shadow-2xs">
+                ☕
+              </span>
+              <div>
+                <h3 className="text-xs font-black text-amber-950">
+                  مصاريف اليوم (نثريات فقط)
+                </h3>
+                <p className="text-[10px] font-bold text-amber-700/80">
+                  لا تشمل الالتزامات الثابتة
+                </p>
               </div>
-              <span className="bg-amber-100 text-amber-900 text-xs px-2.5 py-1 rounded-full font-black border border-amber-200">
-                {todayCount} عمليات اليوم
-              </span>
             </div>
-
-            <div className="my-3">
-              <span className="text-3xl sm:text-4xl font-black text-amber-950 font-mono tracking-tight">
-                {formatIQD(todayTotal)}
-              </span>
-              <span className="text-xs font-black text-amber-800 mr-1.5">د.ع</span>
-            </div>
+            <span className="bg-amber-100 text-amber-900 text-[10px] px-2 py-0.5 rounded-full font-black border border-amber-200">
+              {todayVarCount} حركات اليوم
+            </span>
           </div>
 
-          <div className="pt-3 border-t border-amber-200/80 grid grid-cols-2 gap-2 text-xs font-bold">
-            <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 flex items-center justify-between">
-              <span className="text-slate-600 text-[11px]">💵 من القاصة:</span>
-              <span className="font-mono text-emerald-800 font-black">{formatIQD(todayDrawer)} د.ع</span>
-            </div>
-            <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 flex items-center justify-between">
-              <span className="text-slate-600 text-[11px]">🏛️ دفع الإدارة:</span>
-              <span className="font-mono text-purple-800 font-black">{formatIQD(todayManagement)} د.ع</span>
-            </div>
+          <div className="my-1.5 flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black text-amber-950 font-mono tracking-tight">
+              {formatIQD(todayVarTotal)}
+            </span>
+            <span className="text-xs font-black text-amber-800">د.ع</span>
           </div>
-          <div className="absolute top-0 right-0 w-2 h-full bg-amber-500" />
+
+          <div className="pt-2 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-bold">
+            <span className="text-slate-600">
+              💵 قاصة: <b className="text-emerald-800 font-mono">{formatIQD(todayVarDrawer)} د.ع</b>
+            </span>
+            <span className="text-slate-600">
+              🏛️ إدارة: <b className="text-purple-800 font-mono">{formatIQD(todayVarMgmt)} د.ع</b>
+            </span>
+          </div>
+          <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
         </div>
 
-        {/* Card 2: كارت مصاريف شهرية (الثابتة الالتزامات + المتغيرة النثريات) */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-3xl border-2 border-indigo-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          {/* Card 2 Header */}
-          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2.5">
-              <span className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-xl shadow-2xs">
+        {/* Card 2: كارت مصاريف شهرية (أزرار تفاعلية للثابتة والمتغيرة) */}
+        <div className="lg:col-span-7 bg-white p-4 rounded-2xl border border-indigo-200 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+          {/* Card Header with Month Total and "All" Button */}
+          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-base shadow-2xs">
                 📊
               </span>
               <div>
-                <h3 className="text-sm font-black text-slate-900">
-                  كشف المصاريف الشهرية
+                <h3 className="text-xs font-black text-slate-900">
+                  المصاريف الشهرية (شهر {new Date().toLocaleDateString('ar-IQ', { month: 'long', year: 'numeric' })})
                 </h3>
-                <p className="text-[11px] font-bold text-slate-500">
-                  شهر {new Date().toLocaleDateString('ar-IQ', { month: 'long', year: 'numeric' })} • {monthCount} عملية
+                <p className="text-[10px] text-slate-500 font-bold">
+                  إجمالي الشهر: <b className="font-mono text-indigo-900">{formatIQD(monthTotal)} د.ع</b>
                 </p>
               </div>
             </div>
 
-            <div className="text-left bg-indigo-50 px-3.5 py-1.5 rounded-2xl border border-indigo-200">
-              <span className="text-[10px] text-indigo-700 font-bold block">إجمالي الشهر:</span>
-              <span className="text-base font-black font-mono text-indigo-950">
-                {formatIQD(monthTotal)} <span className="text-xs">د.ع</span>
-              </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleTabChange('all')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
+                  activeTab === 'all'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+              >
+                عرض الكل
+              </button>
             </div>
           </div>
 
-          {/* Sub-cards: الثابتة (الالتزامات) + المتغيرة (النثريات) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-1">
-            {/* 1. المصاريف الشهرية الثابتة (الالتزامات) */}
-            <div className="bg-gradient-to-br from-indigo-50/70 to-indigo-100/30 p-3.5 rounded-2xl border border-indigo-200/80">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
+          {/* Interactive Toggle Buttons for Fixed vs Variable */}
+          <div className="grid grid-cols-2 gap-2 my-1">
+            {/* زر المصاريف الثابتة (الالتزامات) */}
+            <button
+              type="button"
+              onClick={() => handleTabChange('shop')}
+              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
+                activeTab === 'shop'
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400/40'
+                  : 'bg-indigo-50/70 hover:bg-indigo-100/80 border-indigo-200/80 text-indigo-950'
+              }`}
+            >
+              <div className="flex items-center justify-between text-[11px] font-black">
+                <span className="flex items-center gap-1">
                   <span>🏢</span>
-                  <span>مصاريف شهرية ثابتة (الالتزامات)</span>
+                  <span>مصاريف ثابتة (الالتزامات)</span>
                 </span>
-                <span className="bg-indigo-200/70 text-indigo-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                  activeTab === 'shop' ? 'bg-white/20 text-white' : 'bg-indigo-200/70 text-indigo-900'
+                }`}>
                   {monthTotal > 0 ? `${((monthFixedTotal / monthTotal) * 100).toFixed(0)}%` : '0%'}
                 </span>
               </div>
-              <p className="text-2xl font-black text-indigo-950 font-mono">
-                {formatIQD(monthFixedTotal)} <span className="text-xs font-bold text-indigo-800">د.ع</span>
-              </p>
-              <p className="text-[10px] text-indigo-700/80 mt-1 font-medium">
-                إيجار، اشتراك مولد، إنترنت، بلدية، رسوم والتزامات
-              </p>
-            </div>
+              <div className="mt-1 font-mono font-black text-lg sm:text-xl">
+                {formatIQD(monthFixedTotal)} <span className="text-[10px] font-normal">د.ع</span>
+              </div>
+              <span className={`text-[9px] truncate ${activeTab === 'shop' ? 'text-indigo-100' : 'text-indigo-700/80'}`}>
+                إيجار، مولد، إنترنت، بلدية، رسوم
+              </span>
+            </button>
 
-            {/* 2. المصاريف المتغيرة (النثريات) */}
-            <div className="bg-gradient-to-br from-purple-50/70 to-purple-100/30 p-3.5 rounded-2xl border border-purple-200/80">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+            {/* زر المصاريف المتغيرة (النثريات) */}
+            <button
+              type="button"
+              onClick={() => handleTabChange('daily')}
+              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
+                activeTab === 'daily'
+                  ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/40'
+                  : 'bg-purple-50/70 hover:bg-purple-100/80 border-purple-200/80 text-purple-950'
+              }`}
+            >
+              <div className="flex items-center justify-between text-[11px] font-black">
+                <span className="flex items-center gap-1">
                   <span>☕</span>
                   <span>مصاريف متغيرة (النثريات)</span>
                 </span>
-                <span className="bg-purple-200/70 text-purple-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                  activeTab === 'daily' ? 'bg-white/20 text-white' : 'bg-purple-200/70 text-purple-900'
+                }`}>
                   {monthTotal > 0 ? `${((monthVariableTotal / monthTotal) * 100).toFixed(0)}%` : '0%'}
                 </span>
               </div>
-              <p className="text-2xl font-black text-purple-950 font-mono">
-                {formatIQD(monthVariableTotal)} <span className="text-xs font-bold text-purple-800">د.ع</span>
-              </p>
-              <p className="text-[10px] text-purple-700/80 mt-1 font-medium">
-                طعام وغداء، مياه وشاي، مستلزمات نظافة، نقل وشحن، نثريات
-              </p>
-            </div>
+              <div className="mt-1 font-mono font-black text-lg sm:text-xl">
+                {formatIQD(monthVariableTotal)} <span className="text-[10px] font-normal">د.ع</span>
+              </div>
+              <span className={`text-[9px] truncate ${activeTab === 'daily' ? 'text-purple-100' : 'text-purple-700/80'}`}>
+                طعام، شاي ومياه، تنظيف، شحن
+              </span>
+            </button>
           </div>
 
-          {/* Card 2 Footer note */}
-          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>من قاصة المحل: <b className="text-slate-800 font-mono">{formatIQD(monthDrawer)} د.ع</b></span>
-            <span>دفع الإدارة: <b className="text-slate-800 font-mono">{formatIQD(monthManagement)} د.ع</b></span>
+          {/* Footer note */}
+          <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+            <span>قاصة: <b className="text-slate-800 font-mono">{formatIQD(monthDrawer)} د.ع</b></span>
+            <span>إدارة: <b className="text-slate-800 font-mono">{formatIQD(monthManagement)} د.ع</b></span>
           </div>
-          <div className="absolute top-0 right-0 w-2 h-full bg-indigo-600" />
+          <div className="absolute top-0 right-0 w-1.5 h-full bg-indigo-600" />
         </div>
-      </div>
-
-      {/* Main Tabs Navigation */}
-      <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
-        <button
-          type="button"
-          onClick={() => handleTabChange('daily')}
-          className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === 'daily'
-              ? 'bg-amber-600 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <span className="text-base">☕</span>
-          <span>المصاريف اليومية والنثريات</span>
-          <span className="bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-mono">
-            {expenses.filter(e => (e.expenseType || 'daily') === 'daily').length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange('shop')}
-          className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === 'shop'
-              ? 'bg-indigo-700 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <span className="text-base">🏢</span>
-          <span>مصاريف والتزامات المحل (إيجار، بلدية، إنترنت...)</span>
-          <span className="bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-mono">
-            {expenses.filter(e => e.expenseType === 'shop').length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange('all')}
-          className={`py-3 px-5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            activeTab === 'all'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <span>📑</span>
-          <span>كافة المصاريف</span>
-        </button>
       </div>
 
       {/* Main Grid: Form on the Right / Table on the Left */}
