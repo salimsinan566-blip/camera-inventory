@@ -317,76 +317,64 @@ export default function ExpensesScreen({ user }) {
   return (
     <div className="space-y-4 animate-fade-in p-2 md:p-5" dir="rtl">
       {/* Stats Cards: Compact & Streamlined 2 Cards */}
+      {/* Stats Cards: Compact & Streamlined 2 Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
-        {/* Card 1: مصاريف اليوم (نثريات فقط - بدون الثابتة) */}
+        {/* Card 1: مصاريف اليوم */}
         <div
           onClick={handleSelectToday}
-          className={`lg:col-span-5 p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
+          className={`lg:col-span-5 p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden bg-white ${
             dateFilter === 'today'
-              ? 'bg-gradient-to-br from-amber-500/15 via-white to-amber-500/5 border-amber-400 shadow-xs ring-2 ring-amber-400/40'
-              : 'bg-white hover:bg-amber-50/40 border-slate-200 shadow-2xs'
+              ? 'border-slate-800 shadow-sm ring-1 ring-slate-800/15'
+              : 'border-slate-200 hover:border-slate-300 shadow-2xs'
           }`}
           title="اضغط لعرض مصاريف اليوم فقط في الجدول"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-base shadow-2xs ${
-                dateFilter === 'today' ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-700'
+              <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
+                dateFilter === 'today' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'
               }`}>
                 ☕
               </span>
               <div>
-                <h3 className="text-xs font-black text-amber-950 flex items-center gap-1.5">
-                  <span>مصاريف اليوم (نثريات فقط)</span>
-                  {dateFilter === 'today' && (
-                    <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.2 rounded font-bold">
-                      المعروض بالجدول ✓
-                    </span>
-                  )}
+                <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <span>مصاريف اليوم (نثريات)</span>
                 </h3>
-                <p className="text-[10px] font-bold text-amber-700/80">
-                  لا تشمل الالتزامات الثابتة
-                </p>
               </div>
             </div>
-            <span className="bg-amber-100 text-amber-900 text-[10px] px-2 py-0.5 rounded-full font-black border border-amber-200">
-              {todayVarCount} حركات اليوم
-            </span>
-          </div>
-
-          <div className="my-1.5 flex items-baseline gap-1.5">
-            <span className="text-2xl sm:text-3xl font-black text-amber-950 font-mono tracking-tight">
-              {formatIQD(todayVarTotal)}
-            </span>
-            <span className="text-xs font-black text-amber-800">د.ع</span>
-          </div>
-
-          <div className="pt-2 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-bold">
-            <span className="text-slate-700 flex items-center gap-1.5">
-              <span className="text-emerald-700 text-sm">💵</span>
-              <span>تُخصم بالكامل من قاصة المحل</span>
-            </span>
-            <span className="text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-md font-mono font-black border border-amber-200">
+            <span className="bg-slate-100 text-slate-700 text-[10px] px-2 py-0.5 rounded-full font-bold border border-slate-200">
               {todayVarCount} حركات
             </span>
           </div>
-          <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
+
+          <div className="my-1 flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
+              {formatIQD(todayVarTotal)}
+            </span>
+            <span className="text-xs font-bold text-slate-500">د.ع</span>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-medium text-slate-600">
+            <span>تُخصم من قاصة المحل</span>
+            <span className="font-mono font-bold text-slate-800">{todayVarCount} بنود مسجلة</span>
+          </div>
+          <div className={`absolute top-0 right-0 w-1 h-full ${dateFilter === 'today' ? 'bg-slate-900' : 'bg-transparent'}`} />
         </div>
 
-        {/* Card 2: كارت مصاريف شهرية (أزرار تفاعلية للثابتة والمتغيرة) */}
-        <div className="lg:col-span-7 bg-white p-4 rounded-2xl border border-indigo-200 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+        {/* Card 2: كارت مصاريف شهرية */}
+        <div className="lg:col-span-7 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between relative overflow-hidden">
           {/* Card Header with Month Total and "All" Button */}
           <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-base shadow-2xs">
+              <span className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-sm">
                 📊
               </span>
               <div>
-                <h3 className="text-xs font-black text-slate-900">
-                  المصاريف الشهرية (شهر {new Date().toLocaleDateString('ar-IQ', { month: 'long', year: 'numeric' })})
+                <h3 className="text-xs font-bold text-slate-900">
+                  المصاريف الشهرية ({new Date().toLocaleDateString('ar-IQ', { month: 'long', year: 'numeric' })})
                 </h3>
-                <p className="text-[10px] text-slate-500 font-bold">
-                  إجمالي الشهر: <b className="font-mono text-indigo-900">{formatIQD(monthTotal)} د.ع</b>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  إجمالي الشهر: <b className="font-mono text-slate-900 font-bold">{formatIQD(monthTotal)} د.ع</b>
                 </p>
               </div>
             </div>
@@ -401,7 +389,7 @@ export default function ExpensesScreen({ user }) {
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
                   dateFilter === 'all' && activeTab === 'all'
                     ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                 }`}
               >
                 عرض كل التواريخ
@@ -411,82 +399,70 @@ export default function ExpensesScreen({ user }) {
 
           {/* Interactive Toggle Buttons for Fixed vs Variable */}
           <div className="grid grid-cols-2 gap-2 my-1">
-            {/* زر المصاريف الثابتة (الالتزامات) */}
+            {/* زر المصاريف الثابتة */}
             <button
               type="button"
               onClick={handleToggleShopFixed}
               className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
                 dateFilter === 'month' && activeTab === 'shop'
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400/50'
-                  : 'bg-indigo-50/70 hover:bg-indigo-100/90 border-indigo-200/90 text-indigo-950'
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-800'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
               }`}
-              title={dateFilter === 'month' && activeTab === 'shop' ? 'مفعل حالياً - اضغط مرة أخرى للرجوع لمصاريف اليوم' : 'اضغط لعرض مصاريف الشهر الثابتة في الجدول'}
+              title="اضغط لعرض مصاريف الشهر الثابتة في الجدول"
             >
-              <div className="flex items-center justify-between text-[11px] font-black">
+              <div className="flex items-center justify-between text-[11px] font-bold">
                 <span className="flex items-center gap-1">
                   <span>🏢</span>
                   <span>مصاريف ثابتة (الالتزامات)</span>
                 </span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
                   dateFilter === 'month' && activeTab === 'shop'
-                    ? 'bg-white text-indigo-900 shadow-2xs'
-                    : 'bg-indigo-200/70 text-indigo-900'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-200 text-slate-700'
                 }`}>
-                  {dateFilter === 'month' && activeTab === 'shop' ? 'مفعل بالجدول ✓' : (monthTotal > 0 ? `${((monthFixedTotal / monthTotal) * 100).toFixed(0)}%` : '0%')}
+                  {dateFilter === 'month' && activeTab === 'shop' ? 'مفعل ✓' : (monthTotal > 0 ? `${((monthFixedTotal / monthTotal) * 100).toFixed(0)}%` : '0%')}
                 </span>
               </div>
-              <div className="mt-1 font-mono font-black text-lg sm:text-xl">
+              <div className="mt-1 font-mono font-bold text-lg sm:text-xl">
                 {formatIQD(monthFixedTotal)} <span className="text-[10px] font-normal">د.ع</span>
               </div>
-              <span className={`text-[9px] truncate ${dateFilter === 'month' && activeTab === 'shop' ? 'text-indigo-100 font-bold' : 'text-indigo-700/80'}`}>
-                {dateFilter === 'month' && activeTab === 'shop' ? '↩️ اضغط للإلغاء والرجوع لمصاريف اليوم' : 'إيجار، مولد، إنترنت، بلدية، رسوم'}
-              </span>
             </button>
 
-            {/* زر المصاريف المتغيرة (النثريات) */}
+            {/* زر المصاريف المتغيرة */}
             <button
               type="button"
               onClick={handleToggleMonthlyVariable}
               className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
                 dateFilter === 'month' && activeTab === 'daily'
-                  ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/50'
-                  : 'bg-purple-50/70 hover:bg-purple-100/90 border-purple-200/90 text-purple-950'
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-1 ring-slate-800'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
               }`}
-              title={dateFilter === 'month' && activeTab === 'daily' ? 'مفعل حالياً - اضغط مرة أخرى للرجوع لمصاريف اليوم' : 'اضغط لعرض مصاريف الشهر المتغيرة في الجدول'}
+              title="اضغط لعرض مصاريف الشهر المتغيرة في الجدول"
             >
-              <div className="flex items-center justify-between text-[11px] font-black">
+              <div className="flex items-center justify-between text-[11px] font-bold">
                 <span className="flex items-center gap-1">
                   <span>☕</span>
                   <span>مصاريف متغيرة (النثريات)</span>
                 </span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
                   dateFilter === 'month' && activeTab === 'daily'
-                    ? 'bg-white text-purple-900 shadow-2xs'
-                    : 'bg-purple-200/70 text-purple-900'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-200 text-slate-700'
                 }`}>
-                  {dateFilter === 'month' && activeTab === 'daily' ? 'مفعل بالجدول ✓' : (monthTotal > 0 ? `${((monthVariableTotal / monthTotal) * 100).toFixed(0)}%` : '0%')}
+                  {dateFilter === 'month' && activeTab === 'daily' ? 'مفعل ✓' : (monthTotal > 0 ? `${((monthVariableTotal / monthTotal) * 100).toFixed(0)}%` : '0%')}
                 </span>
               </div>
-              <div className="mt-1 font-mono font-black text-lg sm:text-xl">
+              <div className="mt-1 font-mono font-bold text-lg sm:text-xl">
                 {formatIQD(monthVariableTotal)} <span className="text-[10px] font-normal">د.ع</span>
               </div>
-              <span className={`text-[9px] truncate ${dateFilter === 'month' && activeTab === 'daily' ? 'text-purple-100 font-bold' : 'text-purple-700/80'}`}>
-                {dateFilter === 'month' && activeTab === 'daily' ? '↩️ اضغط للإلغاء والرجوع لمصاريف اليوم' : 'طعام، شاي ومياه، تنظيف، شحن'}
-              </span>
             </button>
           </div>
 
           {/* Footer note */}
-          <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-600 font-bold">
-            <span className="flex items-center gap-1 text-emerald-800">
-              <span>💵</span>
-              <span>جميع المصاريف تُصرف من قاصة المحل</span>
-            </span>
-            <span className="text-slate-500 font-mono">
-              إجمالي البنود: {monthCount}
-            </span>
+          <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+            <span>تُصرف من قاصة المحل</span>
+            <span className="font-mono">إجمالي البنود: {monthCount}</span>
           </div>
-          <div className="absolute top-0 right-0 w-1.5 h-full bg-indigo-600" />
         </div>
       </div>
 
@@ -519,7 +495,7 @@ export default function ExpensesScreen({ user }) {
           <form onSubmit={handleSaveExpense} className="space-y-3.5">
             {/* Expense Type Selector (Daily vs Shop) */}
             <div>
-              <label className="block text-xs font-black text-slate-700 mb-1.5">نوع ونطاق المصروف</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">نطاق المصروف</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -531,13 +507,13 @@ export default function ExpensesScreen({ user }) {
                     setCategory(p.category);
                     if (!amount || Number(amount) === 0) setAmount(p.defaultAmount || '');
                   }}
-                  className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     expenseType === 'daily'
-                      ? 'bg-amber-100 border-amber-500 text-amber-950 shadow-2xs ring-2 ring-amber-400/40'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <span className="text-base">☕</span>
+                  <span>☕</span>
                   <span>مصروف يومي / نثريات</span>
                 </button>
 
@@ -551,23 +527,23 @@ export default function ExpensesScreen({ user }) {
                     setCategory(p.category);
                     if (!amount || Number(amount) === 0) setAmount(p.defaultAmount || '');
                   }}
-                  className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     expenseType === 'shop'
-                      ? 'bg-indigo-100 border-indigo-500 text-indigo-950 shadow-2xs ring-2 ring-indigo-400/40'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <span className="text-base">🏢</span>
-                  <span>مصروف محل / تشغيلي</span>
+                  <span>🏢</span>
+                  <span>مصروف محل / التزام</span>
                 </button>
               </div>
             </div>
 
-            {/* Daily Expense Mode: Preset Options Only (No Title input for presets, Custom input on +) */}
+            {/* Daily Expense Mode: Preset Options */}
             {expenseType === 'daily' ? (
-              <div className="space-y-2.5">
-                <label className="block text-xs font-black text-slate-800">
-                  اختر المصروف اليومي (يُحدد الاسم والتصنيف تلقائياً):
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700">
+                  نوع المصروف:
                 </label>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {DAILY_EXPENSE_PRESETS.map((preset) => {
@@ -577,17 +553,14 @@ export default function ExpensesScreen({ user }) {
                         key={preset.id}
                         type="button"
                         onClick={() => handleSelectPreset(preset)}
-                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 relative ${
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
                           isSelected
-                            ? 'bg-amber-100/90 border-amber-500 text-amber-950 font-black shadow-xs ring-2 ring-amber-400'
-                            : 'border-slate-200 bg-slate-50 hover:bg-amber-50/50 text-slate-700'
+                            ? 'bg-slate-900 border-slate-900 text-white font-bold shadow-xs'
+                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium'
                         }`}
                       >
-                        <span className="text-xl">{preset.icon}</span>
-                        <span className="text-[11px] font-bold leading-tight truncate w-full">{preset.title}</span>
-                        {isSelected && (
-                          <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-amber-600" />
-                        )}
+                        <span className="text-lg">{preset.icon}</span>
+                        <span className="text-[11px] leading-tight truncate w-full">{preset.title}</span>
                       </button>
                     );
                   })}
@@ -595,10 +568,9 @@ export default function ExpensesScreen({ user }) {
 
                 {/* When selecting "+" (daily_other): Custom Title Input */}
                 {selectedPresetId === 'daily_other' && (
-                  <div className="p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-1.5 animate-fade-in">
-                    <label className="block text-xs font-black text-amber-950 flex items-center gap-1.5">
-                      <span>➕</span>
-                      <span>اكتب نوع أو بيان الصرف: *</span>
+                  <div className="pt-1 space-y-1 animate-fade-in">
+                    <label className="block text-xs font-bold text-slate-700">
+                      اسم المصروف *
                     </label>
                     <input
                       type="text"
@@ -606,40 +578,17 @@ export default function ExpensesScreen({ user }) {
                       required
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="مثال: بنزين، رصيد، قرطاسية، ضيافة..."
-                      className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      placeholder="اكتب نوع المصروف..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
                     />
-                    <p className="text-[10px] text-amber-800 font-medium">
-                      التصنيف التلقائي: نثريات عامة (يُخصم من قاصة المحل)
-                    </p>
                   </div>
                 )}
-
-                {/* Selected Daily Expense Badge */}
-                <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">
-                      {DAILY_EXPENSE_PRESETS.find(p => p.id === selectedPresetId)?.icon || '☕'}
-                    </span>
-                    <div>
-                      <div className="font-black text-amber-950">
-                        المصروف: <span className="text-amber-900 font-extrabold">{title || (selectedPresetId === 'daily_other' ? 'اكتب نوع الصرف أعلاه' : '—')}</span>
-                      </div>
-                      <div className="text-[10px] font-bold text-amber-700 mt-0.5">
-                        التصنيف التلقائي: <span className="bg-amber-200/60 text-amber-900 px-1.5 py-0.2 rounded font-black">{category}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full">
-                    محدد تلقائياً ✓
-                  </span>
-                </div>
               </div>
             ) : (
-              /* Shop Expense Mode: Preset Options + Details */
-              <div className="space-y-2.5">
-                <label className="block text-xs font-black text-slate-800">
-                  اختر التزام المحل (يُحدد الاسم والتصنيف تلقائياً):
+              /* Shop Expense Mode: Preset Options */
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700">
+                  نوع الالتزام:
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {SHOP_EXPENSE_PRESETS.map((preset) => {
@@ -649,17 +598,14 @@ export default function ExpensesScreen({ user }) {
                         key={preset.id}
                         type="button"
                         onClick={() => handleSelectPreset(preset)}
-                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 relative ${
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
                           isSelected
-                            ? 'bg-indigo-100/90 border-indigo-500 text-indigo-950 font-black shadow-xs ring-2 ring-indigo-400'
-                            : 'border-slate-200 bg-slate-50 hover:bg-indigo-50/50 text-slate-700'
+                            ? 'bg-slate-900 border-slate-900 text-white font-bold shadow-xs'
+                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium'
                         }`}
                       >
-                        <span className="text-xl">{preset.icon}</span>
-                        <span className="text-[11px] font-bold leading-tight truncate w-full">{preset.title}</span>
-                        {isSelected && (
-                          <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-indigo-600" />
-                        )}
+                        <span className="text-lg">{preset.icon}</span>
+                        <span className="text-[11px] leading-tight truncate w-full">{preset.title}</span>
                       </button>
                     );
                   })}
@@ -667,46 +613,46 @@ export default function ExpensesScreen({ user }) {
 
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">اسم الالتزام / المصروف *</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">بيان المصروف *</label>
                     <input
                       type="text"
                       required
                       value={title}
                       onChange={(e) => { setTitle(e.target.value); setSelectedPresetId(null); }}
-                      placeholder="مثال: إيجار المحل..."
-                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                      placeholder="إيجار المحل..."
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">التصنيف التلقائي</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">التصنيف</label>
                     <input
                       type="text"
                       readOnly
                       value={category}
-                      className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-not-allowed"
+                      className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 cursor-not-allowed"
                     />
                   </div>
                 </div>
 
-                {/* Period Covered (For Shop / Fixed Expenses) */}
+                {/* Period Covered */}
                 <div>
-                  <label className="block text-[11px] font-bold text-indigo-900 mb-1">
-                    الفترة / الشهر المغطى (اختياري)
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    الفترة المغطاة (اختياري)
                   </label>
                   <input
                     type="text"
                     value={periodCovered}
                     onChange={(e) => setPeriodCovered(e.target.value)}
-                    placeholder="مثال: شهر آب 2026 / الربع الثالث"
-                    className="w-full p-2 bg-indigo-50/50 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                    placeholder="مثال: شهر آب 2026"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-slate-800 focus:bg-white"
                   />
                 </div>
               </div>
             )}
 
-            {/* Amount (IQD) */}
+            {/* Amount */}
             <div>
-              <label className="block text-xs font-black text-slate-700 mb-1">المبلغ (د.ع) *</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">المبلغ (د.ع) *</label>
               <input
                 type="number"
                 required
@@ -715,70 +661,58 @@ export default function ExpensesScreen({ user }) {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-black font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
               />
-              <p className="text-[10px] text-slate-500 mt-1 font-bold">
-                بمضاعفات الـ 250 دينار (مثل: 250، 500، 1000، 2000...)
-              </p>
-            </div>
-
-            {/* Always Cash Drawer Reassurance */}
-            <div className="p-2.5 bg-emerald-50 border border-emerald-200/90 rounded-xl flex items-center gap-2 text-xs font-bold text-emerald-900">
-              <span className="text-base">💵</span>
-              <span>مصدر السداد: <b>قاصة المحل (كاش)</b> — يُخصم تلقائياً من الصندوق اليومي</span>
             </div>
 
             {/* Buyer Name & Date */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الشخص الصارف / المشتري</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">الشخص الصارف</label>
                 <input
                   type="text"
                   value={buyerName}
                   onChange={(e) => setBuyerName(e.target.value)}
-                  placeholder="اسم الشخص..."
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  placeholder="الاسم..."
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">تاريخ الصرف</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">التاريخ</label>
                 <input
                   type="date"
                   value={expenseDate}
                   onChange={(e) => setExpenseDate(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
                 />
               </div>
             </div>
 
             {/* Notes */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات إضافية (اختياري)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات (اختياري)</label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={expenseType === 'daily' ? 'أي تفاصيل عن المصروف أو المشتريات...' : 'أي تفاصيل أخرى...'}
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                placeholder="أي ملاحظات..."
+                className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
               />
             </div>
 
             {/* Submit Button */}
-            <div className="pt-2">
+            <div className="pt-1">
               <button
                 type="submit"
                 disabled={saving}
-                className={`w-full text-white font-bold text-xs py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer ${
-                  expenseType === 'shop' ? 'bg-indigo-700 hover:bg-indigo-800' : 'bg-amber-600 hover:bg-amber-700'
-                }`}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
                 {saving ? (
                   <span>جاري الحفظ...</span>
                 ) : (
                   <>
-                    <span>💸</span>
-                    <span>{editingExpense ? 'حفظ التعديلات' : 'حفظ وتسجيل المصروف'}</span>
+                    <span>{editingExpense ? '💾 حفظ التعديلات' : '➕ تسجيل المصروف'}</span>
                   </>
                 )}
               </button>
@@ -822,7 +756,7 @@ export default function ExpensesScreen({ user }) {
               <button
                 type="button"
                 onClick={handleSelectToday}
-                className="text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-xl border border-amber-300 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                className="text-xs font-bold text-slate-800 bg-white hover:bg-slate-100 px-3 py-1 rounded-xl border border-slate-300 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
               >
                 <span>↩️</span>
                 <span>الرجوع لمصاريف اليوم</span>
@@ -839,7 +773,7 @@ export default function ExpensesScreen({ user }) {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="بحث باسم المصروف، المشتري، الفترة، أو الملاحظة..."
-                  className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800"
                 />
                 <span className="absolute right-2.5 top-2 text-slate-400 text-xs">🔍</span>
               </div>
@@ -850,7 +784,7 @@ export default function ExpensesScreen({ user }) {
               <select
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-800"
               >
                 <option value="all">كل التواريخ</option>
                 <option value="today">مصاريف اليوم</option>
@@ -861,7 +795,7 @@ export default function ExpensesScreen({ user }) {
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-800"
               >
                 <option value="all">جميع التصنيفات</option>
                 <option value="طعام وغداء">طعام وغداء</option>
@@ -913,7 +847,7 @@ export default function ExpensesScreen({ user }) {
                           <div className="flex items-center gap-1.5">
                             <span>{exp.title}</span>
                             {exp.periodCovered && (
-                              <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                              <span className="text-[10px] font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                                 {exp.periodCovered}
                               </span>
                             )}
@@ -922,7 +856,7 @@ export default function ExpensesScreen({ user }) {
                         <td className="p-3 whitespace-nowrap">
                           <div className="flex items-center gap-1">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                              isShop ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800'
+                              isShop ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 text-slate-700 border border-slate-200'
                             }`}>
                               {isShop ? '🏢 محل' : '☕ يومي'}
                             </span>
@@ -934,7 +868,7 @@ export default function ExpensesScreen({ user }) {
                         <td className="p-3 text-slate-600 whitespace-nowrap">
                           {exp.buyerName || 'المحل'}
                         </td>
-                        <td className="p-3 font-mono font-black text-rose-700 text-sm whitespace-nowrap">
+                        <td className="p-3 font-mono font-bold text-slate-900 text-sm whitespace-nowrap">
                           {formatIQD(exp.amount)} د.ع
                         </td>
                         <td className="p-3 text-slate-500 max-w-[150px] truncate" title={exp.notes}>
