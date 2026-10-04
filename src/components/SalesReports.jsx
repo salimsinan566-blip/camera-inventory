@@ -10,6 +10,7 @@ import AddCustomerModal from './AddCustomerModal';
 import CustomerPaymentModal from './CustomerPaymentModal';
 import IncomeReportTab from './IncomeReportTab';
 import ProfitsReportTab from './ProfitsReportTab';
+import ComprehensiveFinancialReport from './ComprehensiveFinancialReport';
 import { useDraftSales } from '../hooks/useDraftSales';
 import { useAuth } from '../hooks/useAuth';
 import { useUI } from '../contexts/UIContext';
@@ -340,6 +341,23 @@ export default function SalesReports({ onOpenDraft }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
           </svg>
           تقرير الأرباح الصافية
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('comprehensive')}
+          className={`pb-3 px-4 font-bold text-sm border-b-2 transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+            activeSubTab === 'comprehensive'
+              ? 'border-purple-600 text-purple-700 font-black'
+              : 'border-transparent text-ink-500 hover:text-ink-900'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          التقرير المالي الشامل
+          <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-0.5 rounded-full font-black">
+            شامل
+          </span>
         </button>
       </div>
 
@@ -885,6 +903,16 @@ export default function SalesReports({ onOpenDraft }) {
       {/* TAB 4: Net Profits & Margin Analysis Report */}
       {activeSubTab === 'profits' && (
         <ProfitsReportTab
+          sales={sales}
+          products={products}
+          expenses={expenses}
+          onViewSale={setViewingSale}
+        />
+      )}
+
+      {/* TAB 5: Comprehensive Financial & Expenses Report */}
+      {activeSubTab === 'comprehensive' && (
+        <ComprehensiveFinancialReport
           sales={sales}
           products={products}
           expenses={expenses}
