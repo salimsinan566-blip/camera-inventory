@@ -16,23 +16,26 @@ const EXPENSES_COLLECTION = 'expenses';
 
 // اختصارات المصاريف اليومية والنثريات
 export const DAILY_EXPENSE_PRESETS = [
-  { id: 'water', title: 'ربطة ماء', icon: '💧', defaultAmount: 2500, category: 'مشروبات ومياه' },
-  { id: 'tissue', title: 'كلينس ومستلزمات', icon: '🧻', defaultAmount: 1500, category: 'مستلزمات ونظافة' },
-  { id: 'tea', title: 'شاي ومشروبات', icon: '☕', defaultAmount: 3000, category: 'مشروبات ومياه' },
   { id: 'lunch', title: 'وجبة غداء', icon: '🍲', defaultAmount: 10000, category: 'طعام وغداء' },
+  { id: 'water', title: 'ربطة ماء', icon: '💧', defaultAmount: 2500, category: 'مشروبات ومياه' },
+  { id: 'tea', title: 'شاي ومشروبات', icon: '☕', defaultAmount: 3000, category: 'مشروبات ومياه' },
+  { id: 'tissue', title: 'كلينس ومستلزمات', icon: '🧻', defaultAmount: 1500, category: 'مستلزمات ونظافة' },
   { id: 'cleaning', title: 'مواد تنظيف', icon: '🧹', defaultAmount: 5000, category: 'مستلزمات ونظافة' },
-  { id: 'daily_other', title: 'نثريات أخرى', icon: '➕', defaultAmount: 0, category: 'نثريات عامة' }
+  { id: 'transport', title: 'نقل وتوصيل', icon: '🚗', defaultAmount: 5000, category: 'نقل ومواصلات' },
+  { id: 'fuel', title: 'بنزين ووقود', icon: '⛽', defaultAmount: 10000, category: 'صيانة ومحروقات' },
+  { id: 'telecom', title: 'كارت رصيد وإنترنت', icon: '📱', defaultAmount: 5000, category: 'خدمات وإنترنت' },
+  { id: 'daily_other', title: 'نثريات عامة', icon: '📦', defaultAmount: 0, category: 'نثريات عامة' }
 ];
 
 // اختصارات مصاريف والتزامات المحل التشغيلية والثابتة
 export const SHOP_EXPENSE_PRESETS = [
   { id: 'rent', title: 'إيجار المحل', icon: '🏢', defaultAmount: 0, category: 'إيجار عقار' },
-  { id: 'municipality', title: 'رسوم بلدية ونفايات', icon: '🏛️', defaultAmount: 0, category: 'بلدية ورسوم' },
+  { id: 'generator', title: 'اشتراك المولد والكهرباء', icon: '⚡', defaultAmount: 0, category: 'كهرباء ومولد' },
   { id: 'internet', title: 'اشتراك الإنترنت', icon: '🌐', defaultAmount: 40000, category: 'خدمات وإنترنت' },
-  { id: 'generator', title: 'اشتراك المولد / كهرباء', icon: '⚡', defaultAmount: 0, category: 'كهرباء ومولد' },
-  { id: 'shop_maintenance', title: 'صيانة وديكور المحل', icon: '🛠️', defaultAmount: 0, category: 'صيانة وتجهيزات' },
-  { id: 'fees', title: 'تراخيص ورسوم رسمية', icon: '📜', defaultAmount: 0, category: 'رسوم حكومية' },
-  { id: 'shop_other', title: 'مصروف تشغيلي آخر', icon: '➕', defaultAmount: 0, category: 'مصاريف تشغيلية' }
+  { id: 'municipality', title: 'رسوم بلدية ونفايات', icon: '🏛️', defaultAmount: 0, category: 'بلدية ورسوم' },
+  { id: 'shop_maintenance', title: 'صيانة وتجهيزات', icon: '🛠️', defaultAmount: 0, category: 'صيانة وتجهيزات' },
+  { id: 'fees', title: 'تراخيص ورسوم حكومية', icon: '📜', defaultAmount: 0, category: 'رسوم حكومية' },
+  { id: 'shop_other', title: 'مصروف تشغيلي عام', icon: '💼', defaultAmount: 0, category: 'مصاريف تشغيلية' }
 ];
 
 // للتوافق الرجعي

@@ -21,17 +21,17 @@ export default function ExpensesScreen({ user }) {
   const [activeTab, setActiveTab] = useState('daily');
 
   // Form State
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('نثريات عامة');
+  const defaultDaily = DAILY_EXPENSE_PRESETS[0];
+  const [selectedPresetId, setSelectedPresetId] = useState(defaultDaily.id);
+  const [title, setTitle] = useState(defaultDaily.title);
+  const [category, setCategory] = useState(defaultDaily.category);
   const [expenseType, setExpenseType] = useState('daily'); // 'daily' | 'shop'
-  const [paymentSource, setPaymentSource] = useState('cash_drawer'); // 'cash_drawer' | 'management'
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(defaultDaily.defaultAmount || '');
   const [periodCovered, setPeriodCovered] = useState('');
   const [buyerName, setBuyerName] = useState(user?.displayName || user?.email?.split('@')[0] || '');
   const [notes, setNotes] = useState('');
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
-  const [selectedPresetId, setSelectedPresetId] = useState(null);
 
   // Edit State
   const [editingExpense, setEditingExpense] = useState(null);
@@ -39,7 +39,6 @@ export default function ExpensesScreen({ user }) {
   // Filter State (Default is 'today' so table always defaults to today's expenses)
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [paymentSourceFilter, setPaymentSourceFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('today'); // Default: 'today'
 
   // When switching top tabs, update form's expenseType and default category
@@ -47,12 +46,18 @@ export default function ExpensesScreen({ user }) {
     setActiveTab(tab);
     if (tab === 'daily') {
       setExpenseType('daily');
-      setCategory('نثريات عامة');
-      setSelectedPresetId(null);
+      const firstDaily = DAILY_EXPENSE_PRESETS[0];
+      setSelectedPresetId(firstDaily.id);
+      setTitle(firstDaily.title);
+      setCategory(firstDaily.category);
+      if (!amount || Number(amount) === 0) setAmount(firstDaily.defaultAmount || '');
     } else if (tab === 'shop') {
       setExpenseType('shop');
-      setCategory('إيجار عقار');
-      setSelectedPresetId(null);
+      const firstShop = SHOP_EXPENSE_PRESETS[0];
+      setSelectedPresetId(firstShop.id);
+      setTitle(firstShop.title);
+      setCategory(firstShop.category);
+      if (!amount || Number(amount) === 0) setAmount(firstShop.defaultAmount || '');
     }
   };
 
@@ -92,19 +97,19 @@ export default function ExpensesScreen({ user }) {
     setSelectedPresetId(preset.id);
     setTitle(preset.title);
     setCategory(preset.category);
-    if (preset.defaultAmount > 0 && (!amount || Number(amount) === 0)) {
+    if (preset.defaultAmount > 0) {
       setAmount(preset.defaultAmount);
     }
   };
 
   const handleResetForm = () => {
-    setTitle('');
-    setCategory(expenseType === 'shop' ? 'إيجار عقار' : 'نثريات عامة');
-    setAmount('');
+    const defaultPreset = expenseType === 'shop' ? SHOP_EXPENSE_PRESETS[0] : DAILY_EXPENSE_PRESETS[0];
+    setSelectedPresetId(defaultPreset.id);
+    setTitle(defaultPreset.title);
+    setCategory(defaultPreset.category);
+    setAmount(defaultPreset.defaultAmount || '');
     setPeriodCovered('');
-    setPaymentSource('cash_drawer');
     setNotes('');
-    setSelectedPresetId(null);
     setEditingExpense(null);
     setExpenseDate(new Date().toISOString().slice(0, 10));
   };
@@ -113,7 +118,7 @@ export default function ExpensesScreen({ user }) {
     e.preventDefault();
     const numAmount = Number(amount);
     if (!title.trim()) {
-      toast('يرجى كتابة عنوان أو نوع المصروف', 'error');
+      toast('يرجى اختيار نوع المصروف', 'error');
       return;
     }
     if (isNaN(numAmount) || numAmount <= 0) {
@@ -132,7 +137,7 @@ export default function ExpensesScreen({ user }) {
           title: title.trim(),
           category: category.trim(),
           expenseType: expenseType || 'daily',
-          paymentSource: paymentSource || 'cash_drawer',
+          paymentSource: 'cash_drawer',
           amount: numAmount,
           periodCovered: (periodCovered || '').trim(),
           buyerName: buyerName.trim() || 'المحل',
@@ -145,7 +150,7 @@ export default function ExpensesScreen({ user }) {
           title: title.trim(),
           category: category.trim(),
           expenseType: expenseType || 'daily',
-          paymentSource: paymentSource || 'cash_drawer',
+          paymentSource: 'cash_drawer',
           amount: numAmount,
           periodCovered: (periodCovered || '').trim(),
           buyerName: buyerName.trim() || 'المحل',
@@ -153,8 +158,7 @@ export default function ExpensesScreen({ user }) {
           date: expenseDate ? new Date(expenseDate).toISOString() : new Date().toISOString(),
           createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
         });
-        const sourceLabel = paymentSource === 'management' ? 'من المدير' : 'من القاصة';
-        toast(`تم تسجيل مصروف "${title}" بمبلغ ${formatIQD(numAmount)} د.ع (${sourceLabel}) بنجاح! 💸`, 'success');
+        toast(`تم تسجيل مصروف "${title}" بمبلغ ${formatIQD(numAmount)} د.ع (من قاصة المحل) بنجاح! 💸`, 'success');
       }
       handleResetForm();
     } catch (err) {
@@ -166,10 +170,13 @@ export default function ExpensesScreen({ user }) {
 
   const handleEditClick = (exp) => {
     setEditingExpense(exp);
+    const expType = exp.expenseType || (SHOP_EXPENSE_PRESETS.some(p => p.category === exp.category) ? 'shop' : 'daily');
+    setExpenseType(expType);
     setTitle(exp.title || '');
-    setExpenseType(exp.expenseType || (SHOP_EXPENSE_PRESETS.some(p => p.category === exp.category) ? 'shop' : 'daily'));
-    setPaymentSource(exp.paymentSource || 'cash_drawer');
-    setCategory(exp.category || 'نثريات عامة');
+    setCategory(exp.category || (expType === 'shop' ? 'إيجار عقار' : 'نثريات عامة'));
+    const presets = expType === 'shop' ? SHOP_EXPENSE_PRESETS : DAILY_EXPENSE_PRESETS;
+    const matchedPreset = presets.find(p => p.title === exp.title);
+    setSelectedPresetId(matchedPreset ? matchedPreset.id : null);
     setAmount(exp.amount || '');
     setPeriodCovered(exp.periodCovered || '');
     setBuyerName(exp.buyerName || '');
@@ -212,12 +219,6 @@ export default function ExpensesScreen({ user }) {
       if (dateFilter === 'today' && expDate !== todayStr) return false;
       if (dateFilter === 'month' && expMonth !== monthStr) return false;
 
-      // Payment Source Filter
-      if (paymentSourceFilter !== 'all') {
-        const pSource = exp.paymentSource || 'cash_drawer';
-        if (pSource !== paymentSourceFilter) return false;
-      }
-
       // Category Filter
       if (categoryFilter !== 'all' && exp.category !== categoryFilter) return false;
 
@@ -233,20 +234,16 @@ export default function ExpensesScreen({ user }) {
 
       return true;
     });
-  }, [expenses, activeTab, searchTerm, categoryFilter, paymentSourceFilter, dateFilter]);
+  }, [expenses, activeTab, searchTerm, categoryFilter, dateFilter]);
 
   // Totals & Breakdown: Today (Variable Sundries Only) & Current Month (Fixed commitments vs Variable sundries)
   const {
     todayVarTotal,
     todayVarCount,
-    todayVarDrawer,
-    todayVarMgmt,
     monthTotal,
     monthCount,
     monthFixedTotal,
-    monthVariableTotal,
-    monthDrawer,
-    monthManagement
+    monthVariableTotal
   } = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const currentMonthStr = new Date().toISOString().slice(0, 7);
@@ -305,18 +302,12 @@ export default function ExpensesScreen({ user }) {
     return {
       todayVarTotal: tVarTotal,
       todayVarCount: tVarCount,
-      todayVarDrawer: tVarDrawer,
-      todayVarMgmt: tVarMgmt,
       monthTotal: mTotal,
       monthCount: mCount,
       monthFixedTotal: mFixed,
-      monthVariableTotal: mVar,
-      monthDrawer: mDrawer,
-      monthManagement: mMgmt
+      monthVariableTotal: mVar
     };
   }, [expenses]);
-
-  const activePresets = expenseType === 'shop' ? SHOP_EXPENSE_PRESETS : DAILY_EXPENSE_PRESETS;
 
   return (
     <div className="space-y-4 animate-fade-in p-2 md:p-5" dir="rtl">
@@ -366,11 +357,12 @@ export default function ExpensesScreen({ user }) {
           </div>
 
           <div className="pt-2 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-bold">
-            <span className="text-slate-600">
-              💵 قاصة: <b className="text-emerald-800 font-mono">{formatIQD(todayVarDrawer)} د.ع</b>
+            <span className="text-slate-700 flex items-center gap-1.5">
+              <span className="text-emerald-700 text-sm">💵</span>
+              <span>تُخصم بالكامل من قاصة المحل</span>
             </span>
-            <span className="text-slate-600">
-              🏛️ إدارة: <b className="text-purple-800 font-mono">{formatIQD(todayVarMgmt)} د.ع</b>
+            <span className="text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-md font-mono font-black border border-amber-200">
+              {todayVarCount} حركات
             </span>
           </div>
           <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
@@ -480,9 +472,14 @@ export default function ExpensesScreen({ user }) {
           </div>
 
           {/* Footer note */}
-          <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
-            <span>قاصة: <b className="text-slate-800 font-mono">{formatIQD(monthDrawer)} د.ع</b></span>
-            <span>إدارة: <b className="text-slate-800 font-mono">{formatIQD(monthManagement)} د.ع</b></span>
+          <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-600 font-bold">
+            <span className="flex items-center gap-1 text-emerald-800">
+              <span>💵</span>
+              <span>جميع المصاريف تُصرف من قاصة المحل</span>
+            </span>
+            <span className="text-slate-500 font-mono">
+              إجمالي البنود: {monthCount}
+            </span>
           </div>
           <div className="absolute top-0 right-0 w-1.5 h-full bg-indigo-600" />
         </div>
@@ -514,59 +511,28 @@ export default function ExpensesScreen({ user }) {
             )}
           </div>
 
-          {/* Quick Preset Buttons */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-bold text-slate-700">
-                اختيار سريع بضغطة زر:
-              </label>
-              <span className="text-[10px] font-bold text-slate-400">
-                {expenseType === 'shop' ? 'مصاريف المحل 🏢' : 'مصاريف يومية ☕'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {activePresets.map((preset) => {
-                const isSelected = selectedPresetId === preset.id || title === preset.title;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => handleSelectPreset(preset)}
-                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                      isSelected
-                        ? expenseType === 'shop'
-                          ? 'bg-indigo-50 border-indigo-500 text-indigo-900 font-bold shadow-xs'
-                          : 'bg-amber-50 border-amber-500 text-amber-900 font-bold shadow-xs'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <span className="text-lg">{preset.icon}</span>
-                    <span className="text-[11px] leading-tight truncate w-full">{preset.title}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           <form onSubmit={handleSaveExpense} className="space-y-3.5">
             {/* Expense Type Selector (Daily vs Shop) */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">نوع ونطاق المصروف</label>
+              <label className="block text-xs font-black text-slate-700 mb-1.5">نوع ونطاق المصروف</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setExpenseType('daily');
-                    setCategory('نثريات عامة');
+                    const p = DAILY_EXPENSE_PRESETS[0];
+                    setSelectedPresetId(p.id);
+                    setTitle(p.title);
+                    setCategory(p.category);
+                    if (!amount || Number(amount) === 0) setAmount(p.defaultAmount || '');
                   }}
-                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     expenseType === 'daily'
-                      ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-2xs'
+                      ? 'bg-amber-100 border-amber-500 text-amber-950 shadow-2xs ring-2 ring-amber-400/40'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span>☕</span>
+                  <span className="text-base">☕</span>
                   <span>مصروف يومي / نثريات</span>
                 </button>
 
@@ -574,153 +540,177 @@ export default function ExpensesScreen({ user }) {
                   type="button"
                   onClick={() => {
                     setExpenseType('shop');
-                    setCategory('إيجار عقار');
+                    const p = SHOP_EXPENSE_PRESETS[0];
+                    setSelectedPresetId(p.id);
+                    setTitle(p.title);
+                    setCategory(p.category);
+                    if (!amount || Number(amount) === 0) setAmount(p.defaultAmount || '');
                   }}
-                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     expenseType === 'shop'
-                      ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-2xs'
+                      ? 'bg-indigo-100 border-indigo-500 text-indigo-950 shadow-2xs ring-2 ring-indigo-400/40'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span>🏢</span>
+                  <span className="text-base">🏢</span>
                   <span>مصروف محل / تشغيلي</span>
                 </button>
               </div>
             </div>
 
-            {/* Title Input */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">اسم / عنوان المصروف *</label>
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => { setTitle(e.target.value); setSelectedPresetId(null); }}
-                placeholder={expenseType === 'shop' ? 'مثال: إيجار المحل لشهر 8، اشتراك الإنترنت...' : 'مثال: ربطة ماء، كارت رصيد، شاي...'}
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
-              />
-            </div>
+            {/* Daily Expense Mode: Preset Options Only (No Title input, Auto Category) */}
+            {expenseType === 'daily' ? (
+              <div className="space-y-2.5">
+                <label className="block text-xs font-black text-slate-800">
+                  اختر المصروف اليومي (يُحدد الاسم والتصنيف تلقائياً):
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {DAILY_EXPENSE_PRESETS.map((preset) => {
+                    const isSelected = selectedPresetId === preset.id || title === preset.title;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleSelectPreset(preset)}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 relative ${
+                          isSelected
+                            ? 'bg-amber-100/90 border-amber-500 text-amber-950 font-black shadow-xs ring-2 ring-amber-400'
+                            : 'border-slate-200 bg-slate-50 hover:bg-amber-50/50 text-slate-700'
+                        }`}
+                      >
+                        <span className="text-xl">{preset.icon}</span>
+                        <span className="text-[11px] font-bold leading-tight truncate w-full">{preset.title}</span>
+                        {isSelected && (
+                          <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-amber-600" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
 
-            {/* Amount & Category */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">المبلغ (د.ع) *</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="any"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">التصنيف</label>
-                {expenseType === 'shop' ? (
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white font-bold"
-                  >
-                    <option value="إيجار عقار">إيجار عقار</option>
-                    <option value="بلدية ورسوم">بلدية ورسوم</option>
-                    <option value="خدمات وإنترنت">خدمات وإنترنت</option>
-                    <option value="كهرباء ومولد">كهرباء ومولد</option>
-                    <option value="صيانة وتجهيزات">صيانة وتجهيزات</option>
-                    <option value="رسوم حكومية">رسوم حكومية</option>
-                    <option value="مصاريف تشغيلية">مصاريف تشغيلية</option>
-                  </select>
-                ) : (
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white font-bold"
-                  >
-                    <option value="طعام وغداء">طعام وغداء</option>
-                    <option value="مشروبات ومياه">مشروبات ومياه</option>
-                    <option value="مستلزمات ونظافة">مستلزمات ونظافة</option>
-                    <option value="صيانة ومحروقات">صيانة ومحروقات</option>
-                    <option value="نثريات عامة">نثريات عامة</option>
-                  </select>
-                )}
-              </div>
-            </div>
-
-            {/* Payment Source Selection (من القاصة أو من المدير) */}
-            <div className="p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border border-slate-200 rounded-xl space-y-2">
-              <label className="block text-xs font-bold text-slate-800">
-                💳 مصدر سداد هذا المصروف:
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                  paymentSource === 'cash_drawer'
-                    ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold shadow-2xs'
-                    : 'border-slate-200 hover:bg-white text-slate-700'
-                }`}>
-                  <input
-                    type="radio"
-                    name="paymentSource"
-                    value="cash_drawer"
-                    checked={paymentSource === 'cash_drawer'}
-                    onChange={(e) => setPaymentSource(e.target.value)}
-                    className="text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <div>
-                    <span className="text-xs font-bold block">💵 من القاصة</span>
-                    <span className="text-[10px] text-slate-500 block">يُخصم من نقد الصندوق</span>
+                {/* Selected Daily Expense Badge */}
+                <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">
+                      {DAILY_EXPENSE_PRESETS.find(p => p.id === selectedPresetId)?.icon || '☕'}
+                    </span>
+                    <div>
+                      <div className="font-black text-amber-950">
+                        المصروف: <span className="text-amber-900 font-extrabold">{title}</span>
+                      </div>
+                      <div className="text-[10px] font-bold text-amber-700 mt-0.5">
+                        التصنيف التلقائي: <span className="bg-amber-200/60 text-amber-900 px-1.5 py-0.2 rounded font-black">{category}</span>
+                      </div>
+                    </div>
                   </div>
-                </label>
-
-                <label className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                  paymentSource === 'management'
-                    ? 'bg-indigo-50 border-indigo-500 text-indigo-900 font-bold shadow-2xs'
-                    : 'border-slate-200 hover:bg-white text-slate-700'
-                }`}>
-                  <input
-                    type="radio"
-                    name="paymentSource"
-                    value="management"
-                    checked={paymentSource === 'management'}
-                    onChange={(e) => setPaymentSource(e.target.value)}
-                    className="text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <div>
-                    <span className="text-xs font-bold block">🏦 دفعها المدير</span>
-                    <span className="text-[10px] text-slate-500 block">لا يمس كاش القاصة</span>
-                  </div>
-                </label>
+                  <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    محدد تلقائياً ✓
+                  </span>
+                </div>
               </div>
-            </div>
-
-            {/* Period Covered (For Shop / Fixed Expenses) */}
-            {expenseType === 'shop' && (
-              <div className="animate-fade-in">
-                <label className="block text-xs font-bold text-indigo-900 mb-1">
-                  الفترة / الشهر المغطى (اختياري)
+            ) : (
+              /* Shop Expense Mode: Preset Options + Details */
+              <div className="space-y-2.5">
+                <label className="block text-xs font-black text-slate-800">
+                  اختر التزام المحل (يُحدد الاسم والتصنيف تلقائياً):
                 </label>
-                <input
-                  type="text"
-                  value={periodCovered}
-                  onChange={(e) => setPeriodCovered(e.target.value)}
-                  placeholder="مثال: شهر آب 2026 / الربع الثالث"
-                  className="w-full p-2.5 bg-indigo-50/50 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {SHOP_EXPENSE_PRESETS.map((preset) => {
+                    const isSelected = selectedPresetId === preset.id || title === preset.title;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleSelectPreset(preset)}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 relative ${
+                          isSelected
+                            ? 'bg-indigo-100/90 border-indigo-500 text-indigo-950 font-black shadow-xs ring-2 ring-indigo-400'
+                            : 'border-slate-200 bg-slate-50 hover:bg-indigo-50/50 text-slate-700'
+                        }`}
+                      >
+                        <span className="text-xl">{preset.icon}</span>
+                        <span className="text-[11px] font-bold leading-tight truncate w-full">{preset.title}</span>
+                        {isSelected && (
+                          <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-indigo-600" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">اسم الالتزام / المصروف *</label>
+                    <input
+                      type="text"
+                      required
+                      value={title}
+                      onChange={(e) => { setTitle(e.target.value); setSelectedPresetId(null); }}
+                      placeholder="مثال: إيجار المحل..."
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">التصنيف التلقائي</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={category}
+                      className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                {/* Period Covered (For Shop / Fixed Expenses) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-indigo-900 mb-1">
+                    الفترة / الشهر المغطى (اختياري)
+                  </label>
+                  <input
+                    type="text"
+                    value={periodCovered}
+                    onChange={(e) => setPeriodCovered(e.target.value)}
+                    placeholder="مثال: شهر آب 2026 / الربع الثالث"
+                    className="w-full p-2 bg-indigo-50/50 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
               </div>
             )}
+
+            {/* Amount (IQD) */}
+            <div>
+              <label className="block text-xs font-black text-slate-700 mb-1">المبلغ (د.ع) *</label>
+              <input
+                type="number"
+                required
+                min="0"
+                step="any"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-black font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+              />
+              <p className="text-[10px] text-slate-500 mt-1 font-bold">
+                بمضاعفات الـ 250 دينار (مثل: 250، 500، 1000، 2000...)
+              </p>
+            </div>
+
+            {/* Always Cash Drawer Reassurance */}
+            <div className="p-2.5 bg-emerald-50 border border-emerald-200/90 rounded-xl flex items-center gap-2 text-xs font-bold text-emerald-900">
+              <span className="text-base">💵</span>
+              <span>مصدر السداد: <b>قاصة المحل (كاش)</b> — يُخصم تلقائياً من الصندوق اليومي</span>
+            </div>
 
             {/* Buyer Name & Date */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الشخص المشتري / الصارف</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">الشخص الصارف / المشتري</label>
                 <input
                   type="text"
                   value={buyerName}
                   onChange={(e) => setBuyerName(e.target.value)}
                   placeholder="اسم الشخص..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
                 />
               </div>
 
@@ -742,7 +732,7 @@ export default function ExpensesScreen({ user }) {
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="أي تفاصيل أخرى..."
+                placeholder={expenseType === 'daily' ? 'أي تفاصيل عن المصروف أو المشتريات...' : 'أي تفاصيل أخرى...'}
                 className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
               />
             </div>
@@ -829,17 +819,6 @@ export default function ExpensesScreen({ user }) {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Payment Source Filter */}
-              <select
-                value={paymentSourceFilter}
-                onChange={(e) => setPaymentSourceFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="all">كافة مصادر السداد</option>
-                <option value="cash_drawer">💵 من القاصة (كاش)</option>
-                <option value="management">🏦 دفعها المدير</option>
-              </select>
-
               {/* Date Filter */}
               <select
                 value={dateFilter}
@@ -861,6 +840,7 @@ export default function ExpensesScreen({ user }) {
                 <option value="طعام وغداء">طعام وغداء</option>
                 <option value="مشروبات ومياه">مشروبات ومياه</option>
                 <option value="مستلزمات ونظافة">مستلزمات ونظافة</option>
+                <option value="نقل ومواصلات">نقل ومواصلات</option>
                 <option value="إيجار عقار">إيجار عقار</option>
                 <option value="بلدية ورسوم">بلدية ورسوم</option>
                 <option value="خدمات وإنترنت">خدمات وإنترنت</option>
@@ -887,7 +867,6 @@ export default function ExpensesScreen({ user }) {
                     <th className="p-3">التاريخ</th>
                     <th className="p-3">المصروف</th>
                     <th className="p-3">النوع / التصنيف</th>
-                    <th className="p-3">مصدر السداد</th>
                     <th className="p-3">المشتري</th>
                     <th className="p-3">المبلغ</th>
                     <th className="p-3">الملاحظات</th>
@@ -897,7 +876,6 @@ export default function ExpensesScreen({ user }) {
                 <tbody className="divide-y divide-slate-100">
                   {filteredExpenses.map((exp) => {
                     const isShop = exp.expenseType === 'shop';
-                    const isMgmt = exp.paymentSource === 'management';
 
                     return (
                       <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
@@ -925,16 +903,6 @@ export default function ExpensesScreen({ user }) {
                               {exp.category}
                             </span>
                           </div>
-                        </td>
-                        <td className="p-3 whitespace-nowrap">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${
-                            isMgmt
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            <span>{isMgmt ? '🏦' : '💵'}</span>
-                            <span>{isMgmt ? 'من المدير' : 'من القاصة'}</span>
-                          </span>
                         </td>
                         <td className="p-3 text-slate-600 whitespace-nowrap">
                           {exp.buyerName || 'المحل'}
