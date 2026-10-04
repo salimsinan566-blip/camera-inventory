@@ -36,11 +36,11 @@ export default function ExpensesScreen({ user }) {
   // Edit State
   const [editingExpense, setEditingExpense] = useState(null);
 
-  // Filter State
+  // Filter State (Default is 'today' so table always defaults to today's expenses)
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [paymentSourceFilter, setPaymentSourceFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'month'
+  const [dateFilter, setDateFilter] = useState('today'); // Default: 'today'
 
   // When switching top tabs, update form's expenseType and default category
   const handleTabChange = (tab) => {
@@ -54,6 +54,38 @@ export default function ExpensesScreen({ user }) {
       setCategory('إيجار عقار');
       setSelectedPresetId(null);
     }
+  };
+
+  // Toggle handler: Fixed Monthly Expenses vs Today's Expenses
+  const handleToggleShopFixed = () => {
+    if (dateFilter === 'month' && activeTab === 'shop') {
+      // Toggle OFF: Revert back to today's expenses
+      setDateFilter('today');
+      handleTabChange('daily');
+    } else {
+      // Toggle ON: Show monthly fixed obligations
+      setDateFilter('month');
+      handleTabChange('shop');
+    }
+  };
+
+  // Toggle handler: Variable Monthly Expenses vs Today's Expenses
+  const handleToggleMonthlyVariable = () => {
+    if (dateFilter === 'month' && activeTab === 'daily') {
+      // Toggle OFF: Revert back to today's expenses
+      setDateFilter('today');
+      handleTabChange('daily');
+    } else {
+      // Toggle ON: Show monthly variable sundries
+      setDateFilter('month');
+      handleTabChange('daily');
+    }
+  };
+
+  // Select Today's expenses directly
+  const handleSelectToday = () => {
+    setDateFilter('today');
+    handleTabChange('daily');
   };
 
   const handleSelectPreset = (preset) => {
@@ -291,15 +323,30 @@ export default function ExpensesScreen({ user }) {
       {/* Stats Cards: Compact & Streamlined 2 Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
         {/* Card 1: مصاريف اليوم (نثريات فقط - بدون الثابتة) */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-white to-amber-500/5 p-4 rounded-2xl border border-amber-300 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+        <div
+          onClick={handleSelectToday}
+          className={`lg:col-span-5 p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
+            dateFilter === 'today'
+              ? 'bg-gradient-to-br from-amber-500/15 via-white to-amber-500/5 border-amber-400 shadow-xs ring-2 ring-amber-400/40'
+              : 'bg-white hover:bg-amber-50/40 border-slate-200 shadow-2xs'
+          }`}
+          title="اضغط لعرض مصاريف اليوم فقط في الجدول"
+        >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center text-base shadow-2xs">
+              <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-base shadow-2xs ${
+                dateFilter === 'today' ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-700'
+              }`}>
                 ☕
               </span>
               <div>
-                <h3 className="text-xs font-black text-amber-950">
-                  مصاريف اليوم (نثريات فقط)
+                <h3 className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                  <span>مصاريف اليوم (نثريات فقط)</span>
+                  {dateFilter === 'today' && (
+                    <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.2 rounded font-bold">
+                      المعروض بالجدول ✓
+                    </span>
+                  )}
                 </h3>
                 <p className="text-[10px] font-bold text-amber-700/80">
                   لا تشمل الالتزامات الثابتة
@@ -350,14 +397,17 @@ export default function ExpensesScreen({ user }) {
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => handleTabChange('all')}
+                onClick={() => {
+                  setDateFilter('all');
+                  handleTabChange('all');
+                }}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
-                  activeTab === 'all'
+                  dateFilter === 'all' && activeTab === 'all'
                     ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
                 }`}
               >
-                عرض الكل
+                عرض كل التواريخ
               </button>
             </div>
           </div>
@@ -367,12 +417,13 @@ export default function ExpensesScreen({ user }) {
             {/* زر المصاريف الثابتة (الالتزامات) */}
             <button
               type="button"
-              onClick={() => handleTabChange('shop')}
-              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
-                activeTab === 'shop'
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400/40'
-                  : 'bg-indigo-50/70 hover:bg-indigo-100/80 border-indigo-200/80 text-indigo-950'
+              onClick={handleToggleShopFixed}
+              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
+                dateFilter === 'month' && activeTab === 'shop'
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400/50'
+                  : 'bg-indigo-50/70 hover:bg-indigo-100/90 border-indigo-200/90 text-indigo-950'
               }`}
+              title={dateFilter === 'month' && activeTab === 'shop' ? 'مفعل حالياً - اضغط مرة أخرى للرجوع لمصاريف اليوم' : 'اضغط لعرض مصاريف الشهر الثابتة في الجدول'}
             >
               <div className="flex items-center justify-between text-[11px] font-black">
                 <span className="flex items-center gap-1">
@@ -380,28 +431,31 @@ export default function ExpensesScreen({ user }) {
                   <span>مصاريف ثابتة (الالتزامات)</span>
                 </span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                  activeTab === 'shop' ? 'bg-white/20 text-white' : 'bg-indigo-200/70 text-indigo-900'
+                  dateFilter === 'month' && activeTab === 'shop'
+                    ? 'bg-white text-indigo-900 shadow-2xs'
+                    : 'bg-indigo-200/70 text-indigo-900'
                 }`}>
-                  {monthTotal > 0 ? `${((monthFixedTotal / monthTotal) * 100).toFixed(0)}%` : '0%'}
+                  {dateFilter === 'month' && activeTab === 'shop' ? 'مفعل بالجدول ✓' : (monthTotal > 0 ? `${((monthFixedTotal / monthTotal) * 100).toFixed(0)}%` : '0%')}
                 </span>
               </div>
               <div className="mt-1 font-mono font-black text-lg sm:text-xl">
                 {formatIQD(monthFixedTotal)} <span className="text-[10px] font-normal">د.ع</span>
               </div>
-              <span className={`text-[9px] truncate ${activeTab === 'shop' ? 'text-indigo-100' : 'text-indigo-700/80'}`}>
-                إيجار، مولد، إنترنت، بلدية، رسوم
+              <span className={`text-[9px] truncate ${dateFilter === 'month' && activeTab === 'shop' ? 'text-indigo-100 font-bold' : 'text-indigo-700/80'}`}>
+                {dateFilter === 'month' && activeTab === 'shop' ? '↩️ اضغط للإلغاء والرجوع لمصاريف اليوم' : 'إيجار، مولد، إنترنت، بلدية، رسوم'}
               </span>
             </button>
 
             {/* زر المصاريف المتغيرة (النثريات) */}
             <button
               type="button"
-              onClick={() => handleTabChange('daily')}
-              className={`p-2 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
-                activeTab === 'daily'
-                  ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/40'
-                  : 'bg-purple-50/70 hover:bg-purple-100/80 border-purple-200/80 text-purple-950'
+              onClick={handleToggleMonthlyVariable}
+              className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
+                dateFilter === 'month' && activeTab === 'daily'
+                  ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/50'
+                  : 'bg-purple-50/70 hover:bg-purple-100/90 border-purple-200/90 text-purple-950'
               }`}
+              title={dateFilter === 'month' && activeTab === 'daily' ? 'مفعل حالياً - اضغط مرة أخرى للرجوع لمصاريف اليوم' : 'اضغط لعرض مصاريف الشهر المتغيرة في الجدول'}
             >
               <div className="flex items-center justify-between text-[11px] font-black">
                 <span className="flex items-center gap-1">
@@ -409,16 +463,18 @@ export default function ExpensesScreen({ user }) {
                   <span>مصاريف متغيرة (النثريات)</span>
                 </span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                  activeTab === 'daily' ? 'bg-white/20 text-white' : 'bg-purple-200/70 text-purple-900'
+                  dateFilter === 'month' && activeTab === 'daily'
+                    ? 'bg-white text-purple-900 shadow-2xs'
+                    : 'bg-purple-200/70 text-purple-900'
                 }`}>
-                  {monthTotal > 0 ? `${((monthVariableTotal / monthTotal) * 100).toFixed(0)}%` : '0%'}
+                  {dateFilter === 'month' && activeTab === 'daily' ? 'مفعل بالجدول ✓' : (monthTotal > 0 ? `${((monthVariableTotal / monthTotal) * 100).toFixed(0)}%` : '0%')}
                 </span>
               </div>
               <div className="mt-1 font-mono font-black text-lg sm:text-xl">
                 {formatIQD(monthVariableTotal)} <span className="text-[10px] font-normal">د.ع</span>
               </div>
-              <span className={`text-[9px] truncate ${activeTab === 'daily' ? 'text-purple-100' : 'text-purple-700/80'}`}>
-                طعام، شاي ومياه، تنظيف، شحن
+              <span className={`text-[9px] truncate ${dateFilter === 'month' && activeTab === 'daily' ? 'text-purple-100 font-bold' : 'text-purple-700/80'}`}>
+                {dateFilter === 'month' && activeTab === 'daily' ? '↩️ اضغط للإلغاء والرجوع لمصاريف اليوم' : 'طعام، شاي ومياه، تنظيف، شحن'}
               </span>
             </button>
           </div>
@@ -715,6 +771,48 @@ export default function ExpensesScreen({ user }) {
 
         {/* Expenses List & Audit Table */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+          {/* Active View Indicator Banner */}
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              {dateFilter === 'today' ? (
+                <span className="flex items-center gap-1.5 font-bold text-amber-950 bg-amber-100/90 px-2.5 py-1 rounded-xl border border-amber-300">
+                  <span>☀️</span>
+                  <span>الجدول يعرض حالياً: <b>مصاريف اليوم</b> ({new Date().toLocaleDateString('ar-IQ')})</span>
+                </span>
+              ) : dateFilter === 'month' && activeTab === 'shop' ? (
+                <span className="flex items-center gap-1.5 font-bold text-indigo-950 bg-indigo-100/90 px-2.5 py-1 rounded-xl border border-indigo-300">
+                  <span>🏢</span>
+                  <span>الجدول يعرض حالياً: <b>مصاريف الشهر الثابتة (الالتزامات)</b></span>
+                </span>
+              ) : dateFilter === 'month' && activeTab === 'daily' ? (
+                <span className="flex items-center gap-1.5 font-bold text-purple-950 bg-purple-100/90 px-2.5 py-1 rounded-xl border border-purple-300">
+                  <span>☕</span>
+                  <span>الجدول يعرض حالياً: <b>مصاريف الشهر المتغيرة (النثريات)</b></span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 font-bold text-slate-800 bg-slate-200 px-2.5 py-1 rounded-xl">
+                  <span>📑</span>
+                  <span>الجدول يعرض: <b>كافة المصاريف المسجلة</b></span>
+                </span>
+              )}
+
+              <span className="text-[11px] font-bold text-slate-500">
+                ({filteredExpenses.length} بنود مطابقة)
+              </span>
+            </div>
+
+            {dateFilter !== 'today' && (
+              <button
+                type="button"
+                onClick={handleSelectToday}
+                className="text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-xl border border-amber-300 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+              >
+                <span>↩️</span>
+                <span>الرجوع لمصاريف اليوم</span>
+              </button>
+            )}
+          </div>
+
           {/* Filters Bar */}
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
