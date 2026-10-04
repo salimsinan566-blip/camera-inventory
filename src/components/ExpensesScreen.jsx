@@ -203,36 +203,84 @@ export default function ExpensesScreen({ user }) {
     });
   }, [expenses, activeTab, searchTerm, categoryFilter, paymentSourceFilter, dateFilter]);
 
-  // Tab Totals Breakdown
-  const { dailyTotal, shopTotal, drawerPaidTotal, managementPaidTotal } = useMemo(() => {
-    let dTotal = 0;
-    let sTotal = 0;
-    let drTotal = 0;
-    let mgTotal = 0;
+  // Totals & Breakdown: Today & Current Month (Fixed commitments + Variable sundries)
+  const {
+    todayTotal,
+    todayCount,
+    todayDrawer,
+    todayManagement,
+    monthTotal,
+    monthCount,
+    monthFixedTotal,
+    monthVariableTotal,
+    monthDrawer,
+    monthManagement
+  } = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+
+    let tTotal = 0;
+    let tCount = 0;
+    let tDrawer = 0;
+    let tMgmt = 0;
+
+    let mTotal = 0;
+    let mCount = 0;
+    let mFixed = 0;
+    let mVar = 0;
+    let mDrawer = 0;
+    let mMgmt = 0;
 
     expenses.forEach((e) => {
       const amt = Number(e.amount) || 0;
-      const type = e.expenseType || (SHOP_EXPENSE_PRESETS.some(p => p.category === e.category) ? 'shop' : 'daily');
+      const dateStr = (e.date || e.createdAt || '').slice(0, 10);
+      const monthStr = (e.date || e.createdAt || '').slice(0, 7);
       const source = e.paymentSource || 'cash_drawer';
+      const isFixed =
+        e.expenseType === 'shop' ||
+        SHOP_EXPENSE_PRESETS.some((p) => p.category === e.category) ||
+        ['إيجار عقار', 'كهرباء ومولد', 'خدمات وإنترنت', 'بلدية ورسوم', 'رسوم حكومية', 'صيانة وتجهيزات'].includes(e.category);
 
-      if (type === 'shop') {
-        sTotal += amt;
-      } else {
-        dTotal += amt;
+      // Today
+      if (dateStr === todayStr) {
+        tTotal += amt;
+        tCount += 1;
+        if (source === 'management' || source === 'mastercard') {
+          tMgmt += amt;
+        } else {
+          tDrawer += amt;
+        }
       }
 
-      if (source === 'management') {
-        mgTotal += amt;
-      } else {
-        drTotal += amt;
+      // Current Month
+      if (monthStr === currentMonthStr) {
+        mTotal += amt;
+        mCount += 1;
+        if (isFixed) {
+          mFixed += amt;
+        } else {
+          mVar += amt;
+        }
+
+        if (source === 'management' || source === 'mastercard') {
+          mMgmt += amt;
+        } else {
+          mDrawer += amt;
+        }
       }
     });
 
     return {
-      dailyTotal: dTotal,
-      shopTotal: sTotal,
-      drawerPaidTotal: drTotal,
-      managementPaidTotal: mgTotal
+      todayTotal: tTotal,
+      todayCount: tCount,
+      todayDrawer: tDrawer,
+      todayManagement: tMgmt,
+      monthTotal: mTotal,
+      monthCount: mCount,
+      monthFixedTotal: mFixed,
+      monthVariableTotal: mVar,
+      monthDrawer: mDrawer,
+      monthManagement: mMgmt
     };
   }, [expenses]);
 
@@ -240,56 +288,124 @@ export default function ExpensesScreen({ user }) {
 
   return (
     <div className="space-y-6 animate-fade-in p-2 md:p-6" dir="rtl">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Daily Expenses Total */}
-        <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 p-5 rounded-2xl border border-amber-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-800">المصاريف اليومية والنثريات</span>
-            <span className="p-2 bg-amber-500/10 text-amber-700 rounded-xl text-lg">☕</span>
+      {/* Stats Cards: Exactly 2 Cards (Today Only + Monthly Fixed & Variable) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Card 1: كارت مصاريف اليوم فقط */}
+        <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-white to-amber-500/5 p-5 rounded-3xl border-2 border-amber-300 shadow-xs flex flex-col justify-between relative overflow-hidden">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-700 flex items-center justify-center text-xl shadow-2xs">
+                  ☀️
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-amber-950">
+                    مصاريف اليوم فقط
+                  </h3>
+                  <p className="text-[11px] font-bold text-amber-700/80">
+                    {new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+              <span className="bg-amber-100 text-amber-900 text-xs px-2.5 py-1 rounded-full font-black border border-amber-200">
+                {todayCount} عمليات اليوم
+              </span>
+            </div>
+
+            <div className="my-3">
+              <span className="text-3xl sm:text-4xl font-black text-amber-950 font-mono tracking-tight">
+                {formatIQD(todayTotal)}
+              </span>
+              <span className="text-xs font-black text-amber-800 mr-1.5">د.ع</span>
+            </div>
           </div>
-          <p className="text-2xl font-black text-amber-950 mt-2 font-mono">
-            {formatIQD(dailyTotal)} <span className="text-xs font-normal text-amber-800">د.ع</span>
-          </p>
-          <p className="text-[11px] text-amber-700 mt-1">مياه، وجبات، مواد تنظيف، نثريات</p>
+
+          <div className="pt-3 border-t border-amber-200/80 grid grid-cols-2 gap-2 text-xs font-bold">
+            <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 flex items-center justify-between">
+              <span className="text-slate-600 text-[11px]">💵 من القاصة:</span>
+              <span className="font-mono text-emerald-800 font-black">{formatIQD(todayDrawer)} د.ع</span>
+            </div>
+            <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 flex items-center justify-between">
+              <span className="text-slate-600 text-[11px]">🏛️ دفع الإدارة:</span>
+              <span className="font-mono text-purple-800 font-black">{formatIQD(todayManagement)} د.ع</span>
+            </div>
+          </div>
+          <div className="absolute top-0 right-0 w-2 h-full bg-amber-500" />
         </div>
 
-        {/* Shop Fixed Expenses Total */}
-        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-5 rounded-2xl border border-indigo-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-indigo-800">مصاريف والتزامات المحل</span>
-            <span className="p-2 bg-indigo-500/10 text-indigo-700 rounded-xl text-lg">🏢</span>
-          </div>
-          <p className="text-2xl font-black text-indigo-950 mt-2 font-mono">
-            {formatIQD(shopTotal)} <span className="text-xs font-normal text-indigo-800">د.ع</span>
-          </p>
-          <p className="text-[11px] text-indigo-700 mt-1">إيجار، بلدية، إنترنت، مولد، صيانة</p>
-        </div>
+        {/* Card 2: كارت مصاريف شهرية (الثابتة الالتزامات + المتغيرة النثريات) */}
+        <div className="lg:col-span-7 bg-white p-5 rounded-3xl border-2 border-indigo-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+          {/* Card 2 Header */}
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-xl shadow-2xs">
+                📊
+              </span>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  كشف المصاريف الشهرية
+                </h3>
+                <p className="text-[11px] font-bold text-slate-500">
+                  شهر {new Date().toLocaleDateString('ar-IQ', { month: 'long', year: 'numeric' })} • {monthCount} عملية
+                </p>
+              </div>
+            </div>
 
-        {/* Cash Drawer vs Management Outflow */}
-        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-5 rounded-2xl border border-emerald-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-800">المسحوب من القاصة (كاش)</span>
-            <span className="p-2 bg-emerald-500/10 text-emerald-700 rounded-xl text-lg">💵</span>
+            <div className="text-left bg-indigo-50 px-3.5 py-1.5 rounded-2xl border border-indigo-200">
+              <span className="text-[10px] text-indigo-700 font-bold block">إجمالي الشهر:</span>
+              <span className="text-base font-black font-mono text-indigo-950">
+                {formatIQD(monthTotal)} <span className="text-xs">د.ع</span>
+              </span>
+            </div>
           </div>
-          <p className="text-2xl font-black text-emerald-950 mt-2 font-mono">
-            {formatIQD(drawerPaidTotal)} <span className="text-xs font-normal text-emerald-800">د.ع</span>
-          </p>
-          <p className="text-[11px] text-emerald-700 mt-1">
-            دفع المدير: <span className="font-bold font-mono">{formatIQD(managementPaidTotal)} د.ع</span>
-          </p>
-        </div>
 
-        {/* Total Expenses Overall */}
-        <div className="bg-gradient-to-br from-slate-50 to-slate-100/80 p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700">المجموع الكلي للنفقات</span>
-            <span className="p-2 bg-slate-500/10 text-slate-700 rounded-xl text-lg">💰</span>
+          {/* Sub-cards: الثابتة (الالتزامات) + المتغيرة (النثريات) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-1">
+            {/* 1. المصاريف الشهرية الثابتة (الالتزامات) */}
+            <div className="bg-gradient-to-br from-indigo-50/70 to-indigo-100/30 p-3.5 rounded-2xl border border-indigo-200/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
+                  <span>🏢</span>
+                  <span>مصاريف شهرية ثابتة (الالتزامات)</span>
+                </span>
+                <span className="bg-indigo-200/70 text-indigo-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {monthTotal > 0 ? `${((monthFixedTotal / monthTotal) * 100).toFixed(0)}%` : '0%'}
+                </span>
+              </div>
+              <p className="text-2xl font-black text-indigo-950 font-mono">
+                {formatIQD(monthFixedTotal)} <span className="text-xs font-bold text-indigo-800">د.ع</span>
+              </p>
+              <p className="text-[10px] text-indigo-700/80 mt-1 font-medium">
+                إيجار، اشتراك مولد، إنترنت، بلدية، رسوم والتزامات
+              </p>
+            </div>
+
+            {/* 2. المصاريف المتغيرة (النثريات) */}
+            <div className="bg-gradient-to-br from-purple-50/70 to-purple-100/30 p-3.5 rounded-2xl border border-purple-200/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+                  <span>☕</span>
+                  <span>مصاريف متغيرة (النثريات)</span>
+                </span>
+                <span className="bg-purple-200/70 text-purple-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {monthTotal > 0 ? `${((monthVariableTotal / monthTotal) * 100).toFixed(0)}%` : '0%'}
+                </span>
+              </div>
+              <p className="text-2xl font-black text-purple-950 font-mono">
+                {formatIQD(monthVariableTotal)} <span className="text-xs font-bold text-purple-800">د.ع</span>
+              </p>
+              <p className="text-[10px] text-purple-700/80 mt-1 font-medium">
+                طعام وغداء، مياه وشاي، مستلزمات نظافة، نقل وشحن، نثريات
+              </p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2 font-mono">
-            {formatIQD(stats.allTotal)} <span className="text-xs font-normal text-slate-600">د.ع</span>
-          </p>
-          <p className="text-[11px] text-slate-500 mt-1">{stats.count} عملية مسجلة</p>
+
+          {/* Card 2 Footer note */}
+          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+            <span>من قاصة المحل: <b className="text-slate-800 font-mono">{formatIQD(monthDrawer)} د.ع</b></span>
+            <span>دفع الإدارة: <b className="text-slate-800 font-mono">{formatIQD(monthManagement)} د.ع</b></span>
+          </div>
+          <div className="absolute top-0 right-0 w-2 h-full bg-indigo-600" />
         </div>
       </div>
 
