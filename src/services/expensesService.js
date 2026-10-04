@@ -33,7 +33,7 @@ export const SHOP_EXPENSE_PRESETS = [
   { id: 'municipality', title: 'رسوم بلدية ونفايات', icon: '🏛️', defaultAmount: 0, category: 'بلدية ورسوم' },
   { id: 'shop_maintenance', title: 'صيانة وتجهيزات', icon: '🛠️', defaultAmount: 0, category: 'صيانة وتجهيزات' },
   { id: 'fees', title: 'تراخيص ورسوم حكومية', icon: '📜', defaultAmount: 0, category: 'رسوم حكومية' },
-  { id: 'shop_other', title: 'مصروف تشغيلي عام', icon: '💼', defaultAmount: 0, category: 'مصاريف تشغيلية' }
+  { id: 'shop_other', title: 'نوع آخر', icon: '➕', defaultAmount: 0, category: 'مصاريف تشغيلية' }
 ];
 
 // للتوافق الرجعي

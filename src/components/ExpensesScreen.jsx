@@ -95,9 +95,9 @@ export default function ExpensesScreen({ user }) {
 
   const handleSelectPreset = (preset) => {
     setSelectedPresetId(preset.id);
-    if (preset.id === 'daily_other') {
+    if (preset.id === 'daily_other' || preset.id === 'shop_other') {
       setTitle('');
-      setCategory('نثريات عامة');
+      setCategory(preset.category);
     } else {
       setTitle(preset.title);
       setCategory(preset.category);
@@ -114,6 +114,7 @@ export default function ExpensesScreen({ user }) {
     setCategory(defaultPreset.category);
     setAmount(defaultPreset.defaultAmount || '');
     setPeriodCovered('');
+    setBuyerName('');
     setNotes('');
     setEditingExpense(null);
     setExpenseDate(new Date().toISOString().slice(0, 10));
@@ -178,10 +179,11 @@ export default function ExpensesScreen({ user }) {
     const expType = exp.expenseType || (SHOP_EXPENSE_PRESETS.some(p => p.category === exp.category) ? 'shop' : 'daily');
     setExpenseType(expType);
     setTitle(exp.title || '');
-    setCategory(exp.category || (expType === 'shop' ? 'إيجار عقار' : 'نثريات عامة'));
+    setCategory(exp.category || (expType === 'shop' ? 'مصاريف تشغيلية' : 'نثريات عامة'));
     const presets = expType === 'shop' ? SHOP_EXPENSE_PRESETS : DAILY_EXPENSE_PRESETS;
-    const matchedPreset = presets.find(p => p.title === exp.title);
-    setSelectedPresetId(matchedPreset ? matchedPreset.id : (expType === 'daily' ? 'daily_other' : null));
+    const otherId = expType === 'shop' ? 'shop_other' : 'daily_other';
+    const matchedPreset = presets.find(p => p.title === exp.title && p.id !== otherId);
+    setSelectedPresetId(matchedPreset ? matchedPreset.id : otherId);
     setAmount(exp.amount || '');
     setPeriodCovered(exp.periodCovered || '');
     setBuyerName(exp.buyerName || '');
@@ -240,6 +242,10 @@ export default function ExpensesScreen({ user }) {
       return true;
     });
   }, [expenses, activeTab, searchTerm, categoryFilter, dateFilter]);
+
+  const filteredTotalAmount = useMemo(() => {
+    return filteredExpenses.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  }, [filteredExpenses]);
 
   // Totals & Breakdown: Today (Variable Sundries Only) & Current Month (Fixed commitments vs Variable sundries)
   const {
@@ -590,9 +596,9 @@ export default function ExpensesScreen({ user }) {
                 <label className="block text-xs font-bold text-slate-700">
                   نوع الالتزام:
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {SHOP_EXPENSE_PRESETS.map((preset) => {
-                    const isSelected = selectedPresetId === preset.id || title === preset.title;
+                    const isSelected = selectedPresetId === preset.id || (preset.id !== 'shop_other' && title === preset.title);
                     return (
                       <button
                         key={preset.id}
@@ -611,31 +617,26 @@ export default function ExpensesScreen({ user }) {
                   })}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">بيان المصروف *</label>
+                {/* When selecting "+" (shop_other): Custom Title Input */}
+                {selectedPresetId === 'shop_other' && (
+                  <div className="pt-1 space-y-1 animate-fade-in">
+                    <label className="block text-xs font-bold text-slate-700">
+                      اسم الالتزام التشغيلي *
+                    </label>
                     <input
                       type="text"
+                      autoFocus
                       required
                       value={title}
-                      onChange={(e) => { setTitle(e.target.value); setSelectedPresetId(null); }}
-                      placeholder="إيجار المحل..."
-                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="اكتب نوع الالتزام (مثال: تأمين، اشتراك سنوي...)"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">التصنيف</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={category}
-                      className="w-full p-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 cursor-not-allowed"
-                    />
-                  </div>
-                </div>
+                )}
 
                 {/* Period Covered */}
-                <div>
+                <div className="pt-1">
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     الفترة المغطاة (اختياري)
                   </label>
@@ -644,7 +645,7 @@ export default function ExpensesScreen({ user }) {
                     value={periodCovered}
                     onChange={(e) => setPeriodCovered(e.target.value)}
                     placeholder="مثال: شهر آب 2026"
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-slate-800 focus:bg-white"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
                   />
                 </div>
               </div>
@@ -722,60 +723,18 @@ export default function ExpensesScreen({ user }) {
 
         {/* Expenses List & Audit Table */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
-          {/* Active View Indicator Banner */}
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              {dateFilter === 'today' ? (
-                <span className="flex items-center gap-1.5 font-bold text-amber-950 bg-amber-100/90 px-2.5 py-1 rounded-xl border border-amber-300">
-                  <span>☀️</span>
-                  <span>الجدول يعرض حالياً: <b>مصاريف اليوم</b> ({new Date().toLocaleDateString('ar-IQ')})</span>
-                </span>
-              ) : dateFilter === 'month' && activeTab === 'shop' ? (
-                <span className="flex items-center gap-1.5 font-bold text-indigo-950 bg-indigo-100/90 px-2.5 py-1 rounded-xl border border-indigo-300">
-                  <span>🏢</span>
-                  <span>الجدول يعرض حالياً: <b>مصاريف الشهر الثابتة (الالتزامات)</b></span>
-                </span>
-              ) : dateFilter === 'month' && activeTab === 'daily' ? (
-                <span className="flex items-center gap-1.5 font-bold text-purple-950 bg-purple-100/90 px-2.5 py-1 rounded-xl border border-purple-300">
-                  <span>☕</span>
-                  <span>الجدول يعرض حالياً: <b>مصاريف الشهر المتغيرة (النثريات)</b></span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 font-bold text-slate-800 bg-slate-200 px-2.5 py-1 rounded-xl">
-                  <span>📑</span>
-                  <span>الجدول يعرض: <b>كافة المصاريف المسجلة</b></span>
-                </span>
-              )}
-
-              <span className="text-[11px] font-bold text-slate-500">
-                ({filteredExpenses.length} بنود مطابقة)
-              </span>
-            </div>
-
-            {dateFilter !== 'today' && (
-              <button
-                type="button"
-                onClick={handleSelectToday}
-                className="text-xs font-bold text-slate-800 bg-white hover:bg-slate-100 px-3 py-1 rounded-xl border border-slate-300 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-              >
-                <span>↩️</span>
-                <span>الرجوع لمصاريف اليوم</span>
-              </button>
-            )}
-          </div>
-
           {/* Filters Bar */}
-          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+          <div className="p-3.5 border-b border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <div className="relative flex-1">
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="بحث باسم المصروف، المشتري، الفترة، أو الملاحظة..."
-                  className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800"
+                  placeholder="بحث باسم المصروف، الصارف، الفترة، أو الملاحظة..."
+                  className="w-full pl-3 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-slate-800"
                 />
-                <span className="absolute right-2.5 top-2 text-slate-400 text-xs">🔍</span>
+                <span className="absolute right-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
               </div>
             </div>
 
@@ -784,18 +743,18 @@ export default function ExpensesScreen({ user }) {
               <select
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-800"
+                className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-800"
               >
-                <option value="all">كل التواريخ</option>
                 <option value="today">مصاريف اليوم</option>
                 <option value="month">مصاريف هذا الشهر</option>
+                <option value="all">كافة التواريخ</option>
               </select>
 
               {/* Category Filter */}
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-slate-800"
+                className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-800"
               >
                 <option value="all">جميع التصنيفات</option>
                 <option value="طعام وغداء">طعام وغداء</option>
@@ -811,6 +770,19 @@ export default function ExpensesScreen({ user }) {
                 <option value="مصاريف تشغيلية">مصاريف تشغيلية</option>
                 <option value="نثريات عامة">نثريات عامة</option>
               </select>
+
+              {/* Quick return button to today's expenses */}
+              {dateFilter !== 'today' && (
+                <button
+                  type="button"
+                  onClick={handleSelectToday}
+                  className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-300 transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                  title="الرجوع السريع لعرض مصاريف اليوم فقط"
+                >
+                  <span>↩️</span>
+                  <span>مصاريف اليوم</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -818,88 +790,115 @@ export default function ExpensesScreen({ user }) {
           {filteredExpenses.length === 0 ? (
             <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center my-auto">
               <span className="text-4xl block mb-2">💸</span>
-              <p className="text-xs font-bold">لا توجد مصاريف مطابقة للبحث أو التصفية في هذا القسم.</p>
+              <p className="text-xs font-bold text-slate-600">لا توجد مصاريف مطابقة للبحث أو التصفية.</p>
+              {dateFilter !== 'today' && (
+                <button
+                  type="button"
+                  onClick={handleSelectToday}
+                  className="mt-3 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl border border-slate-300 transition-all"
+                >
+                  عرض مصاريف اليوم
+                </button>
+              )}
             </div>
           ) : (
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-right text-xs">
-                <thead className="bg-slate-100/70 text-slate-700 font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">المصروف</th>
-                    <th className="p-3">النوع / التصنيف</th>
-                    <th className="p-3">المشتري</th>
-                    <th className="p-3">المبلغ</th>
-                    <th className="p-3">الملاحظات</th>
-                    <th className="p-3 text-center">إجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredExpenses.map((exp) => {
-                    const isShop = exp.expenseType === 'shop';
+            <>
+              <div className="overflow-x-auto flex-1">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-100 text-slate-800 text-xs font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3.5 px-4">التاريخ</th>
+                      <th className="py-3.5 px-4">المصروف والبيان</th>
+                      <th className="py-3.5 px-4">النوع / التصنيف</th>
+                      <th className="py-3.5 px-4">الصارف</th>
+                      <th className="py-3.5 px-4">المبلغ</th>
+                      <th className="py-3.5 px-4">الملاحظات</th>
+                      <th className="py-3.5 px-4 text-center">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredExpenses.map((exp) => {
+                      const isShop = exp.expenseType === 'shop';
 
-                    return (
-                      <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-3 text-slate-500 font-mono whitespace-nowrap">
-                          {exp.date ? new Date(exp.date).toLocaleDateString('ar-IQ') : '—'}
-                        </td>
-                        <td className="p-3 font-bold text-slate-900">
-                          <div className="flex items-center gap-1.5">
-                            <span>{exp.title}</span>
-                            {exp.periodCovered && (
-                              <span className="text-[10px] font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                {exp.periodCovered}
+                      return (
+                        <tr key={exp.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 text-slate-500 font-mono whitespace-nowrap">
+                            {exp.date ? new Date(exp.date).toLocaleDateString('ar-IQ') : '—'}
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-slate-900">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-bold text-slate-900">{exp.title}</span>
+                              {exp.periodCovered && (
+                                <span className="text-[10px] font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  {exp.periodCovered}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                isShop ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-800'
+                              }`}>
+                                {isShop ? '🏢 محل' : '☕ يومي'}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                              isShop ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 text-slate-700 border border-slate-200'
-                            }`}>
-                              {isShop ? '🏢 محل' : '☕ يومي'}
-                            </span>
-                            <span className="text-slate-600 text-[11px]">
-                              {exp.category}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-slate-600 whitespace-nowrap">
-                          {exp.buyerName || 'المحل'}
-                        </td>
-                        <td className="p-3 font-mono font-bold text-slate-900 text-sm whitespace-nowrap">
-                          {formatIQD(exp.amount)} د.ع
-                        </td>
-                        <td className="p-3 text-slate-500 max-w-[150px] truncate" title={exp.notes}>
-                          {exp.notes || '—'}
-                        </td>
-                        <td className="p-3 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleEditClick(exp)}
-                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                              title="تعديل"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteClick(exp)}
-                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                              title="حذف"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              <span className="text-slate-700 text-xs font-medium">
+                                {exp.category}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-700 font-medium whitespace-nowrap">
+                            {exp.buyerName || 'المحل'}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-black text-slate-900 text-sm sm:text-base whitespace-nowrap">
+                            {formatIQD(exp.amount)} <span className="text-[10px] font-bold text-slate-500">د.ع</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 text-xs max-w-[160px] truncate" title={exp.notes}>
+                            {exp.notes || '—'}
+                          </td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleEditClick(exp)}
+                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                                title="تعديل"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteClick(exp)}
+                                className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title="حذف"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Footer Summary */}
+              <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-slate-700">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500">عدد المصاريف المعروضة:</span>
+                  <span className="font-mono font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                    {filteredExpenses.length} بند
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500">إجمالي المبلغ:</span>
+                  <span className="font-mono font-black text-slate-900 text-sm bg-white px-3 py-1 rounded-lg border border-slate-300 shadow-2xs">
+                    {formatIQD(filteredTotalAmount)} د.ع
+                  </span>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
