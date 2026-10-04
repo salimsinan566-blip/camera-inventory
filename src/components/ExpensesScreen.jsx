@@ -95,8 +95,13 @@ export default function ExpensesScreen({ user }) {
 
   const handleSelectPreset = (preset) => {
     setSelectedPresetId(preset.id);
-    setTitle(preset.title);
-    setCategory(preset.category);
+    if (preset.id === 'daily_other') {
+      setTitle('');
+      setCategory('نثريات عامة');
+    } else {
+      setTitle(preset.title);
+      setCategory(preset.category);
+    }
     if (preset.defaultAmount > 0) {
       setAmount(preset.defaultAmount);
     }
@@ -118,7 +123,7 @@ export default function ExpensesScreen({ user }) {
     e.preventDefault();
     const numAmount = Number(amount);
     if (!title.trim()) {
-      toast('يرجى اختيار نوع المصروف', 'error');
+      toast('يرجى كتابة أو اختيار نوع المصروف', 'error');
       return;
     }
     if (isNaN(numAmount) || numAmount <= 0) {
@@ -176,7 +181,7 @@ export default function ExpensesScreen({ user }) {
     setCategory(exp.category || (expType === 'shop' ? 'إيجار عقار' : 'نثريات عامة'));
     const presets = expType === 'shop' ? SHOP_EXPENSE_PRESETS : DAILY_EXPENSE_PRESETS;
     const matchedPreset = presets.find(p => p.title === exp.title);
-    setSelectedPresetId(matchedPreset ? matchedPreset.id : null);
+    setSelectedPresetId(matchedPreset ? matchedPreset.id : (expType === 'daily' ? 'daily_other' : null));
     setAmount(exp.amount || '');
     setPeriodCovered(exp.periodCovered || '');
     setBuyerName(exp.buyerName || '');
@@ -558,15 +563,15 @@ export default function ExpensesScreen({ user }) {
               </div>
             </div>
 
-            {/* Daily Expense Mode: Preset Options Only (No Title input, Auto Category) */}
+            {/* Daily Expense Mode: Preset Options Only (No Title input for presets, Custom input on +) */}
             {expenseType === 'daily' ? (
               <div className="space-y-2.5">
                 <label className="block text-xs font-black text-slate-800">
                   اختر المصروف اليومي (يُحدد الاسم والتصنيف تلقائياً):
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {DAILY_EXPENSE_PRESETS.map((preset) => {
-                    const isSelected = selectedPresetId === preset.id || title === preset.title;
+                    const isSelected = selectedPresetId === preset.id || (preset.id !== 'daily_other' && title === preset.title);
                     return (
                       <button
                         key={preset.id}
@@ -588,6 +593,28 @@ export default function ExpensesScreen({ user }) {
                   })}
                 </div>
 
+                {/* When selecting "+" (daily_other): Custom Title Input */}
+                {selectedPresetId === 'daily_other' && (
+                  <div className="p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-1.5 animate-fade-in">
+                    <label className="block text-xs font-black text-amber-950 flex items-center gap-1.5">
+                      <span>➕</span>
+                      <span>اكتب نوع أو بيان الصرف: *</span>
+                    </label>
+                    <input
+                      type="text"
+                      autoFocus
+                      required
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="مثال: بنزين، رصيد، قرطاسية، ضيافة..."
+                      className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                    />
+                    <p className="text-[10px] text-amber-800 font-medium">
+                      التصنيف التلقائي: نثريات عامة (يُخصم من قاصة المحل)
+                    </p>
+                  </div>
+                )}
+
                 {/* Selected Daily Expense Badge */}
                 <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
@@ -596,7 +623,7 @@ export default function ExpensesScreen({ user }) {
                     </span>
                     <div>
                       <div className="font-black text-amber-950">
-                        المصروف: <span className="text-amber-900 font-extrabold">{title}</span>
+                        المصروف: <span className="text-amber-900 font-extrabold">{title || (selectedPresetId === 'daily_other' ? 'اكتب نوع الصرف أعلاه' : '—')}</span>
                       </div>
                       <div className="text-[10px] font-bold text-amber-700 mt-0.5">
                         التصنيف التلقائي: <span className="bg-amber-200/60 text-amber-900 px-1.5 py-0.2 rounded font-black">{category}</span>

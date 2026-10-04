@@ -22,9 +22,7 @@ export const DAILY_EXPENSE_PRESETS = [
   { id: 'tissue', title: 'كلينس ومستلزمات', icon: '🧻', defaultAmount: 1500, category: 'مستلزمات ونظافة' },
   { id: 'cleaning', title: 'مواد تنظيف', icon: '🧹', defaultAmount: 5000, category: 'مستلزمات ونظافة' },
   { id: 'transport', title: 'نقل وتوصيل', icon: '🚗', defaultAmount: 5000, category: 'نقل ومواصلات' },
-  { id: 'fuel', title: 'بنزين ووقود', icon: '⛽', defaultAmount: 10000, category: 'صيانة ومحروقات' },
-  { id: 'telecom', title: 'كارت رصيد وإنترنت', icon: '📱', defaultAmount: 5000, category: 'خدمات وإنترنت' },
-  { id: 'daily_other', title: 'نثريات عامة', icon: '📦', defaultAmount: 0, category: 'نثريات عامة' }
+  { id: 'daily_other', title: 'نوع آخر', icon: '➕', defaultAmount: 0, category: 'نثريات عامة' }
 ];
 
 // اختصارات مصاريف والتزامات المحل التشغيلية والثابتة
