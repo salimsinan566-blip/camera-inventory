@@ -154,7 +154,7 @@ export default function CustomersScreen() {
 
       return {
         ...c,
-        customerType: c.customerType || 'client',
+        customerType: c.customerType || 'customer',
         reminderSchedule: c.reminderSchedule || 'disabled',
         totalPurchases,
         totalPaid,
@@ -173,6 +173,7 @@ export default function CustomersScreen() {
   // Filter and search
   const filteredCustomers = useMemo(() => {
     return allMergedCustomers.filter((c) => {
+      if (filterType === 'vip' && c.customerType !== 'vip') return false;
       if (filterType === 'client' && c.customerType !== 'client') return false;
       if (filterType === 'customer' && c.customerType !== 'customer') return false;
       if (filterType === 'debt' && (c.totalDebt || 0) <= 0) return false;
@@ -205,6 +206,7 @@ export default function CustomersScreen() {
     let totalPurchasesAll = 0;
     let withPhoneCount = 0;
     let withDebtCount = 0;
+    let vipsCount = 0;
     let clientsCount = 0;
     let customersCount = 0;
 
@@ -213,7 +215,8 @@ export default function CustomersScreen() {
       totalPurchasesAll += Number(c.totalPurchases || 0);
       if ((c.phone1 || '').trim()) withPhoneCount++;
       if ((c.totalDebt || 0) > 0) withDebtCount++;
-      if (c.customerType === 'client') clientsCount++;
+      if (c.customerType === 'vip') vipsCount++;
+      else if (c.customerType === 'client') clientsCount++;
       else customersCount++;
     });
 
@@ -223,6 +226,7 @@ export default function CustomersScreen() {
       totalPurchasesAll,
       withPhoneCount,
       withDebtCount,
+      vipsCount,
       clientsCount,
       customersCount
     };
@@ -706,6 +710,12 @@ export default function CustomersScreen() {
               🏢 العملاء ({totalStats.clientsCount})
             </button>
             <button
+              onClick={() => setFilterType('vip')}
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${filterType === 'vip' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              ⭐ المميزين ({totalStats.vipsCount})
+            </button>
+            <button
               onClick={() => setFilterType('customer')}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${filterType === 'customer' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
             >
@@ -794,7 +804,12 @@ export default function CustomersScreen() {
 
                       {/* Customer Type Badge */}
                       <td className="p-3.5">
-                        {isClient ? (
+                        {cust.customerType === 'vip' ? (
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 text-[11px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
+                            <span>⭐</span>
+                            <span>عميل مميز</span>
+                          </span>
+                        ) : isClient ? (
                           <span className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 border border-brand-200 text-[11px] font-black px-2.5 py-0.5 rounded-full">
                             <span>🏢</span>
                             <span>عميل</span>

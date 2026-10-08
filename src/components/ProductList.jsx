@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getStockStatus, getTotalQuantity, STOCK_STATUS } from '../models/product';
-import { moveProductPosition } from '../services/productsService';
+import { moveProductPosition, updateProduct } from '../services/productsService';
 
 const STATUS_BADGE = {
   [STOCK_STATUS.IN_STOCK]: { label: 'متوفر', className: 'bg-emerald-50 text-emerald-700 border border-emerald-100' },
@@ -17,6 +17,8 @@ export const COLUMN_DEFINITIONS = [
   { key: 'totalQty', label: 'المجموع الكلي', icon: '📦' },
   { key: 'wholesalePrice', label: 'سعر الجملة (التكلفة)', icon: '🏷️' },
   { key: 'retailPrice', label: 'سعر المفرد (البيع)', icon: '💰' },
+  { key: 'clientPrice', label: 'سعر العميل', icon: '🤝' },
+  { key: 'vipPrice', label: 'سعر العميل المميز', icon: '⭐' },
   { key: 'status', label: 'حالة المخزون', icon: '🟢' },
   { key: 'barcode', label: 'رمز الباركود', icon: '📱' },
 ];
@@ -30,6 +32,8 @@ export const DEFAULT_VISIBLE_COLUMNS = {
   totalQty: true,
   wholesalePrice: true,
   retailPrice: true,
+  clientPrice: true,
+  vipPrice: true,
   status: true,
   barcode: true,
 };
@@ -56,6 +60,12 @@ export default function ProductList({
   const [reorderingId, setReorderingId] = useState(null);
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const columnsMenuRef = useRef(null);
+  const [editingClientPriceId, setEditingClientPriceId] = useState(null);
+  const [tempClientPrice, setTempClientPrice] = useState('');
+  const [savingClientPrice, setSavingClientPrice] = useState(false);
+  const [editingVipPriceId, setEditingVipPriceId] = useState(null);
+  const [tempVipPrice, setTempVipPrice] = useState('');
+  const [savingVipPrice, setSavingVipPrice] = useState(false);
 
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
@@ -80,6 +90,32 @@ export default function ProductList({
     try {
       localStorage.setItem('inventory_table_columns', JSON.stringify(DEFAULT_VISIBLE_COLUMNS));
     } catch (e) {}
+  };
+
+  const handleSaveClientPriceInline = async (productId, newPrice) => {
+    try {
+      setSavingClientPrice(true);
+      const val = Math.max(0, Number(newPrice) || 0);
+      await updateProduct(productId, { clientPrice: val });
+      setEditingClientPriceId(null);
+    } catch (err) {
+      console.error('Error updating client price inline:', err);
+    } finally {
+      setSavingClientPrice(false);
+    }
+  };
+
+  const handleSaveVipPriceInline = async (productId, newPrice) => {
+    try {
+      setSavingVipPrice(true);
+      const val = Math.max(0, Number(newPrice) || 0);
+      await updateProduct(productId, { vipPrice: val });
+      setEditingVipPriceId(null);
+    } catch (err) {
+      console.error('Error updating VIP price inline:', err);
+    } finally {
+      setSavingVipPrice(false);
+    }
   };
 
   useEffect(() => {
@@ -129,6 +165,10 @@ export default function ProductList({
       nextSort = sortBy === 'totalQty_desc' ? 'custom' : 'totalQty_desc';
     } else if (field === 'retailPrice') {
       nextSort = sortBy === 'retailPrice_desc' ? 'retailPrice_asc' : 'retailPrice_desc';
+    } else if (field === 'clientPrice') {
+      nextSort = sortBy === 'clientPrice_desc' ? 'clientPrice_asc' : 'clientPrice_desc';
+    } else if (field === 'vipPrice') {
+      nextSort = sortBy === 'vipPrice_desc' ? 'vipPrice_asc' : 'vipPrice_desc';
     } else if (field === 'wholesalePrice') {
       nextSort = sortBy === 'wholesalePrice_desc' ? 'custom' : 'wholesalePrice_desc';
     } else if (field === 'category') {
@@ -254,6 +294,26 @@ export default function ProductList({
                 >
                   <span>المفرد</span>
                   {renderSortIndicator('retailPrice_asc', 'retailPrice_desc')}
+                </th>
+              )}
+              {visibleColumns.clientPrice !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('clientPrice')}
+                  className="p-4 font-medium cursor-pointer hover:bg-emerald-50 hover:text-emerald-800 transition-colors group/th"
+                  title="ترتيب حسب سعر العميل (الخاص)"
+                >
+                  <span>سعر العميل</span>
+                  {renderSortIndicator('clientPrice_asc', 'clientPrice_desc')}
+                </th>
+              )}
+              {visibleColumns.vipPrice !== false && (
+                <th 
+                  onClick={() => handleHeaderSort('vipPrice')}
+                  className="p-4 font-medium cursor-pointer hover:bg-amber-50 hover:text-amber-800 transition-colors group/th"
+                  title="ترتيب حسب سعر العميل المميز (VIP)"
+                >
+                  <span>سعر المميز (VIP)</span>
+                  {renderSortIndicator('vipPrice_asc', 'vipPrice_desc')}
                 </th>
               )}
               {visibleColumns.status !== false && (
@@ -442,6 +502,137 @@ export default function ProductList({
                   )}
                   {visibleColumns.retailPrice !== false && (
                     <td className="p-4 text-ink-600 font-medium font-mono">{Number(product.retailPrice).toLocaleString()}</td>
+                  )}
+                  {visibleColumns.clientPrice !== false && (
+                    <td className="p-4 text-ink-600 font-medium font-mono">
+                      {editingClientPriceId === product.id ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="250"
+                            autoFocus
+                            value={tempClientPrice}
+                            onChange={(e) => setTempClientPrice(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                await handleSaveClientPriceInline(product.id, tempClientPrice);
+                              } else if (e.key === 'Escape') {
+                                setEditingClientPriceId(null);
+                              }
+                            }}
+                            className="w-24 px-2 py-1 text-xs font-mono font-bold border-2 border-emerald-500 rounded-lg outline-none bg-white shadow-xs"
+                            placeholder="0"
+                          />
+                          <button
+                            type="button"
+                            disabled={savingClientPrice}
+                            onClick={() => handleSaveClientPriceInline(product.id, tempClientPrice)}
+                            className="w-6 h-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs flex items-center justify-center font-bold cursor-pointer"
+                            title="حفظ"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingClientPriceId(null)}
+                            className="w-6 h-6 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs flex items-center justify-center font-bold cursor-pointer"
+                            title="إلغاء"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 group/cp">
+                          {Number(product.clientPrice) > 0 ? (
+                            <span className="text-emerald-800 bg-emerald-50 border border-emerald-300 font-bold px-2 py-0.5 rounded text-xs shadow-2xs" title="سعر خاص للعملاء">
+                              {Number(product.clientPrice).toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-ink-400 text-xs" title="يطابق سعر المفرد تلقائياً لعدم تحديد سعر خاص">
+                              {Number(product.retailPrice).toLocaleString()} (مفرد)
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingClientPriceId(product.id);
+                              setTempClientPrice(Number(product.clientPrice) > 0 ? product.clientPrice : product.retailPrice || '');
+                            }}
+                            className="text-xs text-ink-300 hover:text-emerald-700 hover:bg-emerald-50 p-1 rounded transition-all cursor-pointer opacity-0 group-hover/cp:opacity-100"
+                            title="تعديل سريع لسعر العميل"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {visibleColumns.vipPrice !== false && (
+                    <td className="p-4 text-ink-600 font-medium font-mono">
+                      {editingVipPriceId === product.id ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="250"
+                            autoFocus
+                            value={tempVipPrice}
+                            onChange={(e) => setTempVipPrice(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                await handleSaveVipPriceInline(product.id, tempVipPrice);
+                              } else if (e.key === 'Escape') {
+                                setEditingVipPriceId(null);
+                              }
+                            }}
+                            className="w-24 px-2 py-1 text-xs font-mono font-bold border-2 border-amber-500 rounded-lg outline-none bg-white shadow-xs"
+                            placeholder="0"
+                          />
+                          <button
+                            type="button"
+                            disabled={savingVipPrice}
+                            onClick={() => handleSaveVipPriceInline(product.id, tempVipPrice)}
+                            className="w-6 h-6 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs flex items-center justify-center font-bold cursor-pointer"
+                            title="حفظ"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingVipPriceId(null)}
+                            className="w-6 h-6 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs flex items-center justify-center font-bold cursor-pointer"
+                            title="إلغاء"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 group/vp">
+                          {Number(product.vipPrice) > 0 ? (
+                            <span className="text-amber-900 bg-amber-50 border border-amber-300 font-bold px-2 py-0.5 rounded text-xs shadow-2xs flex items-center gap-1" title="سعر خاص للعميل المميز">
+                              <span>⭐</span>
+                              <span>{Number(product.vipPrice).toLocaleString()}</span>
+                            </span>
+                          ) : (
+                            <span className="text-ink-400 text-xs" title="يطابق سعر العميل أو المفرد تلقائياً لعدم تحديد سعر مميز">
+                              {Number(product.clientPrice > 0 ? product.clientPrice : product.retailPrice).toLocaleString()} (افتراضي)
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingVipPriceId(product.id);
+                              setTempVipPrice(Number(product.vipPrice) > 0 ? product.vipPrice : (product.clientPrice > 0 ? product.clientPrice : product.retailPrice || ''));
+                            }}
+                            className="text-xs text-ink-300 hover:text-amber-700 hover:bg-amber-50 p-1 rounded transition-all cursor-pointer opacity-0 group-hover/vp:opacity-100"
+                            title="تعديل سريع لسعر العميل المميز"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      )}
+                    </td>
                   )}
                   {visibleColumns.status !== false && (
                     <td className="p-4">

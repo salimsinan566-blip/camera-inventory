@@ -44,7 +44,7 @@ function formatDraftDate(timestamp) {
   });
 }
 
-export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, productsLoading, onOpenGuide }) {
+export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, productsLoading }) {
   const { drafts, loading: draftsLoading } = useDraftSales();
   const { sales, loading: salesLoading } = useSales();
   const { expenses, stats: expensesStats, loading: expensesLoading } = useExpenses();
@@ -638,16 +638,6 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
         {/* Quick Action Buttons */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onOpenGuide && onOpenGuide()}
-            className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-            title="فتح دليل الاستخدام والتشغيل الشامل للنظام"
-          >
-            <span className="text-sm">📖</span>
-            <span>دليل الاستخدام الشامل</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setShowTransferFundsModal(true)}

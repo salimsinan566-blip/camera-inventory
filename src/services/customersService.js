@@ -56,11 +56,11 @@ export async function addCustomer({
   phone2 = '', 
   pinCode = '', 
   notes = '',
-  customerType = 'client', // 'client' (عميل دائم/جملة) | 'customer' (زبون مفرد/نقدي)
+  customerType = 'customer', // 'customer' (زبون مفرد/نقدي) | 'client' (عميل دائم/جملة)
   reminderSchedule = 'default' // 'default' | 'thursday' | 'friday' | 'saturday' | 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'monthly_1' | 'monthly_25' | 'disabled'
 }) {
   const trimmedName = (name || '').trim();
-  if (!trimmedName) throw new Error('يرجى إدخال اسم العميل');
+  if (!trimmedName) throw new Error('يرجى إدخال اسم الزبون');
 
   const docRef = await addDoc(collection(db, CUSTOMERS_COLLECTION), {
     name: trimmedName,
@@ -68,7 +68,7 @@ export async function addCustomer({
     phone2: (phone2 || '').trim(),
     pinCode: (pinCode || '').trim(),
     notes: (notes || '').trim(),
-    customerType: customerType || 'client',
+    customerType: customerType || 'customer',
     reminderSchedule: reminderSchedule || 'default',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

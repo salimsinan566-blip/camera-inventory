@@ -23,7 +23,7 @@ function formatDate(dateVal) {
  * Render standard unified brand header identical to InvoiceReceipt.jsx
  */
 function renderBrandHeader({ storeSettings, documentTitle, subtitle, badgeText }) {
-  const storeName = (!storeSettings?.storeName || storeSettings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : storeSettings.storeName;
+  const storeName = (!storeSettings?.storeName || storeSettings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : storeSettings.storeName;
   const address = storeSettings?.address || 'العراق - بغداد';
   const logoUrl = storeSettings?.logoUrl;
 
@@ -42,7 +42,7 @@ function renderBrandHeader({ storeSettings, documentTitle, subtitle, badgeText }
         ${logoUrl ? `
           <img src="${logoUrl}" alt="Logo" style="height: 55px; max-width: 160px; object-fit: contain;" />
         ` : `
-          <div style="font-size: 18px; font-weight: 900; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+          <div style="font-size: 16px; font-weight: 900; color: #C89B3C;">المنطقة الآمنة</div>
         `}
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="background: #fdf8ed; color: #92400e; border: 1px solid #fde68a; padding: 3px 12px; border-radius: 9999px; font-size: 11px; font-weight: 900; letter-spacing: 0px;">
@@ -63,7 +63,7 @@ function renderBrandHeader({ storeSettings, documentTitle, subtitle, badgeText }
  * Render standard unified brand footer
  */
 function renderBrandFooter(storeSettings) {
-  const storeName = (!storeSettings?.storeName || storeSettings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : storeSettings.storeName;
+  const storeName = (!storeSettings?.storeName || storeSettings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : storeSettings.storeName;
   const address = storeSettings?.address || 'العراق - بغداد';
   const qrUrl = storeSettings?.qrCodeUrl;
   const desc = storeSettings?.description;
@@ -78,7 +78,7 @@ function renderBrandFooter(storeSettings) {
         ${qrUrl ? `
           <img src="${qrUrl}" alt="QR" style="width: 45px; height: 45px; border: 1px solid #e2e8f0; padding: 2px; border-radius: 4px;" />
         ` : `
-          <div style="font-family: monospace; font-weight: bold; color: #C89B3C; font-size: 11px;">SAFE ZONE</div>
+          <div style="font-family: monospace; font-weight: bold; color: #C89B3C; font-size: 11px;">المنطقة الآمنة</div>
         `}
       </div>
     </div>

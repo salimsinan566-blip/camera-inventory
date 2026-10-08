@@ -118,6 +118,8 @@ export function normalizeProduct(raw) {
   p.cameraType = p.cameraType || p.category || 'أخرى';
   p.category = p.category || p.cameraType || 'أخرى';
   p.company = p.company || '';
+  p.clientPrice = p.clientPrice !== undefined && p.clientPrice !== null ? Number(p.clientPrice) || 0 : 0;
+  p.vipPrice = p.vipPrice !== undefined && p.vipPrice !== null ? Number(p.vipPrice) || 0 : 0;
   if (p.customOrder !== undefined && p.customOrder !== null) {
     p.customOrder = Number(p.customOrder);
   }
@@ -146,6 +148,8 @@ export function createEmptyProduct() {
     wholesalePrice: 0,
     profitMargin: 0,
     retailPrice: 0,
+    clientPrice: 0,
+    vipPrice: 0,
     imageUrl: null,
     barcode: null,
   };

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useExpenses } from '../hooks/useExpenses';
+import { useSalaries } from '../hooks/useSalaries';
 import {
   addExpense,
   updateExpense,
@@ -7,6 +8,7 @@ import {
   DAILY_EXPENSE_PRESETS,
   SHOP_EXPENSE_PRESETS
 } from '../services/expensesService';
+import { addEmployee, payEmployeeSalary } from '../services/salariesService';
 import { useUI } from '../contexts/UIContext';
 
 function formatIQD(num) {
@@ -15,7 +17,13 @@ function formatIQD(num) {
 
 export default function ExpensesScreen({ user }) {
   const { expenses, stats, loading } = useExpenses();
+  const { employees: salaryEmployees } = useSalaries();
   const { toast, confirm } = useUI();
+
+  // Active employees list for salary presets
+  const activeEmployees = useMemo(() => {
+    return (salaryEmployees || []).filter(e => e.status !== 'inactive');
+  }, [salaryEmployees]);
 
   // Main Active Tab: 'daily' | 'shop' | 'all'
   const [activeTab, setActiveTab] = useState('daily');
@@ -23,6 +31,8 @@ export default function ExpensesScreen({ user }) {
   // Form State
   const defaultDaily = DAILY_EXPENSE_PRESETS[0];
   const [selectedPresetId, setSelectedPresetId] = useState(defaultDaily.id);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [customEmployeeName, setCustomEmployeeName] = useState('');
   const [title, setTitle] = useState(defaultDaily.title);
   const [category, setCategory] = useState(defaultDaily.category);
   const [expenseType, setExpenseType] = useState('daily'); // 'daily' | 'shop'
@@ -32,6 +42,13 @@ export default function ExpensesScreen({ user }) {
   const [notes, setNotes] = useState('');
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
+
+  // Quick Add Employee State (Modal)
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+  const [newEmpName, setNewEmpName] = useState('');
+  const [newEmpSalary, setNewEmpSalary] = useState('');
+  const [newEmpJob, setNewEmpJob] = useState('موظف');
+  const [savingNewEmp, setSavingNewEmp] = useState(false);
 
   // Edit State
   const [editingExpense, setEditingExpense] = useState(null);
@@ -93,17 +110,144 @@ export default function ExpensesScreen({ user }) {
     handleTabChange('daily');
   };
 
+  const selectedEmployee = useMemo(() => {
+    if (!selectedEmployeeId || selectedEmployeeId === 'custom') return null;
+    return activeEmployees.find(e => e.id === selectedEmployeeId) || null;
+  }, [selectedEmployeeId, activeEmployees]);
+
+  const getCurrentMonthPeriodLabel = () => {
+    const monthNames = ['كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول'];
+    const now = new Date();
+    return `راتب شهر ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  };
+
+  const handleEmployeeChange = (empId) => {
+    setSelectedEmployeeId(empId);
+    // تلقائياً يسجل التاريخ اليوم
+    const todayStr = new Date().toISOString().slice(0, 10);
+    setExpenseDate(todayStr);
+    setPeriodCovered(getCurrentMonthPeriodLabel());
+
+    if (!empId) {
+      setTitle('رواتب الموظفين');
+      setCategory('رواتب وأجور');
+      setAmount('');
+      return;
+    }
+
+    if (empId === 'custom') {
+      setTitle(customEmployeeName.trim() ? `راتب موظف: ${customEmployeeName.trim()}` : 'راتب موظف');
+      setCategory('رواتب وأجور');
+      return;
+    }
+
+    const emp = activeEmployees.find(e => e.id === empId);
+    if (emp) {
+      setTitle(`راتب الموظف: ${emp.name}`);
+      setCategory('رواتب وأجور');
+      // واكدر اعدل المبلغ: يضع مبلغ الراتب تلقائياً مع إمكانية تعديله بحرية
+      setAmount(emp.salaryAmount || '');
+      setBuyerName(user?.displayName || user?.email?.split('@')[0] || 'قاصة المحل');
+    }
+  };
+
+  const handleCustomEmployeeNameChange = (customName) => {
+    setCustomEmployeeName(customName);
+    setTitle(customName.trim() ? `راتب موظف: ${customName.trim()}` : 'راتب موظف');
+  };
+
+  const handleQuickAddEmployee = async (e) => {
+    e.preventDefault();
+    const cleanName = newEmpName.trim();
+    const numSalary = Number(newEmpSalary);
+
+    if (!cleanName) {
+      toast('يرجى إدخال اسم الموظف', 'error');
+      return;
+    }
+    if (isNaN(numSalary) || numSalary <= 0) {
+      toast('يرجى إدخال راتب صحيح أكبر من الصفر', 'error');
+      return;
+    }
+
+    setSavingNewEmp(true);
+    try {
+      const newEmpId = await addEmployee({
+        name: cleanName,
+        salaryAmount: numSalary,
+        jobTitle: newEmpJob.trim() || 'موظف',
+        salaryType: 'monthly',
+        payCycleDay: 1,
+        startDate: new Date().toISOString().slice(0, 10),
+        createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
+      });
+
+      setNewEmpName('');
+      setNewEmpSalary('');
+      setNewEmpJob('موظف');
+      setShowAddEmployeeModal(false);
+
+      // اختيار الموظف الجديد تلقائياً ووضع راتبه وتاريخ اليوم
+      setSelectedEmployeeId(newEmpId);
+      setAmount(numSalary);
+      setTitle(`راتب الموظف: ${cleanName}`);
+      setCategory('رواتب وأجور');
+      setExpenseDate(new Date().toISOString().slice(0, 10));
+      setPeriodCovered(getCurrentMonthPeriodLabel());
+      setBuyerName(user?.displayName || user?.email?.split('@')[0] || 'قاصة المحل');
+
+      toast(`تمت إضافة الموظف "${cleanName}" وتحديد راتبه (${formatIQD(numSalary)} د.ع) واختياره بنجاح! 👤`, 'success');
+    } catch (err) {
+      toast(`فشل إضافة الموظف: ${err.message}`, 'error');
+    } finally {
+      setSavingNewEmp(false);
+    }
+  };
+
+  // استرجاع مبلغ وجبة الغداء فوراً (4500 د.ع) إذا تصفّر بالخطأ
+  useEffect(() => {
+    if (!Array.isArray(expenses) || expenses.length === 0) return;
+    const zeroLunch = expenses.find(e => e.title === 'وجبة غداء' && Number(e.amount) === 0);
+    if (zeroLunch) {
+      updateExpense(zeroLunch.id, {
+        amount: 4500,
+        periodCovered: '',
+        expenseType: 'daily'
+      }).catch(() => {});
+    }
+  }, [expenses]);
+
   const handleSelectPreset = (preset) => {
     setSelectedPresetId(preset.id);
     if (preset.id === 'daily_other' || preset.id === 'shop_other') {
       setTitle('');
       setCategory(preset.category);
+      setSelectedEmployeeId('');
+      setCustomEmployeeName('');
+      setPeriodCovered('');
+    } else if (preset.id === 'salaries') {
+      setCategory('رواتب وأجور');
+      // تلقائياً يسجل تاريخ اليوم
+      const todayStr = new Date().toISOString().slice(0, 10);
+      setExpenseDate(todayStr);
+      setPeriodCovered(getCurrentMonthPeriodLabel());
+
+      if (activeEmployees.length === 1) {
+        handleEmployeeChange(activeEmployees[0].id);
+      } else {
+        setSelectedEmployeeId('');
+        setTitle('رواتب الموظفين');
+        setAmount('');
+      }
     } else {
+      setSelectedEmployeeId('');
+      setCustomEmployeeName('');
+      setPeriodCovered('');
       setTitle(preset.title);
       setCategory(preset.category);
-    }
-    if (preset.defaultAmount > 0) {
-      setAmount(preset.defaultAmount);
+      if (preset.defaultAmount > 0) {
+        setAmount(preset.defaultAmount);
+      }
     }
   };
 
@@ -117,6 +261,8 @@ export default function ExpensesScreen({ user }) {
     setBuyerName('');
     setNotes('');
     setEditingExpense(null);
+    setSelectedEmployeeId('');
+    setCustomEmployeeName('');
     setExpenseDate(new Date().toISOString().slice(0, 10));
   };
 
@@ -138,6 +284,10 @@ export default function ExpensesScreen({ user }) {
 
     setSaving(true);
     try {
+      const cleanPeriodCovered = (expenseType === 'shop' && (selectedPresetId === 'salaries' || periodCovered))
+        ? (periodCovered || (selectedPresetId === 'salaries' ? getCurrentMonthPeriodLabel() : '')).trim()
+        : '';
+
       if (editingExpense) {
         await updateExpense(editingExpense.id, {
           title: title.trim(),
@@ -145,26 +295,48 @@ export default function ExpensesScreen({ user }) {
           expenseType: expenseType || 'daily',
           paymentSource: 'cash_drawer',
           amount: numAmount,
-          periodCovered: (periodCovered || '').trim(),
+          periodCovered: cleanPeriodCovered,
           buyerName: buyerName.trim() || 'المحل',
           notes: notes.trim(),
           date: expenseDate ? new Date(expenseDate).toISOString() : new Date().toISOString()
         });
         toast('تم تحديث المصروف بنجاح!', 'success');
       } else {
-        await addExpense({
-          title: title.trim(),
-          category: category.trim(),
-          expenseType: expenseType || 'daily',
-          paymentSource: 'cash_drawer',
-          amount: numAmount,
-          periodCovered: (periodCovered || '').trim(),
-          buyerName: buyerName.trim() || 'المحل',
-          notes: notes.trim(),
-          date: expenseDate ? new Date(expenseDate).toISOString() : new Date().toISOString(),
-          createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
-        });
-        toast(`تم تسجيل مصروف "${title}" بمبلغ ${formatIQD(numAmount)} د.ع (من قاصة المحل) بنجاح! 💸`, 'success');
+        // فحص إذا كان المصروف راتب موظف مسجل في النظام
+        const selectedEmp = activeEmployees.find(emp => emp.id === selectedEmployeeId);
+        if (selectedPresetId === 'salaries' && selectedEmp) {
+          await payEmployeeSalary({
+            employeeId: selectedEmp.id,
+            employeeName: selectedEmp.name,
+            amount: numAmount,
+            paymentSource: 'cash_drawer',
+            paymentType: 'full_salary',
+            advanceDeduction: 0,
+            salaryType: selectedEmp.salaryType || 'monthly',
+            payCycleDay: selectedEmp.payCycleDay || 1,
+            currentDueDate: selectedEmp.nextDueDate || '',
+            periodCovered: cleanPeriodCovered || getCurrentMonthPeriodLabel(),
+            notes: notes.trim(),
+            paymentDate: expenseDate ? new Date(expenseDate).toISOString() : new Date().toISOString(),
+            paidBy: buyerName.trim() || user?.displayName || user?.email?.split('@')[0] || 'المسؤول',
+            customExpenseTitle: title.trim()
+          });
+          toast(`تم صرف راتب "${selectedEmp.name}" بمبلغ ${formatIQD(numAmount)} د.ع وتسجيله في المصاريف الثابتة بنجاح! 💸`, 'success');
+        } else {
+          await addExpense({
+            title: title.trim(),
+            category: category.trim(),
+            expenseType: expenseType || 'daily',
+            paymentSource: 'cash_drawer',
+            amount: numAmount,
+            periodCovered: cleanPeriodCovered,
+            buyerName: buyerName.trim() || 'المحل',
+            notes: notes.trim(),
+            date: expenseDate ? new Date(expenseDate).toISOString() : new Date().toISOString(),
+            createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
+          });
+          toast(`تم تسجيل مصروف "${title}" بمبلغ ${formatIQD(numAmount)} د.ع (من قاصة المحل) بنجاح! 💸`, 'success');
+        }
       }
       handleResetForm();
     } catch (err) {
@@ -182,10 +354,11 @@ export default function ExpensesScreen({ user }) {
     setCategory(exp.category || (expType === 'shop' ? 'مصاريف تشغيلية' : 'نثريات عامة'));
     const presets = expType === 'shop' ? SHOP_EXPENSE_PRESETS : DAILY_EXPENSE_PRESETS;
     const otherId = expType === 'shop' ? 'shop_other' : 'daily_other';
-    const matchedPreset = presets.find(p => p.title === exp.title && p.id !== otherId);
+    const matchedPreset = presets.find(p => p.title === exp.title && p.id !== otherId)
+      || (exp.category === 'رواتب وأجور' ? presets.find(p => p.id === 'salaries') : null);
     setSelectedPresetId(matchedPreset ? matchedPreset.id : otherId);
     setAmount(exp.amount || '');
-    setPeriodCovered(exp.periodCovered || '');
+    setPeriodCovered(expType === 'shop' ? (exp.periodCovered || '') : '');
     setBuyerName(exp.buyerName || '');
     setNotes(exp.notes || '');
     setExpenseDate((exp.date || exp.createdAt || '').slice(0, 10));
@@ -279,7 +452,7 @@ export default function ExpensesScreen({ user }) {
       const isFixed =
         e.expenseType === 'shop' ||
         SHOP_EXPENSE_PRESETS.some((p) => p.category === e.category) ||
-        ['إيجار عقار', 'كهرباء ومولد', 'خدمات وإنترنت', 'بلدية ورسوم', 'رسوم حكومية', 'صيانة وتجهيزات'].includes(e.category);
+        ['إيجار عقار', 'كهرباء ومولد', 'خدمات وإنترنت', 'بلدية ورسوم', 'رسوم حكومية', 'صيانة وتجهيزات', 'رواتب وأجور', 'مصاريف تشغيلية'].includes(e.category);
 
       // Today: ONLY variable sundries (نثريات فقط - لا تجمع معها الثابتة)
       if (dateStr === todayStr && !isFixed) {
@@ -417,9 +590,9 @@ export default function ExpensesScreen({ user }) {
               title="اضغط لعرض مصاريف الشهر الثابتة في الجدول"
             >
               <div className="flex items-center justify-between text-[11px] font-bold">
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <span>🏢</span>
-                  <span>مصاريف ثابتة (الالتزامات)</span>
+                  <span>مصاريف ثابتة</span>
                 </span>
                 <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
                   dateFilter === 'month' && activeTab === 'shop'
@@ -446,9 +619,9 @@ export default function ExpensesScreen({ user }) {
               title="اضغط لعرض مصاريف الشهر المتغيرة في الجدول"
             >
               <div className="flex items-center justify-between text-[11px] font-bold">
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <span>☕</span>
-                  <span>مصاريف متغيرة (النثريات)</span>
+                  <span>مصاريف متغيرة</span>
                 </span>
                 <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
                   dateFilter === 'month' && activeTab === 'daily'
@@ -473,9 +646,9 @@ export default function ExpensesScreen({ user }) {
       </div>
 
       {/* Main Grid: Form on the Right / Table on the Left */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-6">
         {/* Form Card */}
-        <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col h-fit">
+        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col h-fit">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <span>{editingExpense ? '✏️' : '➕'}</span>
@@ -483,8 +656,8 @@ export default function ExpensesScreen({ user }) {
                 {editingExpense
                   ? 'تعديل بيانات المصروف'
                   : expenseType === 'shop'
-                  ? 'تسجيل مصروف محل أو التزام تشغيلي'
-                  : 'تسجيل مصروف يومي ونثريات'}
+                  ? 'تسجيل مصاريف ثابتة'
+                  : 'تسجيل مصاريف متغيرة'}
               </span>
             </h3>
             {editingExpense && (
@@ -511,16 +684,18 @@ export default function ExpensesScreen({ user }) {
                     setSelectedPresetId(p.id);
                     setTitle(p.title);
                     setCategory(p.category);
+                    setSelectedEmployeeId('');
+                    setPeriodCovered('');
                     if (!amount || Number(amount) === 0) setAmount(p.defaultAmount || '');
                   }}
-                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     expenseType === 'daily'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
                       : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <span>☕</span>
-                  <span>مصروف يومي / نثريات</span>
+                  <span>متغيرة</span>
                 </button>
 
                 <button
@@ -531,16 +706,18 @@ export default function ExpensesScreen({ user }) {
                     setSelectedPresetId(p.id);
                     setTitle(p.title);
                     setCategory(p.category);
+                    setSelectedEmployeeId('');
+                    setPeriodCovered('');
                     if (!amount || Number(amount) === 0) setAmount(p.defaultAmount || '');
                   }}
-                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     expenseType === 'shop'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
                       : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <span>🏢</span>
-                  <span>مصروف محل / التزام</span>
+                  <span>ثابتة</span>
                 </button>
               </div>
             </div>
@@ -551,7 +728,7 @@ export default function ExpensesScreen({ user }) {
                 <label className="block text-xs font-bold text-slate-700">
                   نوع المصروف:
                 </label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {DAILY_EXPENSE_PRESETS.map((preset) => {
                     const isSelected = selectedPresetId === preset.id || (preset.id !== 'daily_other' && title === preset.title);
                     return (
@@ -559,14 +736,16 @@ export default function ExpensesScreen({ user }) {
                         key={preset.id}
                         type="button"
                         onClick={() => handleSelectPreset(preset)}
-                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 min-h-[66px] ${
                           isSelected
                             ? 'bg-slate-900 border-slate-900 text-white font-bold shadow-xs'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium'
+                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold'
                         }`}
                       >
-                        <span className="text-lg">{preset.icon}</span>
-                        <span className="text-[11px] leading-tight truncate w-full">{preset.title}</span>
+                        <span className="text-xl leading-none">{preset.icon}</span>
+                        <span className="text-[11px] sm:text-xs leading-snug break-words whitespace-normal text-center w-full">
+                          {preset.title}
+                        </span>
                       </button>
                     );
                   })}
@@ -596,26 +775,113 @@ export default function ExpensesScreen({ user }) {
                 <label className="block text-xs font-bold text-slate-700">
                   نوع الالتزام:
                 </label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {SHOP_EXPENSE_PRESETS.map((preset) => {
-                    const isSelected = selectedPresetId === preset.id || (preset.id !== 'shop_other' && title === preset.title);
+                    const isSelected = selectedPresetId === preset.id || (preset.id !== 'shop_other' && preset.id !== 'salaries' && title === preset.title);
                     return (
                       <button
                         key={preset.id}
                         type="button"
                         onClick={() => handleSelectPreset(preset)}
-                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 min-h-[66px] ${
                           isSelected
                             ? 'bg-slate-900 border-slate-900 text-white font-bold shadow-xs'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium'
+                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold'
                         }`}
                       >
-                        <span className="text-lg">{preset.icon}</span>
-                        <span className="text-[11px] leading-tight truncate w-full">{preset.title}</span>
+                        <span className="text-xl leading-none">{preset.icon}</span>
+                        <span className="text-[11px] sm:text-xs leading-snug break-words whitespace-normal text-center w-full">
+                          {preset.title}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
+
+                {/* When selecting "رواتب الموظفين" (salaries): Simple Employee Options & Clean Plus Button */}
+                {selectedPresetId === 'salaries' && (
+                  <div className="pt-1 space-y-2 animate-fade-in bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>👥</span>
+                        <span>اختر الموظف:</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddEmployeeModal(true)}
+                        className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center font-black text-xs transition-all cursor-pointer shadow-2xs"
+                        title="إضافة موظف"
+                      >
+                        ➕
+                      </button>
+                    </div>
+
+                    {/* خيارات الموظفين واضحة وكاملة بدون قص نصوص */}
+                    {activeEmployees.length > 0 ? (
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+                        {activeEmployees.map((emp) => {
+                          const isSel = selectedEmployeeId === emp.id;
+                          return (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => handleEmployeeChange(emp.id)}
+                              className={`w-full px-3 py-2.5 rounded-xl border text-right transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                                isSel
+                                  ? 'bg-slate-900 border-slate-900 text-white shadow-xs ring-1 ring-slate-800'
+                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className={`text-sm shrink-0 ${isSel ? 'text-white' : 'text-slate-500'}`}>
+                                  👤
+                                </span>
+                                <span className="font-bold text-xs whitespace-normal break-words leading-tight">
+                                  {emp.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="font-mono font-bold text-xs whitespace-nowrap">
+                                  {formatIQD(emp.salaryAmount)} <span className="text-[10px] font-normal">د.ع</span>
+                                </span>
+                                {isSel && (
+                                  <span className="text-xs text-emerald-400 font-bold mr-1">✓</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="bg-white p-3 rounded-xl border border-dashed border-slate-300 text-center">
+                        <p className="text-xs text-slate-500 mb-2">لا يوجد موظفون مسجلون.</p>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddEmployeeModal(true)}
+                          className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                        >
+                          <span>➕</span>
+                          <span>إضافة موظف</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* بيان المصروف (عنوان الراتب) */}
+                    <div className="pt-1 space-y-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        بيان المصروف (عنوان الراتب) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="عنوان الراتب..."
+                        className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* When selecting "+" (shop_other): Custom Title Input */}
                 {selectedPresetId === 'shop_other' && (
@@ -653,7 +919,14 @@ export default function ExpensesScreen({ user }) {
 
             {/* Amount */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المبلغ (د.ع) *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700">المبلغ (د.ع) *</label>
+                {selectedPresetId === 'salaries' && selectedEmployee && (
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold">
+                    تم وضع الراتب تلقائياً (يمكنك تعديل المبلغ)
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
                 required
@@ -680,7 +953,12 @@ export default function ExpensesScreen({ user }) {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">التاريخ</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">التاريخ</label>
+                  {selectedPresetId === 'salaries' && (
+                    <span className="text-[10px] text-slate-500 font-medium">تلقائي اليوم</span>
+                  )}
+                </div>
                 <input
                   type="date"
                   value={expenseDate}
@@ -722,7 +1000,7 @@ export default function ExpensesScreen({ user }) {
         </div>
 
         {/* Expenses List & Audit Table */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
           {/* Filters Bar */}
           <div className="p-3.5 border-b border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
@@ -762,6 +1040,7 @@ export default function ExpensesScreen({ user }) {
                 <option value="مستلزمات ونظافة">مستلزمات ونظافة</option>
                 <option value="نقل ومواصلات">نقل ومواصلات</option>
                 <option value="إيجار عقار">إيجار عقار</option>
+                <option value="رواتب وأجور">رواتب وأجور</option>
                 <option value="بلدية ورسوم">بلدية ورسوم</option>
                 <option value="خدمات وإنترنت">خدمات وإنترنت</option>
                 <option value="كهرباء ومولد">كهرباء ومولد</option>
@@ -828,7 +1107,7 @@ export default function ExpensesScreen({ user }) {
                           <td className="py-3.5 px-4 font-bold text-slate-900">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-sm font-bold text-slate-900">{exp.title}</span>
-                              {exp.periodCovered && (
+                              {isShop && exp.periodCovered && (
                                 <span className="text-[10px] font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                                   {exp.periodCovered}
                                 </span>
@@ -840,7 +1119,7 @@ export default function ExpensesScreen({ user }) {
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                                 isShop ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-800'
                               }`}>
-                                {isShop ? '🏢 محل' : '☕ يومي'}
+                                {isShop ? '🏢 ثابتة' : '☕ متغيرة'}
                               </span>
                               <span className="text-slate-700 text-xs font-medium">
                                 {exp.category}
@@ -902,6 +1181,90 @@ export default function ExpensesScreen({ user }) {
           )}
         </div>
       </div>
+
+      {/* مودال تسجيل موظف جديد وتحديد راتبه فوراً */}
+      {showAddEmployeeModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-in">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs">➕</span>
+                <span>تسجيل موظف جديد وتحديد راتبه</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddEmployeeModal(false)}
+                className="w-7 h-7 rounded-lg bg-slate-200/60 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickAddEmployee} className="p-5 space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  اسم الموظف *
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  required
+                  value={newEmpName}
+                  onChange={(e) => setNewEmpName(e.target.value)}
+                  placeholder="مثال: أحمد عبد الله"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  الراتب الشهري (د.ع) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="any"
+                  value={newEmpSalary}
+                  onChange={(e) => setNewEmpSalary(e.target.value)}
+                  placeholder="مثال: 500000"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  المسمى الوظيفي (اختياري)
+                </label>
+                <input
+                  type="text"
+                  value={newEmpJob}
+                  onChange={(e) => setNewEmpJob(e.target.value)}
+                  placeholder="مثال: فني كاميرات، مبيعات..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-800 focus:bg-white"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={savingNewEmp}
+                  className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {savingNewEmp ? 'جاري الحفظ...' : '💾 حفظ وتعيين الراتب فوراً'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddEmployeeModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 px-4 rounded-xl transition-all cursor-pointer"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

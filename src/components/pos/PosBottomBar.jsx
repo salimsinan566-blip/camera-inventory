@@ -26,6 +26,7 @@ export default function PosBottomBar({
   const isOfferMode = isOfferModeProp !== undefined
     ? Boolean(isOfferModeProp)
     : (activeCart.customerType === 'offer');
+  const isEditingInvoice = Boolean(activeCart?.editingSaleId);
   const isCartEmpty = items.length === 0;
 
   return (
@@ -132,15 +133,24 @@ export default function PosBottomBar({
                 <span>طباعة فاتورة غير مؤكدة</span>
               </button>
 
-              {/* زر حاسب */}
+              {/* زر حاسب / حفظ الفاتورة عند التعديل */}
               <button
                 type="button"
                 disabled={isCartEmpty || processing}
                 onClick={onCheckout}
-                className="flex items-center gap-2 px-6 sm:px-8 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-sm md:text-base rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed"
+                className={`flex items-center gap-2 px-6 sm:px-8 py-2 text-white font-black text-sm md:text-base rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed ${
+                  isEditingInvoice
+                    ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 ring-2 ring-emerald-500/30'
+                    : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300'
+                }`}
+                title={isEditingInvoice ? 'حفظ تعديلات الفاتورة' : 'إتمام الحساب والدفع'}
               >
-                <span>💳</span>
-                <span>{processing ? 'جاري المعالجة...' : 'حاسب'}</span>
+                <span>{isEditingInvoice ? '💾' : '💳'}</span>
+                <span>
+                  {processing
+                    ? (isEditingInvoice ? 'جاري الحفظ...' : 'جاري المعالجة...')
+                    : (isEditingInvoice ? 'حفظ الفاتورة' : 'حاسب')}
+                </span>
               </button>
             </>
           )}

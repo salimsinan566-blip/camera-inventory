@@ -84,7 +84,7 @@ export function calculateNextCycleDueDate(currentDueDateStr, salaryType, payCycl
 }
 
 /**
- * إضافة موظف جديد
+ * إضافة موظف جديد مع دعم الأوفلاين التام
  */
 export async function addEmployee({
   name,
@@ -106,7 +106,7 @@ export async function addEmployee({
   const nowIso = new Date().toISOString();
   const nextDueDate = calculateInitialNextDueDate(salaryType, payCycleDay, startDate);
 
-  const docRef = await addDoc(collection(db, EMPLOYEES_COLLECTION), {
+  const newEmpData = {
     name: cleanName,
     phone: (phone || '').trim(),
     jobTitle: (jobTitle || 'موظف').trim(),
@@ -125,13 +125,33 @@ export async function addEmployee({
     createdAt: nowIso,
     updatedAt: nowIso,
     createdBy: createdBy || 'المسؤول'
-  });
+  };
 
-  return docRef.id;
+  let docId = 'offline_emp_' + Date.now();
+  try {
+    const docRef = await addDoc(collection(db, EMPLOYEES_COLLECTION), newEmpData);
+    docId = docRef.id;
+  } catch (err) {
+    console.warn('addEmployee offline write queued:', err?.message);
+  }
+
+  // تحديث النسخة الاحتياطية محلياً فوراً
+  try {
+    const cached = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+    const updated = [{ id: docId, ...newEmpData }, ...(Array.isArray(cached) ? cached : [])];
+    saveLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', updated);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('offline_employees_updated', { detail: updated }));
+    }
+  } catch (cErr) {
+    console.warn('Could not save local employee backup:', cErr?.message);
+  }
+
+  return docId;
 }
 
 /**
- * تعديل بيانات الموظف
+ * تعديل بيانات الموظف مع دعم الأوفلاين
  */
 export async function updateEmployee(id, data) {
   if (!id) throw new Error('معرف الموظف مفقود');
@@ -143,20 +163,54 @@ export async function updateEmployee(id, data) {
     updatedAt: nowIso
   };
 
-  await updateDoc(ref, updatePayload);
+  try {
+    await updateDoc(ref, updatePayload);
+  } catch (err) {
+    console.warn('updateEmployee offline write queued:', err?.message);
+  }
+
+  try {
+    const cached = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+    if (Array.isArray(cached)) {
+      const updated = cached.map(e => e.id === id ? { ...e, ...updatePayload } : e);
+      saveLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', updated);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('offline_employees_updated', { detail: updated }));
+      }
+    }
+  } catch (cErr) {
+    console.warn('Could not update local employee backup:', cErr?.message);
+  }
 }
 
 /**
- * حذف موظف
+ * حذف موظف مع دعم الأوفلاين
  */
 export async function deleteEmployee(id) {
   if (!id) return;
   const ref = doc(db, EMPLOYEES_COLLECTION, id);
-  await deleteDoc(ref);
+  try {
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn('deleteEmployee offline delete queued:', err?.message);
+  }
+
+  try {
+    const cached = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+    if (Array.isArray(cached)) {
+      const updated = cached.filter(e => e.id !== id);
+      saveLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', updated);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('offline_employees_updated', { detail: updated }));
+      }
+    }
+  } catch (cErr) {
+    console.warn('Could not delete local employee backup:', cErr?.message);
+  }
 }
 
 /**
- * صرف راتب أو سلفة لموظف (مع خيار الخصم من القاصة أو الدفع من المدير)
+ * صرف راتب أو سلفة لموظف (يعمل أوفلاين 100% مع مزامنة محلية فورية)
  */
 export async function payEmployeeSalary({
   employeeId,
@@ -171,7 +225,8 @@ export async function payEmployeeSalary({
   periodCovered = '',
   notes = '',
   paymentDate = new Date().toISOString(),
-  paidBy = 'المسؤول'
+  paidBy = 'المسؤول',
+  customExpenseTitle = ''
 }) {
   if (!employeeId) throw new Error('معرف الموظف مفقود');
   const numAmount = Math.max(0, Number(amount) || 0);
@@ -181,8 +236,25 @@ export async function payEmployeeSalary({
 
   const nowIso = new Date().toISOString();
   const empRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
-  const empSnap = await safeGetDoc(empRef);
-  const empData = empSnap.exists && empSnap.exists() ? empSnap.data() : {};
+  
+  let empData = {};
+  try {
+    const empSnap = await safeGetDoc(empRef);
+    if (empSnap && empSnap.exists && empSnap.exists()) {
+      empData = empSnap.data();
+    }
+  } catch (e) {
+    console.warn('safeGetDoc fallback in payEmployeeSalary:', e?.message);
+  }
+
+  // دعم الأوفلاين: إذا لم يتوفر المستند من السيرفر، نجلب بيانات الموظف من النسخة المحلية
+  if (!empData || Object.keys(empData).length === 0) {
+    const localEmployees = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+    const foundLocal = Array.isArray(localEmployees) ? localEmployees.find(e => e.id === employeeId) : null;
+    if (foundLocal) {
+      empData = foundLocal;
+    }
+  }
 
   // 1. تسجيل حركة الدفع في مجموعة salary_payments
   const paymentRecord = {
@@ -201,7 +273,22 @@ export async function payEmployeeSalary({
     createdAt: nowIso
   };
 
-  const paymentDocRef = await addDoc(collection(db, SALARY_PAYMENTS_COLLECTION), paymentRecord);
+  let paymentDocId = 'offline_pay_' + Date.now();
+  try {
+    const paymentDocRef = await addDoc(collection(db, SALARY_PAYMENTS_COLLECTION), paymentRecord);
+    paymentDocId = paymentDocRef.id;
+  } catch (payErr) {
+    console.warn('payEmployeeSalary offline payment record queued:', payErr?.message);
+  }
+
+  // حفظ سجل الدفع في النسخة المحلية
+  try {
+    const payHistory = loadLocalBackup(BACKUP_KEYS.SALARY_PAYMENTS || 'offline_backup_salary_payments', []);
+    const updatedPay = [{ id: paymentDocId, ...paymentRecord }, ...(Array.isArray(payHistory) ? payHistory : [])];
+    saveLocalBackup(BACKUP_KEYS.SALARY_PAYMENTS || 'offline_backup_salary_payments', updatedPay.slice(0, 150));
+  } catch (payHistErr) {
+    console.warn('Could not update local salary payments backup:', payHistErr?.message);
+  }
 
   // 2. تحديث مستند الموظف بحسابات موفرة للكوتا (Denormalized)
   const currentMonthStr = nowIso.slice(0, 7);
@@ -211,14 +298,11 @@ export async function payEmployeeSalary({
 
   let newAdvanceDebt = currentDebt;
   if (paymentType === 'advance') {
-    // إضافة سلفة جديدة
     newAdvanceDebt += numAmount;
   } else if (numAdvanceDeduct > 0) {
-    // خصم سلفة مسددة مع الراتب
     newAdvanceDebt = Math.max(0, newAdvanceDebt - numAdvanceDeduct);
   }
 
-  // ترحيل تاريخ الاستحقاق في حالة دفع راتب كامل
   let newNextDueDate = empData.nextDueDate || currentDueDate;
   if (paymentType === 'full_salary') {
     newNextDueDate = calculateNextCycleDueDate(
@@ -228,7 +312,7 @@ export async function payEmployeeSalary({
     );
   }
 
-  await updateDoc(empRef, {
+  const empUpdatePayload = {
     lastPaymentDate: paymentDate || nowIso,
     lastPaymentAmount: numAmount,
     totalPaidThisMonth: currentMonthTotal + numAmount,
@@ -236,13 +320,33 @@ export async function payEmployeeSalary({
     currentAdvanceDebt: newAdvanceDebt,
     nextDueDate: newNextDueDate,
     updatedAt: nowIso
-  }).catch(e => console.warn('Offline employee salary update sync note:', e?.message));
+  };
+
+  try {
+    await updateDoc(empRef, empUpdatePayload);
+  } catch (syncErr) {
+    console.warn('Offline employee salary update sync note:', syncErr?.message);
+  }
+
+  // تحديث بيانات الموظف في النسخة المحلية فوراً
+  try {
+    const localEmployees = loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []);
+    if (Array.isArray(localEmployees)) {
+      const updatedList = localEmployees.map(e => e.id === employeeId ? { ...e, ...empUpdatePayload } : e);
+      saveLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', updatedList);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('offline_employees_updated', { detail: updatedList }));
+      }
+    }
+  } catch (empBackupErr) {
+    console.warn('Could not update local employee backup:', empBackupErr?.message);
+  }
 
   // 3. إذا كان الصرف من القاصة (cash_drawer)، نسجل مصروفاً تلقائياً لضبط مطابقة الصندوق
   if (paymentSource === 'cash_drawer') {
-    const expenseTitle = paymentType === 'advance' 
+    const expenseTitle = (customExpenseTitle || '').trim() || (paymentType === 'advance' 
       ? `سلفة موظف: ${employeeName || empData.name}`
-      : `راتب موظف: ${employeeName || empData.name} (${periodCovered || 'دورة راتب'})`;
+      : `راتب موظف: ${employeeName || empData.name} (${periodCovered || 'دورة راتب'})`);
 
     try {
       await addExpense({
@@ -253,7 +357,7 @@ export async function payEmployeeSalary({
         amount: numAmount,
         periodCovered: periodCovered || '',
         buyerName: paidBy || 'المسؤول',
-        notes: `مسجل تلقائياً من قسم الرواتب. ${notes || ''}`.trim(),
+        notes: (notes || '').trim() || 'مسجل من قسم الرواتب',
         date: paymentDate || nowIso,
         createdBy: paidBy || 'المسؤول'
       });
@@ -262,7 +366,7 @@ export async function payEmployeeSalary({
     }
   }
 
-  return paymentDocRef.id;
+  return paymentDocId;
 }
 
 /**
@@ -308,7 +412,15 @@ export async function getEmployeePaymentHistory(employeeId, limitCount = 50) {
     );
 
     const snap = await safeGetDocs(q);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // دعم الأوفلاين: إذا لم توجد نتائج من الكاش أو كان غير متصل، قراءة الدفعات من النسخة المحلية
+    if (list.length === 0) {
+      const localPayments = loadLocalBackup(BACKUP_KEYS.SALARY_PAYMENTS || 'offline_backup_salary_payments', []);
+      if (Array.isArray(localPayments)) {
+        list = localPayments.filter((p) => p.employeeId === employeeId);
+      }
+    }
 
     // الترتيب في الذاكرة لتجنب خطأ الفهرس المركب (Composite Index) تماماً
     list.sort((a, b) => {
@@ -320,6 +432,10 @@ export async function getEmployeePaymentHistory(employeeId, limitCount = 50) {
     return list.slice(0, limitCount);
   } catch (err) {
     console.error('Error fetching employee payment history:', err);
+    const localPayments = loadLocalBackup(BACKUP_KEYS.SALARY_PAYMENTS || 'offline_backup_salary_payments', []);
+    if (Array.isArray(localPayments)) {
+      return localPayments.filter((p) => p.employeeId === employeeId).slice(0, limitCount);
+    }
     return [];
   }
 }

@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from '../hooks/useAuth';
 import { getStoreSettings, updateStoreSettings } from '../services/settingsService';
-import { useLaborCharges } from '../hooks/useLaborCharges';
-import { addLaborCharge, updateLaborCharge, deleteLaborCharge } from '../services/laborChargesService';
 import { useUI } from '../contexts/UIContext';
 import { uploadProductImage } from '../services/storageService';
 import { exportAllData } from '../utils/backup';
@@ -11,8 +9,6 @@ import { generateFullBackupBundle, downloadBackupZip, uploadBackupToGoogleDrive 
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { connectUserGoogleDrive } from '../services/googleDriveClientUpload';
-import { useProducts } from '../hooks/useProducts';
-import { renameCategoryInProducts } from '../services/productsService';
 import { CATEGORIES } from '../models/product';
 import { 
   DEFAULT_WHATSAPP_TEMPLATES, 
@@ -23,14 +19,14 @@ import {
   normalizeServerBaseUrl,
   smartFetch
 } from '../services/whatsappService';
+import { ROLE_PRESETS, SYSTEM_SECTIONS_META, ADVANCED_PERMISSIONS_META } from '../config/permissions';
 
 export default function SettingsScreen() {
   const { user } = useAuth();
   const { toast, confirm, backupTask, startBackgroundBackup } = useUI();
   const { settings, loading: settingsLoading } = useSettings();
-  const { laborCharges = [], loading: laborLoading } = useLaborCharges();
 
-  const [activeTab, setActiveTab] = useState('store'); // 'store' | 'users' | 'categories' | 'labor' | 'whatsapp' | 'backup'
+  const [activeTab, setActiveTab] = useState('store'); // 'store' | 'users' | 'permissions' | 'whatsapp' | 'backup'
   
   // WhatsApp Settings state
   const [whatsappConfig, setWhatsappConfig] = useState({
@@ -275,18 +271,6 @@ export default function SettingsScreen() {
     qrCodeUrl: null,
   });
   const [savingStore, setSavingStore] = useState(false);
-
-  // Categories management state
-  const { products = [] } = useProducts();
-  const [editingCategory, setEditingCategory] = useState({ oldName: '', newName: '' });
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [categorySearch, setCategorySearch] = useState('');
-  const [savingCategoryAction, setSavingCategoryAction] = useState(false);
-
-  // Labor charges state
-  const [newLabor, setNewLabor] = useState({ name: '', price: '' });
-  const [editingLaborId, setEditingLaborId] = useState(null);
-  const [editLabor, setEditLabor] = useState({ name: '', price: '' });
 
   useEffect(() => {
     if (settings) {
@@ -570,178 +554,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleAddLabor = async (e) => {
-    e.preventDefault();
-    if (!newLabor.name || !newLabor.price) {
-      toast('الرجاء إدخال اسم الخدمة والسعر', 'error');
-      return;
-    }
-    try {
-      await addLaborCharge({ name: newLabor.name, price: Number(newLabor.price) });
-      setNewLabor({ name: '', price: '' });
-      toast('تمت إضافة الخدمة بنجاح', 'success');
-    } catch (err) {
-      toast(`فشل إضافة الخدمة: ${err.message}`, 'error');
-    }
-  };
-
-  const handleUpdateLabor = async (e) => {
-    e.preventDefault();
-    try {
-      await updateLaborCharge(editingLaborId, { name: editLabor.name, price: Number(editLabor.price) });
-      setEditingLaborId(null);
-      toast('تم تحديث الخدمة بنجاح', 'success');
-    } catch (err) {
-      toast(`فشل تحديث الخدمة: ${err.message}`, 'error');
-    }
-  };
-
-  const handleDeleteLabor = (id) => {
-    confirm('حذف الخدمة', 'هل أنت متأكد أنك تريد حذف هذه الخدمة؟', async () => {
-      try {
-        await deleteLaborCharge(id);
-        toast('تم حذف الخدمة', 'success');
-      } catch (err) {
-        toast(`فشل الحذف: ${err.message}`, 'error');
-      }
-    });
-  };
-
-  // Helper to get all categories (defaults + custom + existing in products - deleted)
-  const currentCategoriesList = useMemo(() => {
-    const customCategories = storeInfo.categories || settings?.categories || [];
-    const deletedList = settings?.deletedCategories || [];
-    
-    // Combine base CATEGORIES + custom added categories + categories in products
-    const combined = new Set([
-      ...CATEGORIES,
-      ...customCategories,
-      ...products.map(p => p.cameraType || p.category).filter(Boolean)
-    ]);
-
-    // Filter out explicitly deleted categories (only if they have 0 products)
-    deletedList.forEach(delCat => {
-      const hasProducts = products.some(p => (p.cameraType === delCat || p.category === delCat));
-      if (!hasProducts) {
-        combined.delete(delCat);
-      }
-    });
-
-    return Array.from(combined).filter(Boolean);
-  }, [storeInfo.categories, settings?.categories, settings?.deletedCategories, products]);
-
-  // Filtered categories for search
-  const displayedCategories = useMemo(() => {
-    if (!categorySearch.trim()) return currentCategoriesList;
-    const term = categorySearch.toLowerCase().trim();
-    return currentCategoriesList.filter(c => c.toLowerCase().includes(term));
-  }, [currentCategoriesList, categorySearch]);
-
-  // Add new category
-  const handleAddCategory = async (e) => {
-    if (e) e.preventDefault();
-    const val = newCategoryName.trim();
-    if (!val) {
-      toast('يرجى كتابة اسم القسم', 'warning');
-      return;
-    }
-    if (currentCategoriesList.some(c => c.toLowerCase() === val.toLowerCase())) {
-      toast('هذا القسم موجود مسبقاً!', 'error');
-      return;
-    }
-
-    setSavingCategoryAction(true);
-    try {
-      const updatedCategories = [...currentCategoriesList, val];
-      const deletedCategories = (settings?.deletedCategories || []).filter(c => c.toLowerCase() !== val.toLowerCase());
-      const newStoreInfo = { 
-        ...storeInfo, 
-        categories: updatedCategories,
-        deletedCategories
-      };
-      setStoreInfo(newStoreInfo);
-      await updateStoreSettings(newStoreInfo);
-      setNewCategoryName('');
-      toast(`تمت إضافة قسم «${val}» بنجاح! 🎉`, 'success');
-    } catch (err) {
-      toast(`فشل إضافة القسم: ${err.message}`, 'error');
-    } finally {
-      setSavingCategoryAction(false);
-    }
-  };
-
-  // Save edited category name
-  const handleSaveEditCategory = async (oldName, newName) => {
-    const trimmed = (newName || '').trim();
-    if (!trimmed) {
-      toast('يرجى إدخال اسم القسم', 'error');
-      return;
-    }
-    if (trimmed.toLowerCase() === oldName.toLowerCase()) {
-      setEditingCategory({ oldName: '', newName: '' });
-      return;
-    }
-    if (currentCategoriesList.some(c => c.toLowerCase() === trimmed.toLowerCase() && c.toLowerCase() !== oldName.toLowerCase())) {
-      toast('يوجد قسم آخر بنفس هذا الاسم بالفعل!', 'error');
-      return;
-    }
-
-    setSavingCategoryAction(true);
-    try {
-      // 1. Update in settings
-      const updatedCategories = currentCategoriesList.map(c => c === oldName ? trimmed : c);
-      const deletedCategories = Array.from(new Set([...(settings?.deletedCategories || []), oldName])).filter(c => c !== trimmed);
-      
-      const newStoreInfo = { 
-        ...storeInfo, 
-        categories: updatedCategories,
-        deletedCategories
-      };
-      setStoreInfo(newStoreInfo);
-      await updateStoreSettings(newStoreInfo);
-
-      // 2. Update in all products in Firestore
-      const count = await renameCategoryInProducts(oldName, trimmed);
-
-      setEditingCategory({ oldName: '', newName: '' });
-      toast(`تم تعديل اسم القسم إلى «${trimmed}» وتحديث ${count} منتج مرتبط به بنجاح! ✨`, 'success');
-    } catch (err) {
-      toast(`فشل تعديل القسم: ${err.message}`, 'error');
-    } finally {
-      setSavingCategoryAction(false);
-    }
-  };
-
-  // Delete category with guard if products exist
-  const handleDeleteCategory = (cat) => {
-    const linkedProducts = products.filter(p => (p.cameraType === cat || p.category === cat));
-    if (linkedProducts.length > 0) {
-      toast(`⚠️ لا يمكن حذف قسم «${cat}» لأنه يحتوي على ${linkedProducts.length} منتج مرتبطة به! يرجى نقل أو تعديل المنتجات أولاً.`, 'error');
-      return;
-    }
-
-    confirm('حذف القسم', `هل أنت متأكد من حذف قسم «${cat}» نهائياً؟`, async () => {
-      setSavingCategoryAction(true);
-      try {
-        const updatedCategories = currentCategoriesList.filter(c => c !== cat);
-        const deletedCategories = Array.from(new Set([...(settings?.deletedCategories || []), cat]));
-        
-        const newStoreInfo = { 
-          ...storeInfo, 
-          categories: updatedCategories,
-          deletedCategories
-        };
-        setStoreInfo(newStoreInfo);
-        await updateStoreSettings(newStoreInfo);
-        toast(`تم حذف قسم «${cat}» بنجاح`, 'success');
-      } catch (err) {
-        toast(`فشل حذف القسم: ${err.message}`, 'error');
-      } finally {
-        setSavingCategoryAction(false);
-      }
-    });
-  };
-
   // Authorized Emails (Whitelist) state
   const [newAllowedEmail, setNewAllowedEmail] = useState('');
   const [savingAllowedEmail, setSavingAllowedEmail] = useState(false);
@@ -811,7 +623,8 @@ export default function SettingsScreen() {
 
     try {
       const updatedList = allowedEmailsList.filter(em => em.toLowerCase() !== emailToRemove.toLowerCase());
-      await updateStoreSettings({ allowedEmails: updatedList });
+      const updatedPerms = (settings?.employeePermissions || []).filter(p => (p.email || '').toLowerCase() !== emailToRemove.toLowerCase());
+      await updateStoreSettings({ allowedEmails: updatedList, employeePermissions: updatedPerms });
       toast(`تم حذف (${emailToRemove}) من القائمة 🗑️`, 'info');
     } catch (err) {
       toast(`فشل الحذف: ${err.message}`, 'error');
@@ -828,35 +641,156 @@ export default function SettingsScreen() {
     }
   };
 
-  if (settingsLoading || laborLoading) return <div className="p-8 text-center text-ink-500">جارٍ التحميل...</div>;
+  // Employee Permissions State & Handlers
+  const [selectedPermEmail, setSelectedPermEmail] = useState('');
+  const [savingPermissions, setSavingPermissions] = useState(false);
+  const employeePermissionsList = useMemo(() => {
+    return Array.isArray(settings?.employeePermissions) ? settings.employeePermissions : [];
+  }, [settings]);
+
+  // Sync selectedPermEmail with available emails
+  useEffect(() => {
+    if (allowedEmailsList.length > 0) {
+      if (!selectedPermEmail || !allowedEmailsList.some(e => e.toLowerCase() === selectedPermEmail.toLowerCase())) {
+        setSelectedPermEmail(allowedEmailsList[0]);
+      }
+    } else {
+      setSelectedPermEmail('');
+    }
+  }, [allowedEmailsList, selectedPermEmail]);
+
+  // Current permission config for selectedPermEmail
+  const activeEmployeePerm = useMemo(() => {
+    if (!selectedPermEmail) return null;
+    const found = employeePermissionsList.find(p => (p.email || '').toLowerCase() === selectedPermEmail.toLowerCase());
+    if (found) return found;
+    return {
+      email: selectedPermEmail,
+      role: 'admin',
+      allowedSections: { ...ROLE_PRESETS.admin.allowedSections },
+      advanced: { ...ROLE_PRESETS.admin.advanced },
+    };
+  }, [selectedPermEmail, employeePermissionsList]);
+
+  // Local editing buffer for permissions
+  const [permForm, setPermForm] = useState(null);
+
+  useEffect(() => {
+    if (activeEmployeePerm) {
+      setPermForm({
+        email: activeEmployeePerm.email,
+        role: activeEmployeePerm.role || 'admin',
+        allowedSections: { ...ROLE_PRESETS.admin.allowedSections, ...(activeEmployeePerm.allowedSections || {}) },
+        advanced: { ...ROLE_PRESETS.admin.advanced, ...(activeEmployeePerm.advanced || {}) },
+      });
+    } else {
+      setPermForm(null);
+    }
+  }, [activeEmployeePerm]);
+
+  const handleApplyRolePreset = (roleKey) => {
+    const preset = ROLE_PRESETS[roleKey];
+    if (!preset || !permForm) return;
+    setPermForm(prev => ({
+      ...prev,
+      role: roleKey,
+      allowedSections: { ...preset.allowedSections },
+      advanced: { ...preset.advanced },
+    }));
+  };
+
+  const handleToggleSectionPerm = (sectionId) => {
+    if (!permForm) return;
+    setPermForm(prev => ({
+      ...prev,
+      role: 'custom',
+      allowedSections: {
+        ...prev.allowedSections,
+        [sectionId]: !prev.allowedSections[sectionId],
+      }
+    }));
+  };
+
+  const handleToggleAdvancedPerm = (advKey) => {
+    if (!permForm) return;
+    setPermForm(prev => ({
+      ...prev,
+      role: 'custom',
+      advanced: {
+        ...prev.advanced,
+        [advKey]: !prev.advanced[advKey],
+      }
+    }));
+  };
+
+  const handleSavePermForm = async () => {
+    if (!permForm || !permForm.email) return;
+    setSavingPermissions(true);
+    try {
+      const currentList = Array.isArray(settings?.employeePermissions) ? [...settings.employeePermissions] : [];
+      const idx = currentList.findIndex(p => (p.email || '').toLowerCase() === permForm.email.toLowerCase());
+      if (idx >= 0) {
+        currentList[idx] = permForm;
+      } else {
+        currentList.push(permForm);
+      }
+      await updateStoreSettings({ employeePermissions: currentList });
+      toast(`تم حفظ وتفعيل صلاحيات (${permForm.email}) بنجاح! 🛡️✅`, 'success');
+    } catch (err) {
+      toast(`فشل حفظ الصلاحيات: ${err.message}`, 'error');
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
+  const handleApplyToAllEmployees = async () => {
+    if (!permForm || allowedEmailsList.length === 0) return;
+    const ok = await confirm({
+      title: 'تعميم الصلاحيات على الجميع',
+      message: `هل أنت متأكد من تعميم هذه الصلاحيات (${ROLE_PRESETS[permForm.role]?.name || 'المخصصة'}) على جميع الموظفين المصرح لهم (${allowedEmailsList.length} موظف)؟`
+    });
+    if (!ok) return;
+
+    setSavingPermissions(true);
+    try {
+      const updatedList = allowedEmailsList.map(email => ({
+        ...permForm,
+        email,
+      }));
+      await updateStoreSettings({ employeePermissions: updatedList });
+      toast('تم تعميم الصلاحيات على جميع الموظفين بنجاح! 👥✅', 'success');
+    } catch (err) {
+      toast(`فشل التعميم: ${err.message}`, 'error');
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
+  if (settingsLoading) return <div className="p-8 text-center text-ink-500">جارٍ التحميل...</div>;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-brand-100 min-h-full" dir="rtl">
       <div className="border-b border-brand-100 flex p-4 gap-4 flex-wrap">
         <button
           onClick={() => setActiveTab('store')}
-          className={`px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'store' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-ink-50'}`}
+          className={`px-4 py-2 font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTab === 'store' ? 'bg-brand-600 text-white shadow-xs' : 'text-ink-600 hover:bg-ink-50'}`}
         >
-          معلومات المتجر
+          <span>🏪</span>
+          <span>معلومات المتجر</span>
         </button>
         <button
           onClick={() => setActiveTab('users')}
           className={`px-4 py-2 font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-xs' : 'text-ink-600 hover:bg-ink-50'}`}
         >
           <span>👥</span>
-          <span>الموظفين المصرح لهم (Whitelist)</span>
+          <span>إضافة الموظفين المصرح لهم</span>
         </button>
         <button
-          onClick={() => setActiveTab('categories')}
-          className={`px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'categories' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-ink-50'}`}
+          onClick={() => setActiveTab('permissions')}
+          className={`px-4 py-2 font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${activeTab === 'permissions' ? 'bg-purple-600 text-white shadow-xs' : 'text-ink-600 hover:bg-ink-50'}`}
         >
-          الأقسام (التصنيفات)
-        </button>
-        <button
-          onClick={() => setActiveTab('labor')}
-          className={`px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'labor' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-ink-50'}`}
-        >
-          أجور العمل والخدمات
+          <span>🛡️</span>
+          <span>صلاحيات الموظفين</span>
         </button>
         <button
           onClick={() => setActiveTab('whatsapp')}
@@ -870,7 +804,7 @@ export default function SettingsScreen() {
           className={`px-4 py-2 font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer ${activeTab === 'backup' ? 'bg-brand-600 text-white shadow-xs' : 'text-ink-600 hover:bg-ink-50'}`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-          النسخ الاحتياطي والسحابي ☁️
+          <span>النسخ الاحتياطي والسحابي ☁️</span>
         </button>
       </div>
 
@@ -942,6 +876,51 @@ export default function SettingsScreen() {
               ></textarea>
             </div>
 
+            {/* Telegram Settings */}
+            <div className="p-5 bg-ink-50/60 border border-brand-200 rounded-2xl shadow-xs">
+              <h3 className="font-bold text-ink-900 mb-3 flex items-center gap-2 text-sm">
+                <span>🤖 إعدادات ربط تيليجرام (Telegram)</span>
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-ink-700 mb-1">توكن البوت (Bot Token)</label>
+                  <input
+                    type="text"
+                    value={storeInfo.telegramBotToken || ''}
+                    onChange={(e) => setStoreInfo({ ...storeInfo, telegramBotToken: e.target.value })}
+                    className="w-full border border-brand-200 bg-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none text-left font-mono text-xs"
+                    dir="ltr"
+                    placeholder="مثال: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-ink-700 mb-1">معرف الجروب (Chat ID)</label>
+                  <input
+                    type="text"
+                    value={storeInfo.telegramChatId || ''}
+                    onChange={(e) => setStoreInfo({ ...storeInfo, telegramChatId: e.target.value })}
+                    className="w-full border border-brand-200 bg-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none text-left font-mono text-xs"
+                    dir="ltr"
+                    placeholder="مثال: -1001234567890"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={activatingTelegram || !storeInfo.telegramBotToken}
+                    onClick={handleActivateTelegramWebhook}
+                    className="w-full py-2.5 px-4 bg-[#229ED9] hover:bg-[#1E88C7] text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <span>{activatingTelegram ? 'جارٍ ربط البوت... ⏳' : '🔗 تفعيل وربط البوت مع هذا السيرفر (Set Webhook)'}</span>
+                  </button>
+                  <p className="text-[11px] text-ink-500 mt-1.5 text-center">
+                    اضغط هنا لتوجيه رسائل البوت وأمر <code>/pos</code> و <code>/offer</code> إلى هذا المشروع تلقائياً.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="pt-4 border-t border-brand-100">
               <button
                 type="submit"
@@ -954,297 +933,9 @@ export default function SettingsScreen() {
           </form>
         )}
 
-        {activeTab === 'categories' && (
-          <div className="max-w-3xl space-y-6">
-            {/* Header & Add Category Card */}
-            <div className="bg-brand-50/70 p-5 rounded-2xl border border-brand-200">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">📁</span>
-                  <h3 className="font-bold text-ink-900 text-base">إضافة قسم (تصنيف) جديد</h3>
-                </div>
-                <span className="bg-brand-100 text-brand-800 text-xs font-bold px-3 py-1 rounded-full border border-brand-200">
-                  إجمالي الأقسام: {currentCategoriesList.length}
-                </span>
-              </div>
-              <form onSubmit={handleAddCategory} className="flex gap-3">
-                <input
-                  type="text"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  className="flex-1 border border-brand-200 bg-white rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold text-ink-800 placeholder-ink-400"
-                  placeholder="مثال: أجهزة بصمة، كاميرات طاقة شمسية..."
-                />
-                <button
-                  type="submit"
-                  disabled={savingCategoryAction || !newCategoryName.trim()}
-                  className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer shrink-0"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                  <span>إضافة قسم</span>
-                </button>
-              </form>
-            </div>
 
-            {/* Categories Table / List Card */}
-            <div className="bg-white rounded-2xl border border-ink-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-ink-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-ink-50/50">
-                <h3 className="font-bold text-ink-900 text-sm flex items-center gap-2">
-                  <span>قائمة الأقسام والتصنيفات</span>
-                  <span className="text-xs text-ink-500 font-normal">({displayedCategories.length} من {currentCategoriesList.length})</span>
-                </h3>
-                <div className="relative w-full sm:w-64">
-                  <input
-                    type="text"
-                    value={categorySearch}
-                    onChange={(e) => setCategorySearch(e.target.value)}
-                    placeholder="بحث في الأقسام..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-ink-200 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 font-medium"
-                  />
-                  {categorySearch && (
-                    <button
-                      onClick={() => setCategorySearch('')}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700 text-xs font-bold"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              {displayedCategories.length === 0 ? (
-                <div className="p-8 text-center text-ink-400 text-sm">
-                  لا توجد أقسام مطابقة للبحث
-                </div>
-              ) : (
-                <div className="divide-y divide-ink-100 max-h-[500px] overflow-y-auto">
-                  {displayedCategories.map((cat, idx) => {
-                    const productCount = products.filter(p => (p.cameraType === cat || p.category === cat)).length;
-                    const isEditing = editingCategory.oldName === cat;
 
-                    return (
-                      <div key={cat} className="p-3.5 flex items-center justify-between gap-3 hover:bg-ink-50/60 transition-colors">
-                        {isEditing ? (
-                          <div className="flex-1 flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={editingCategory.newName}
-                              onChange={(e) => setEditingCategory(prev => ({ ...prev, newName: e.target.value }))}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSaveEditCategory(cat, editingCategory.newName);
-                                if (e.key === 'Escape') setEditingCategory({ oldName: '', newName: '' });
-                              }}
-                              autoFocus
-                              className="flex-1 border border-brand-500 rounded-lg px-3 py-1.5 text-sm font-bold bg-white outline-none focus:ring-2 focus:ring-brand-500"
-                            />
-                            <button
-                              onClick={() => handleSaveEditCategory(cat, editingCategory.newName)}
-                              disabled={savingCategoryAction}
-                              className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors cursor-pointer"
-                            >
-                              حفظ
-                            </button>
-                            <button
-                              onClick={() => setEditingCategory({ oldName: '', newName: '' })}
-                              className="px-3 py-1.5 text-xs font-bold text-ink-600 bg-ink-100 hover:bg-ink-200 rounded-lg transition-colors cursor-pointer"
-                            >
-                              إلغاء
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="text-xs font-mono font-bold text-ink-400 w-6 text-center">{idx + 1}</span>
-                              <span className="text-sm font-bold text-ink-900 truncate" title={cat}>{cat}</span>
-                              {productCount > 0 ? (
-                                <span className="px-2 py-0.5 text-[11px] font-bold bg-brand-50 text-brand-700 rounded-md border border-brand-200 shrink-0">
-                                  {productCount} منتج مرتبط
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-500 rounded-md shrink-0">
-                                  0 منتج (فارغ)
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                onClick={() => setEditingCategory({ oldName: cat, newName: cat })}
-                                className="p-1.5 text-ink-500 hover:text-brand-700 hover:bg-brand-50 rounded-lg transition-colors cursor-pointer"
-                                title="تعديل اسم القسم"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                              </button>
-
-                              <button
-                                onClick={() => handleDeleteCategory(cat)}
-                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                  productCount > 0
-                                    ? 'text-ink-400 hover:text-danger-600 hover:bg-danger-50'
-                                    : 'text-danger-600 hover:text-danger-800 hover:bg-danger-50'
-                                }`}
-                                title={productCount > 0 ? `لا يمكن الحذف (يحتوي على ${productCount} منتج مرتبط)` : 'حذف القسم'}
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Telegram Settings */}
-            <div className="p-5 bg-white border border-brand-200 rounded-2xl shadow-sm">
-              <h3 className="font-bold text-ink-900 mb-3 flex items-center gap-2 text-sm">
-                <span>🤖 إعدادات ربط تيليجرام (Telegram)</span>
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-ink-700 mb-1">توكن البوت (Bot Token)</label>
-                  <input
-                    type="text"
-                    value={storeInfo.telegramBotToken || ''}
-                    onChange={(e) => setStoreInfo({ ...storeInfo, telegramBotToken: e.target.value })}
-                    className="w-full border border-brand-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none text-left font-mono text-xs"
-                    dir="ltr"
-                    placeholder="مثال: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-ink-700 mb-1">معرف الجروب (Chat ID)</label>
-                  <input
-                    type="text"
-                    value={storeInfo.telegramChatId || ''}
-                    onChange={(e) => setStoreInfo({ ...storeInfo, telegramChatId: e.target.value })}
-                    className="w-full border border-brand-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none text-left font-mono text-xs"
-                    dir="ltr"
-                    placeholder="مثال: -1001234567890"
-                  />
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    disabled={activatingTelegram || !storeInfo.telegramBotToken}
-                    onClick={handleActivateTelegramWebhook}
-                    className="w-full py-2.5 px-4 bg-[#229ED9] hover:bg-[#1E88C7] text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
-                  >
-                    <span>{activatingTelegram ? 'جارٍ ربط البوت... ⏳' : '🔗 تفعيل وربط البوت مع هذا السيرفر (Set Webhook)'}</span>
-                  </button>
-                  <p className="text-[11px] text-ink-500 mt-1.5 text-center">
-                    اضغط هنا لتوجيه رسائل البوت وأمر <code>/pos</code> و <code>/offer</code> إلى هذا المشروع تلقائياً.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <button onClick={(e) => handleSaveStoreInfo(e)} className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-8 rounded-xl shadow-sm transition-colors text-lg">
-                حفظ التغييرات
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'labor' && (
-          <div className="max-w-3xl space-y-6">
-            <form onSubmit={handleAddLabor} className="bg-brand-50 p-4 rounded-xl border border-brand-100 flex items-end gap-4">
-              <div className="flex-1">
-                <label className="block text-sm font-bold text-ink-700 mb-1">اسم الخدمة</label>
-                <input
-                  type="text"
-                  value={newLabor.name}
-                  onChange={(e) => setNewLabor({ ...newLabor, name: e.target.value })}
-                  className="w-full border border-brand-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
-                  placeholder="نصب كاميرا + كيبل"
-                />
-              </div>
-              <div className="w-1/3">
-                <label className="block text-sm font-bold text-ink-700 mb-1">السعر (دينار)</label>
-                <input
-                  type="number"
-                  value={newLabor.price}
-                  onChange={(e) => setNewLabor({ ...newLabor, price: e.target.value })}
-                  className="w-full border border-brand-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
-                  placeholder="15000"
-                />
-              </div>
-              <button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white font-bold px-6 py-2 rounded-lg h-10">
-                إضافة
-              </button>
-            </form>
-
-            <div className="border border-brand-200 rounded-xl overflow-hidden">
-              <table className="w-full text-right">
-                <thead className="bg-brand-50 text-ink-600 text-sm">
-                  <tr>
-                    <th className="p-3 font-bold">اسم الخدمة</th>
-                    <th className="p-3 font-bold">السعر</th>
-                    <th className="p-3 font-bold text-center">إجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-100">
-                  {laborCharges.map(labor => (
-                    <tr key={labor.id} className="hover:bg-brand-50/50">
-                      {editingLaborId === labor.id ? (
-                        <>
-                          <td className="p-2">
-                            <input
-                              type="text"
-                              value={editLabor.name}
-                              onChange={(e) => setEditLabor({ ...editLabor, name: e.target.value })}
-                              className="w-full border border-brand-200 rounded px-2 py-1"
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              type="number"
-                              value={editLabor.price}
-                              onChange={(e) => setEditLabor({ ...editLabor, price: e.target.value })}
-                              className="w-full border border-brand-200 rounded px-2 py-1"
-                            />
-                          </td>
-                          <td className="p-2 flex items-center justify-center gap-2">
-                            <button onClick={handleUpdateLabor} className="text-emerald-600 font-bold px-2 py-1 bg-emerald-50 rounded hover:bg-emerald-100">حفظ</button>
-                            <button onClick={() => setEditingLaborId(null)} className="text-ink-500 font-bold px-2 py-1 bg-ink-100 rounded hover:bg-ink-200">إلغاء</button>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="p-3 text-ink-900 font-medium">{labor.name}</td>
-                          <td className="p-3 text-brand-600 font-bold">{Number(labor.price || 0).toLocaleString()}</td>
-                          <td className="p-3 flex items-center justify-center gap-3">
-                            <button
-                              onClick={() => {
-                                setEditingLaborId(labor.id);
-                                setEditLabor({ name: labor.name, price: labor.price });
-                              }}
-                              className="text-brand-600 hover:text-brand-800"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                            </button>
-                            <button onClick={() => handleDeleteLabor(labor.id)} className="text-danger-500 hover:text-danger-700">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
-                  {laborCharges.length === 0 && (
-                    <tr>
-                      <td colSpan="3" className="p-6 text-center text-ink-500">لا توجد خدمات مضافة حالياً.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* Tab: WhatsApp & Debt Reminders */}
         {/* Tab: WhatsApp & Debt Reminders */}
@@ -2118,18 +1809,29 @@ export default function SettingsScreen() {
         {/* Users / Allowed Emails Whitelist Tab */}
         {activeTab === 'users' && (
           <div className="max-w-3xl space-y-6">
-            {/* Header Description */}
-            <div className="bg-gradient-to-l from-indigo-50/80 to-brand-50/50 border border-indigo-100 rounded-2xl p-5 space-y-2">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl p-2 bg-white rounded-xl shadow-2xs border border-indigo-100">👥</span>
-                <div>
-                  <h2 className="text-base font-black text-ink-900">
-                    إدارة الموظفين والإيميلات المصرح لها بالدخول (Google & Email Whitelist)
-                  </h2>
-                  <p className="text-xs text-ink-600 mt-1 leading-relaxed">
-                    تحكم بالكامل في الحسابات المسموح لها بتسجيل الدخول للنظام (سواء من البوت في التليجرام أو من الموقع عبر حساب Google أو البريد الإلكتروني). لن يتمكن أي حساب آخر من الدخول.
-                  </p>
+            {/* Header Description & Switcher */}
+            <div className="bg-gradient-to-l from-indigo-50/80 to-brand-50/50 border border-indigo-100 rounded-2xl p-5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl p-2 bg-white rounded-xl shadow-2xs border border-indigo-100 shrink-0">👥</span>
+                  <div>
+                    <h2 className="text-base font-black text-ink-900">
+                      إدارة الموظفين والإيميلات المصرح لها بالدخول (Google & Email Whitelist)
+                    </h2>
+                    <p className="text-xs text-ink-600 mt-1 leading-relaxed">
+                      تحكم بالكامل في الحسابات المسموح لها بتسجيل الدخول للنظام (عبر Google أو البريد الإلكتروني).
+                    </p>
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('permissions')}
+                  className="self-start sm:self-auto px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <span>🛡️</span>
+                  <span>صلاحيات الموظفين</span>
+                </button>
               </div>
             </div>
 
@@ -2240,14 +1942,18 @@ export default function SettingsScreen() {
                 <div className="divide-y divide-slate-100">
                   {allowedEmailsList.map((emailItem, idx) => {
                     const isCurrent = user?.email?.toLowerCase() === emailItem.toLowerCase();
+                    const empPerm = employeePermissionsList.find(p => (p.email || '').toLowerCase() === emailItem.toLowerCase());
+                    const roleKey = empPerm?.role || 'admin';
+                    const rolePreset = ROLE_PRESETS[roleKey] || ROLE_PRESETS.admin;
+
                     return (
                       <div key={idx} className="py-3 px-2 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-xl transition-colors">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-100 shrink-0">
                             {idx + 1}
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-mono font-bold text-slate-900" dir="ltr">
                                 {emailItem}
                               </span>
@@ -2256,6 +1962,10 @@ export default function SettingsScreen() {
                                   أنت (الحساب الحالي)
                                 </span>
                               )}
+                              <span className="bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <span>{rolePreset.icon}</span>
+                                <span>{rolePreset.name}</span>
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-[10px] text-slate-400">
@@ -2265,20 +1975,337 @@ export default function SettingsScreen() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAllowedEmail(emailItem)}
-                          className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 flex items-center justify-center text-xs transition-colors cursor-pointer border border-rose-200 shrink-0"
-                          title="إزالة من القائمة"
-                        >
-                          🗑️
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPermEmail(emailItem);
+                              setActiveTab('permissions');
+                            }}
+                            className="px-2.5 py-1.5 text-xs font-bold rounded-xl bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="تعديل صلاحيات وأدوار هذا الموظف"
+                          >
+                            <span>🛡️</span>
+                            <span className="hidden sm:inline">الصلاحيات</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAllowedEmail(emailItem)}
+                            className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 flex items-center justify-center text-xs transition-colors cursor-pointer border border-rose-200"
+                            title="إزالة من القائمة"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Employee Permissions Tab */}
+        {activeTab === 'permissions' && (
+          <div className="max-w-4xl space-y-6">
+            {/* Header Banner */}
+            <div className="bg-gradient-to-l from-purple-700 to-indigo-800 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
+              <div className="relative z-10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-xl text-2xl">
+                      🛡️
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black">إدارة صلاحيات وأدوار الموظفين</h2>
+                      <p className="text-purple-100 text-xs mt-0.5">
+                        تحكم في الأقسام المسموح لكل موظف فتحها، وحظر الوصول إلى الأسعار، رأس المال، أو الحذف
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('users')}
+                    className="self-start sm:self-auto px-3.5 py-2 bg-white/15 hover:bg-white/25 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-white/20"
+                  >
+                    <span>➕</span>
+                    <span>إضافة موظف جديد للقائمة</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {allowedEmailsList.length === 0 ? (
+              <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-8 text-center text-slate-500 space-y-3">
+                <span className="text-4xl block">📭</span>
+                <h3 className="font-black text-slate-800 text-base">لا يوجد موظفون مضافون حالياً</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  يرجى الانتقال إلى قسم «إضافة الموظفين المصرح لهم» وإضافة بريد إلكتروني واحد على الأقل لتتمكن من تحديد الصلاحيات له.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('users')}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer inline-flex items-center gap-2"
+                >
+                  <span>👥 الانتقال إلى إضافة الموظفين</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Employee Selector Card */}
+                <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-xs font-black text-ink-900 mb-1">
+                        اختر الموظف المراد ضبط صلاحياته:
+                      </label>
+                      <p className="text-[11px] text-ink-500">
+                        اختر أي موظف من القائمة المعتمدة لتعديل صلاحياته وتحديد ما يمكنه فعله
+                      </p>
+                    </div>
+
+                    <div className="w-full sm:w-72">
+                      <select
+                        value={selectedPermEmail}
+                        onChange={(e) => setSelectedPermEmail(e.target.value)}
+                        className="w-full bg-slate-50 border border-brand-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer font-mono"
+                        dir="ltr"
+                      >
+                        {allowedEmailsList.map((em) => {
+                          const p = employeePermissionsList.find(item => item.email?.toLowerCase() === em.toLowerCase());
+                          const roleObj = ROLE_PRESETS[p?.role || 'admin'] || ROLE_PRESETS.admin;
+                          return (
+                            <option key={em} value={em}>
+                              {em} ({roleObj.icon} {roleObj.name})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+
+                  {permForm && (
+                    <div className="flex items-center gap-3 p-3 bg-purple-50/60 rounded-xl border border-purple-100 text-xs">
+                      <div className="w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        {permForm.email?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900" dir="ltr">{permForm.email}</span>
+                          <span className="bg-purple-100 text-purple-800 font-black text-[10px] px-2 py-0.5 rounded-full border border-purple-200">
+                            {ROLE_PRESETS[permForm.role]?.icon} {ROLE_PRESETS[permForm.role]?.name || 'مخصص'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-purple-700 mt-0.5 truncate">
+                          {ROLE_PRESETS[permForm.role]?.desc || 'صلاحيات مخصصة يدوياً لهذا الموظف.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {permForm && (
+                  <div className="space-y-6">
+                    {/* Role Presets Cards */}
+                    <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <h3 className="text-sm font-black text-ink-900 flex items-center gap-2">
+                          <span>⚡</span>
+                          <span>اختيار دور وظيفي جاهز (Role Presets)</span>
+                        </h3>
+                        <span className="text-[11px] text-ink-500">
+                          يمكنك اختيار دور جاهز بنقرة واحدة أو تعديل الأقسام يدوياً أدناه
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {['admin', 'cashier', 'inventory', 'accountant'].map((key) => {
+                          const preset = ROLE_PRESETS[key];
+                          const isSelected = permForm.role === key;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => handleApplyRolePreset(key)}
+                              className={`p-3.5 rounded-xl border text-right transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                                isSelected
+                                  ? 'border-purple-600 bg-purple-50/70 ring-2 ring-purple-500/20 shadow-xs'
+                                  : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-2xl">{preset.icon}</span>
+                                {isSelected && (
+                                  <span className="bg-purple-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                                    مُحدد ✓
+                                  </span>
+                                )}
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-black text-slate-900">{preset.name}</h4>
+                                <p className="text-[10px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                                  {preset.desc}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Section Access Toggles */}
+                    <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div>
+                          <h3 className="text-sm font-black text-ink-900 flex items-center gap-2">
+                            <span>📱</span>
+                            <span>الأقسام والشاشات المسموح للموظف بفتحها</span>
+                          </h3>
+                          <p className="text-[11px] text-ink-500 mt-0.5">
+                            قم بتفعيل الأقسام المسموحة أو إلغاء تفعيل الأقسام التي تريد قفلها أمام هذا الموظف
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allOn = {};
+                              SYSTEM_SECTIONS_META.forEach(s => { allOn[s.id] = true; });
+                              setPermForm(p => ({ ...p, role: 'custom', allowedSections: allOn }));
+                            }}
+                            className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors cursor-pointer"
+                          >
+                            تحديد الكل ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allOff = {};
+                              SYSTEM_SECTIONS_META.forEach(s => { allOff[s.id] = false; });
+                              setPermForm(p => ({ ...p, role: 'custom', allowedSections: allOff }));
+                            }}
+                            className="text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                          >
+                            إلغاء الكل ✕
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {SYSTEM_SECTIONS_META.map((sec) => {
+                          const isAllowed = Boolean(permForm.allowedSections?.[sec.id]);
+                          return (
+                            <div
+                              key={sec.id}
+                              onClick={() => handleToggleSectionPerm(sec.id)}
+                              className={`p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                isAllowed
+                                  ? 'border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50/70'
+                                  : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100/60 opacity-70'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="text-xl p-2 bg-white rounded-lg shadow-2xs border border-slate-100 shrink-0">
+                                  {sec.icon}
+                                </span>
+                                <div className="min-w-0">
+                                  <h4 className={`text-xs font-black truncate ${isAllowed ? 'text-slate-900' : 'text-slate-500'}`}>
+                                    {sec.label}
+                                  </h4>
+                                  <p className="text-[10px] text-slate-400 truncate">
+                                    {sec.desc}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors shrink-0 ${isAllowed ? 'bg-indigo-600 justify-end' : 'bg-slate-300 justify-start'}`}>
+                                <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Advanced Permissions */}
+                    <div className="bg-white border border-brand-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                      <div className="border-b border-slate-100 pb-3">
+                        <h3 className="text-sm font-black text-ink-900 flex items-center gap-2">
+                          <span>🔒</span>
+                          <span>الصلاحيات والعمليات الحساسة</span>
+                        </h3>
+                        <p className="text-[11px] text-ink-500 mt-0.5">
+                          خيارات أمان إضافية لحماية أسعار التكلفة ورأس المال ومنع التلاعب بالفواتير
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        {ADVANCED_PERMISSIONS_META.map((adv) => {
+                          const isAllowed = Boolean(permForm.advanced?.[adv.id]);
+                          return (
+                            <div
+                              key={adv.id}
+                              onClick={() => handleToggleAdvancedPerm(adv.id)}
+                              className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                isAllowed
+                                  ? 'border-purple-200 bg-purple-50/40 hover:bg-purple-50/70'
+                                  : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/50 opacity-75'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="text-xl p-2 bg-white rounded-lg shadow-2xs border border-slate-100 shrink-0">
+                                  {adv.icon}
+                                </span>
+                                <div>
+                                  <h4 className={`text-xs font-black ${isAllowed ? 'text-slate-900' : 'text-slate-600'}`}>
+                                    {adv.label}
+                                  </h4>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    {adv.desc}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors shrink-0 ${isAllowed ? 'bg-purple-600 justify-end' : 'bg-slate-300 justify-start'}`}>
+                                <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleSavePermForm}
+                        disabled={savingPermissions}
+                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-black text-xs px-7 py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>{savingPermissions ? 'جارٍ الحفظ...' : '💾 حفظ وتفعيل صلاحيات الموظف'}</span>
+                      </button>
+
+                      {allowedEmailsList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleApplyToAllEmployees}
+                          disabled={savingPermissions}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-200"
+                        >
+                          <span>👥</span>
+                          <span>تعميم هذه الصلاحيات على جميع الموظفين ({allowedEmailsList.length})</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

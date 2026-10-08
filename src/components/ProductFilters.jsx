@@ -17,6 +17,10 @@ export const SORT_OPTIONS = [
   { value: 'totalQty_desc', label: '📦 الأكثر كمية إجمالية' },
   { value: 'retailPrice_desc', label: '💰 سعر المفرد (الأعلى أولاً)' },
   { value: 'retailPrice_asc', label: '💰 سعر المفرد (الأقل أولاً)' },
+  { value: 'clientPrice_desc', label: '🤝 سعر العميل (الأعلى أولاً)' },
+  { value: 'clientPrice_asc', label: '🤝 سعر العميل (الأقل أولاً)' },
+  { value: 'vipPrice_desc', label: '⭐ سعر المميز (الأعلى أولاً)' },
+  { value: 'vipPrice_asc', label: '⭐ سعر المميز (الأقل أولاً)' },
   { value: 'createdAt_desc', label: '📅 الأحدث إضافة' },
   { value: 'createdAt_asc', label: '📅 الأقدم إضافة' },
 ];
@@ -222,6 +226,26 @@ export function applyFilters(products, filters, getStockStatusFn, productCustody
     }
     if (sortBy === 'retailPrice_asc') {
       return (Number(a.retailPrice) || 0) - (Number(b.retailPrice) || 0);
+    }
+    if (sortBy === 'clientPrice_desc') {
+      const pA = Number(a.clientPrice) > 0 ? Number(a.clientPrice) : (Number(a.retailPrice) || 0);
+      const pB = Number(b.clientPrice) > 0 ? Number(b.clientPrice) : (Number(b.retailPrice) || 0);
+      return pB - pA;
+    }
+    if (sortBy === 'clientPrice_asc') {
+      const pA = Number(a.clientPrice) > 0 ? Number(a.clientPrice) : (Number(a.retailPrice) || 0);
+      const pB = Number(b.clientPrice) > 0 ? Number(b.clientPrice) : (Number(b.retailPrice) || 0);
+      return pA - pB;
+    }
+    if (sortBy === 'vipPrice_desc') {
+      const pA = Number(a.vipPrice) > 0 ? Number(a.vipPrice) : (Number(a.clientPrice) > 0 ? Number(a.clientPrice) : (Number(a.retailPrice) || 0));
+      const pB = Number(b.vipPrice) > 0 ? Number(b.vipPrice) : (Number(b.clientPrice) > 0 ? Number(b.clientPrice) : (Number(b.retailPrice) || 0));
+      return pB - pA;
+    }
+    if (sortBy === 'vipPrice_asc') {
+      const pA = Number(a.vipPrice) > 0 ? Number(a.vipPrice) : (Number(a.clientPrice) > 0 ? Number(a.clientPrice) : (Number(a.retailPrice) || 0));
+      const pB = Number(b.vipPrice) > 0 ? Number(b.vipPrice) : (Number(b.clientPrice) > 0 ? Number(b.clientPrice) : (Number(b.retailPrice) || 0));
+      return pA - pB;
     }
     if (sortBy === 'createdAt_desc') {
       const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();

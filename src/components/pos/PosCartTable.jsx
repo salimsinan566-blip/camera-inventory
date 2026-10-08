@@ -22,10 +22,10 @@ function PriceInputCell({ item, index, onUpdateItem }) {
         ? Number(item.unitPrice) 
         : (item.originalPrice && Number(item.originalPrice) >= cost ? Number(item.originalPrice) : cost);
       setLocalVal(fallback);
-      onUpdateItem(index, { unitPrice: fallback, attemptedUnderCost: true });
+      onUpdateItem(index, { unitPrice: fallback, isPriceManuallySet: true, attemptedUnderCost: true });
     } else {
       setLocalVal(num);
-      onUpdateItem(index, { unitPrice: num });
+      onUpdateItem(index, { unitPrice: num, isPriceManuallySet: true });
     }
   };
 

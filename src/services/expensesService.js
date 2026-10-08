@@ -4,13 +4,17 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  getDocs,
   query,
   orderBy,
   limit,
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import {
+  BACKUP_KEYS,
+  saveLocalBackup,
+  loadLocalBackup
+} from './offlineDbHelper';
 
 const EXPENSES_COLLECTION = 'expenses';
 
@@ -18,7 +22,7 @@ const EXPENSES_COLLECTION = 'expenses';
 export const DAILY_EXPENSE_PRESETS = [
   { id: 'lunch', title: 'وجبة غداء', icon: '🍲', defaultAmount: 10000, category: 'طعام وغداء' },
   { id: 'water', title: 'ربطة ماء', icon: '💧', defaultAmount: 2500, category: 'مشروبات ومياه' },
-  { id: 'tea', title: 'شاي ومشروبات', icon: '☕', defaultAmount: 3000, category: 'مشروبات ومياه' },
+  { id: 'tea', title: 'شاي وضيافة', icon: '☕', defaultAmount: 3000, category: 'مشروبات ومياه' },
   { id: 'tissue', title: 'كلينس ومستلزمات', icon: '🧻', defaultAmount: 1500, category: 'مستلزمات ونظافة' },
   { id: 'cleaning', title: 'مواد تنظيف', icon: '🧹', defaultAmount: 5000, category: 'مستلزمات ونظافة' },
   { id: 'transport', title: 'نقل وتوصيل', icon: '🚗', defaultAmount: 5000, category: 'نقل ومواصلات' },
@@ -28,11 +32,12 @@ export const DAILY_EXPENSE_PRESETS = [
 // اختصارات مصاريف والتزامات المحل التشغيلية والثابتة
 export const SHOP_EXPENSE_PRESETS = [
   { id: 'rent', title: 'إيجار المحل', icon: '🏢', defaultAmount: 0, category: 'إيجار عقار' },
-  { id: 'generator', title: 'اشتراك المولد والكهرباء', icon: '⚡', defaultAmount: 0, category: 'كهرباء ومولد' },
+  { id: 'salaries', title: 'رواتب الموظفين', icon: '👥', defaultAmount: 0, category: 'رواتب وأجور' },
+  { id: 'generator', title: 'مولد وكهرباء', icon: '⚡', defaultAmount: 0, category: 'كهرباء ومولد' },
   { id: 'internet', title: 'اشتراك الإنترنت', icon: '🌐', defaultAmount: 40000, category: 'خدمات وإنترنت' },
-  { id: 'municipality', title: 'رسوم بلدية ونفايات', icon: '🏛️', defaultAmount: 0, category: 'بلدية ورسوم' },
+  { id: 'municipality', title: 'بلدية ونفايات', icon: '🏛️', defaultAmount: 0, category: 'بلدية ورسوم' },
   { id: 'shop_maintenance', title: 'صيانة وتجهيزات', icon: '🛠️', defaultAmount: 0, category: 'صيانة وتجهيزات' },
-  { id: 'fees', title: 'تراخيص ورسوم حكومية', icon: '📜', defaultAmount: 0, category: 'رسوم حكومية' },
+  { id: 'fees', title: 'رسوم وتراخيص', icon: '📜', defaultAmount: 0, category: 'رسوم حكومية' },
   { id: 'shop_other', title: 'نوع آخر', icon: '➕', defaultAmount: 0, category: 'مصاريف تشغيلية' }
 ];
 
@@ -55,41 +60,92 @@ export async function addExpense({
   if (!title || !title.trim()) throw new Error('يرجى كتابة عنوان المصروف');
   if (isNaN(numAmount) || numAmount <= 0) throw new Error('يرجى إدخال مبلغ صحيح أكبر من الصفر');
 
-  const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), {
+  const newDocData = {
     title: title.trim(),
     category: category.trim(),
     expenseType: expenseType || 'daily',
     paymentSource: paymentSource || 'cash_drawer',
     amount: numAmount,
-    periodCovered: (periodCovered || '').trim(),
+    periodCovered: (expenseType === 'daily' ? '' : (periodCovered || '').trim()),
     buyerName: (buyerName || '').trim() || 'المحل',
     notes: (notes || '').trim(),
     date: date || new Date().toISOString(),
     createdAt: new Date().toISOString(),
     createdBy: createdBy || 'المسؤول'
-  });
+  };
 
-  return docRef.id;
+  let docId = 'offline_exp_' + Date.now();
+  try {
+    const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), newDocData);
+    docId = docRef.id;
+  } catch (err) {
+    console.warn('addExpense offline write queued:', err?.message);
+  }
+
+  // تحديث النسخة الاحتياطية محلياً فوراً لدعم الأوفلاين السريع
+  try {
+    const cached = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);
+    const updated = [{ id: docId, ...newDocData }, ...(Array.isArray(cached) ? cached : [])];
+    saveLocalBackup(BACKUP_KEYS.EXPENSES, updated);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('offline_expenses_updated', { detail: updated }));
+    }
+  } catch (cErr) {
+    console.warn('Could not save local backup for expense:', cErr?.message);
+  }
+
+  return docId;
 }
 
 export async function updateExpense(id, data) {
   const ref = doc(db, EXPENSES_COLLECTION, id);
-  await updateDoc(ref, {
+  const payload = {
     ...data,
-    amount: Number(data.amount) || 0,
+    ...(data.amount !== undefined ? { amount: Number(data.amount) || 0 } : {}),
+    ...(data.expenseType === 'daily' ? { periodCovered: '' } : {}),
     updatedAt: new Date().toISOString()
-  });
+  };
+
+  try {
+    await updateDoc(ref, payload);
+  } catch (err) {
+    console.warn('updateExpense offline write queued:', err?.message);
+  }
+
+  try {
+    const cached = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);
+    if (Array.isArray(cached)) {
+      const updated = cached.map((e) => (e.id === id ? { ...e, ...payload } : e));
+      saveLocalBackup(BACKUP_KEYS.EXPENSES, updated);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('offline_expenses_updated', { detail: updated }));
+      }
+    }
+  } catch (cErr) {
+    console.warn('Could not update local backup for expense:', cErr?.message);
+  }
 }
 
 export async function deleteExpense(id) {
-  await deleteDoc(doc(db, EXPENSES_COLLECTION, id));
-}
+  try {
+    await deleteDoc(doc(db, EXPENSES_COLLECTION, id));
+  } catch (err) {
+    console.warn('deleteExpense offline delete queued:', err?.message);
+  }
 
-import {
-  BACKUP_KEYS,
-  saveLocalBackup,
-  loadLocalBackup
-} from './offlineDbHelper';
+  try {
+    const cached = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);
+    if (Array.isArray(cached)) {
+      const updated = cached.filter((e) => e.id !== id);
+      saveLocalBackup(BACKUP_KEYS.EXPENSES, updated);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('offline_expenses_updated', { detail: updated }));
+      }
+    }
+  } catch (cErr) {
+    console.warn('Could not remove from local backup for expense:', cErr?.message);
+  }
+}
 
 export function subscribeToExpenses(callback, maxLimit = 150) {
   const cached = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);

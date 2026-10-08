@@ -393,8 +393,10 @@ export default function ProductHistoryModal({ product, onClose }) {
 
                           {/* Customer Tag */}
                           {log.customerName && (
-                            <span className="text-[11px] font-bold bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
-                              👤 زبون: {log.customerName}
+                            <span className="text-xs font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                              <span>👤</span>
+                              <span className="text-emerald-700 text-[11px]">الزبون:</span>
+                              <span className="font-black">{log.customerName}</span>
                             </span>
                           )}
                         </div>
@@ -408,7 +410,7 @@ export default function ProductHistoryModal({ product, onClose }) {
                       {/* Movement Details & Quantities & Stock Balance Flow */}
                       <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/90 text-xs space-y-2 mt-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          {/* Quantity Impact */}
+                          {/* Quantity Impact & Price */}
                           <div className="flex items-center gap-2 flex-wrap">
                             <div className="flex items-center gap-1.5">
                               <span className="text-slate-500 font-bold">الكمية:</span>
@@ -420,6 +422,19 @@ export default function ProductHistoryModal({ product, onClose }) {
                                 {log.quantity > 0 ? `+${formatQty(Math.abs(log.quantity))}` : `-${formatQty(Math.abs(log.quantity))}`}
                               </span>
                             </div>
+
+                            {/* Selling Price Badge */}
+                            {log.unitPrice > 0 && (
+                              <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-md font-mono text-xs font-black shadow-2xs">
+                                <span className="font-sans text-[11px] font-bold text-amber-800">سعر البيع:</span>
+                                <span>{Number(log.unitPrice).toLocaleString()} د.ع</span>
+                                {Math.abs(log.quantity) > 1 && log.totalPrice > 0 && (
+                                  <span className="text-[10px] text-amber-700 font-normal">
+                                    (الإجمالي: {Number(log.totalPrice).toLocaleString()} د.ع)
+                                  </span>
+                                )}
+                              </div>
+                            )}
 
                             {/* Stock Balance Before ➔ After Badge */}
                             {log.balanceBefore !== null && log.balanceAfter !== null && (

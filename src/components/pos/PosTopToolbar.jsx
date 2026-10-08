@@ -20,6 +20,7 @@ export default function PosTopToolbar({
   onClearCustomer,
   isOfferMode = false,
   onCloseOfferMode,
+  onCancelEditInvoice,
 }) {
   const [searchInput, setSearchInput] = useState('');
   const [showResults, setShowResults] = useState(false);
@@ -116,11 +117,32 @@ export default function PosTopToolbar({
             </div>
           ) : (
             <div 
-              className="h-9 flex items-center gap-1 px-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-800 font-black text-xs shrink-0 shadow-2xs"
+              className={`h-9 flex items-center gap-1.5 px-3 border rounded-xl font-black text-xs shrink-0 shadow-2xs ${
+                activeCart.editingSaleId
+                  ? 'bg-amber-50 border-amber-300 text-amber-900 ring-1 ring-amber-400/40'
+                  : 'bg-slate-100 border border-slate-200 text-slate-800'
+              }`}
               title="رقم السلة / الفاتورة الحالية"
             >
               <span className="text-slate-400">#</span>
               <span className="truncate max-w-[120px]">{invoiceLabel}</span>
+              {activeCart.editingSaleId && (
+                <div className="flex items-center gap-1 mr-1">
+                  <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                    ✏️ تعديل
+                  </span>
+                  {onCancelEditInvoice && (
+                    <button
+                      type="button"
+                      onClick={onCancelEditInvoice}
+                      className="text-amber-700 hover:text-rose-600 font-bold px-1 text-xs cursor-pointer"
+                      title="إلغاء تعديل الفاتورة وإفراغ السلة"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -242,7 +264,8 @@ export default function PosTopToolbar({
             title="تحديد فئة السعر"
           >
             <option value="retail">زبون (مفرد)</option>
-            <option value="client">عميل (جملة)</option>
+            <option value="client">عميل (سعر خاص)</option>
+            <option value="vip">⭐ عميل مميز (VIP)</option>
             <option value="offer">عرض سعر</option>
           </select>
         </div>
@@ -286,8 +309,10 @@ export default function PosTopToolbar({
                 </div>
               ) : (
                 matchingProducts.map((prod) => {
-                  const price = activeCart.customerType === 'client'
-                    ? (Number(prod.wholesalePrice) > 0 ? Number(prod.wholesalePrice) : Number(prod.retailPrice) || 0)
+                  const price = activeCart.customerType === 'vip'
+                    ? (Number(prod.vipPrice) > 0 ? Number(prod.vipPrice) : (Number(prod.clientPrice) > 0 ? Number(prod.clientPrice) : Number(prod.retailPrice) || 0))
+                    : activeCart.customerType === 'client'
+                    ? (Number(prod.clientPrice) > 0 ? Number(prod.clientPrice) : Number(prod.retailPrice) || 0)
                     : (Number(prod.retailPrice) || 0);
 
                   return (

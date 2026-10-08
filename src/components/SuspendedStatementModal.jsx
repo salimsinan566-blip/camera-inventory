@@ -981,7 +981,7 @@ export default function SuspendedStatementModal({
                 <div className="flex items-center justify-between border-b-2 border-slate-800 pb-4 mb-4">
                   <div className="text-right">
                     <h1 className="text-xl font-black text-slate-900 mb-1">
-                      {settings?.storeName || 'Safe Zone لأنظمة المراقبة الذكية'}
+                      {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة لأنظمة المراقبة الذكية' : settings.storeName}
                     </h1>
                     {settings?.tagline && (
                       <p className="text-xs text-slate-600 font-medium mb-1">
@@ -1116,7 +1116,7 @@ export default function SuspendedStatementModal({
                   </div>
                 </div>
                 <p className="text-[10px] text-slate-500 text-center mt-3">
-                  وثيقة كشف حساب فواتير معلقة معتمدة صادرة من نظام Safe Zone المحاسبي - تم الاستخراج بتاريخ {new Date().toLocaleString('ar-IQ')}
+                  وثيقة كشف حساب فواتير معلقة معتمدة صادرة من نظام المنطقة الآمنة المحاسبي - تم الاستخراج بتاريخ {new Date().toLocaleString('ar-IQ')}
                 </p>
               </div>
             </div>

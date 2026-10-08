@@ -13,6 +13,7 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { 
@@ -523,6 +524,7 @@ export async function createPurchaseInvoice({
     // Add to Inventory Audit Logs
     const invLogRef = doc(collection(db, 'inventory_logs'));
     transaction.set(invLogRef, {
+      type: 'purchase',
       action: 'purchase_inward',
       supplierName: cleanSupplierName,
       invoiceNumber: generatedInvoiceNumber,
@@ -530,8 +532,10 @@ export async function createPurchaseInvoice({
       totalQuantity: processedItems.reduce((s, i) => s + i.quantity, 0),
       totalCost: numTotal,
       notes: `توريد بضاعة من المورد: ${cleanSupplierName} (فاتورة: ${generatedInvoiceNumber})`,
+      reason: `توريد بضاعة من المورد: ${cleanSupplierName} (فاتورة: ${generatedInvoiceNumber})`,
       performedBy: createdBy || 'المسؤول',
-      timestamp: new Date().toISOString()
+      userEmail: createdBy || 'المسؤول',
+      createdAt: serverTimestamp()
     });
 
     return purchaseRef.id;
@@ -670,6 +674,7 @@ export async function recordSupplierOpeningDebt({
     // 6. Audit Log
     const invLogRef = doc(collection(db, 'inventory_logs'));
     transaction.set(invLogRef, {
+      type: 'purchase',
       action: 'supplier_opening_debt_recorded',
       supplierName: cleanSupplierName,
       invoiceNumber: generatedInvoiceNumber,
@@ -677,8 +682,10 @@ export async function recordSupplierOpeningDebt({
       paidAmount: numPaid,
       remainingAmount,
       notes: `تسجيل دين سابق / رصيد افتتاحي للمورد: ${cleanSupplierName} بمبلغ (${numTotalDebt.toLocaleString()} د.ع) بدون مواد مخزنية`,
+      reason: `تسجيل دين سابق / رصيد افتتاحي للمورد: ${cleanSupplierName} بمبلغ (${numTotalDebt.toLocaleString()} د.ع) بدون مواد مخزنية`,
       performedBy: createdBy || 'المسؤول',
-      timestamp: new Date().toISOString()
+      userEmail: createdBy || 'المسؤول',
+      createdAt: serverTimestamp()
     });
 
     return purchaseRef.id;
@@ -833,14 +840,17 @@ export async function deletePurchaseInvoice(purchaseId, deletedBy = 'المسؤ�
     // Add reversal entry to Inventory Audit Logs
     const invLogRef = doc(collection(db, 'inventory_logs'));
     transaction.set(invLogRef, {
+      type: 'purchase',
       action: 'purchase_invoice_deleted',
       invoiceNumber: pData.invoiceNumber || purchaseId,
       supplierName: pData.supplierName || '—',
       itemsCount: items.length,
       totalQuantityDeducted: items.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
       notes: `تم حذف فاتورة الشراء (${pData.invoiceNumber || purchaseId}) واسترجاع كميات المواد من المخزون`,
+      reason: `تم حذف فاتورة الشراء (${pData.invoiceNumber || purchaseId}) واسترجاع كميات المواد من المخزون`,
       performedBy: deletedBy,
-      timestamp: new Date().toISOString()
+      userEmail: deletedBy || 'المسؤول',
+      createdAt: serverTimestamp()
     });
 
     // Delete purchase invoice document
@@ -1181,6 +1191,7 @@ export async function updatePurchaseInvoice(purchaseId, {
     // 7. Audit Log
     const invLogRef = doc(collection(db, 'inventory_logs'));
     transaction.set(invLogRef, {
+      type: 'purchase',
       action: 'purchase_invoice_edited',
       invoiceNumber: invoiceNumber.trim() || oldPurchaseData.invoiceNumber,
       supplierName: cleanSupplierName,
@@ -1188,8 +1199,10 @@ export async function updatePurchaseInvoice(purchaseId, {
       totalQuantity: processedItems.reduce((s, i) => s + i.quantity, 0),
       totalCost: numTotal,
       notes: `تم تعديل وتحديث فاتورة الشراء (${invoiceNumber || oldPurchaseData.invoiceNumber}) للمورد: ${cleanSupplierName}`,
+      reason: `تم تعديل وتحديث فاتورة الشراء (${invoiceNumber || oldPurchaseData.invoiceNumber}) للمورد: ${cleanSupplierName}`,
       performedBy: updatedBy || 'المسؤول',
-      timestamp: new Date().toISOString()
+      userEmail: updatedBy || 'المسؤول',
+      createdAt: serverTimestamp()
     });
 
     return purchaseId;

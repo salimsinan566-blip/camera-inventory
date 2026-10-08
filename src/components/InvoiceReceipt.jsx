@@ -115,7 +115,7 @@ export default function InvoiceReceipt({ sale, onClose, inlinePrintMode = false,
             {/* اليمين: معلومات المتجر */}
             <div className="flex flex-col items-start text-right">
               <h1 className="text-3xl font-extrabold text-slate-900 mb-1" style={{ letterSpacing: '0px' }}>
-                {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
+                {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : settings.storeName}
               </h1>
               {settings?.address && (
                 <p className="text-sm text-slate-500 font-bold mt-1" style={{ letterSpacing: '0px', direction: 'rtl', margin: '4px 0 0 0', lineHeight: '1.5' }}>

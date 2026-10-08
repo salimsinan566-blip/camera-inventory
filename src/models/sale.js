@@ -45,6 +45,9 @@ export function createCartItem(product, quantity = 1, options = {}) {
     quantity: Math.max(1, Number(quantity) || 1),
     unitPrice: Number(product.retailPrice) || 0,
     originalPrice: Number(product.retailPrice) || 0,
+    retailPrice: Number(product.retailPrice) || 0,
+    clientPrice: Number(product.clientPrice) || 0,
+    vipPrice: Number(product.vipPrice) || 0,
     wholesalePrice: Number(product.wholesalePrice) || 0,
     availableQuantity: Number(product.storeQty) || 0,
     sellMode: product.sellMode || 'unit',
@@ -156,9 +159,17 @@ export function cartItemsFromDraft(draftItemsOrObject, productsList = []) {
 
   return items.map((item) => {
     let ws = item.wholesalePrice;
-    if ((ws === undefined || ws === null || ws === 0) && Array.isArray(productsList) && productsList.length > 0) {
+    let cp = item.clientPrice;
+    let vp = item.vipPrice;
+    let rp = item.retailPrice;
+    if (Array.isArray(productsList) && productsList.length > 0) {
       const prod = productsList.find(p => p.id === item.productId || p.sku === item.sku);
-      if (prod) ws = Number(prod.wholesalePrice) || 0;
+      if (prod) {
+        if (ws === undefined || ws === null || ws === 0) ws = Number(prod.wholesalePrice) || 0;
+        if (cp === undefined || cp === null) cp = Number(prod.clientPrice) || 0;
+        if (vp === undefined || vp === null) vp = Number(prod.vipPrice) || 0;
+        if (rp === undefined || rp === null) rp = Number(prod.retailPrice) || 0;
+      }
     }
     const source = item.source || (item.isCustody ? 'custody' : (item.isSitePurchase ? 'site_purchase' : 'store'));
     const technicianId = item.technicianId || null;
@@ -174,7 +185,10 @@ export function cartItemsFromDraft(draftItemsOrObject, productsList = []) {
       cameraType: item.cameraType || (item.isSitePurchase ? 'مشتريات موقعية' : ''),
       quantity: Math.max(1, Number(item.quantity) || 1),
       unitPrice: Math.max(0, Number(item.unitPrice) || 0),
-      originalPrice: Math.max(0, Number(item.originalPrice !== undefined ? item.originalPrice : (item.retailPrice !== undefined ? item.retailPrice : item.unitPrice)) || 0),
+      originalPrice: Math.max(0, Number(item.originalPrice !== undefined ? item.originalPrice : (rp !== undefined ? rp : (item.retailPrice !== undefined ? item.retailPrice : item.unitPrice))) || 0),
+      retailPrice: Math.max(0, Number(rp !== undefined ? rp : (item.retailPrice !== undefined ? item.retailPrice : item.originalPrice || item.unitPrice)) || 0),
+      clientPrice: Math.max(0, Number(cp !== undefined ? cp : (item.clientPrice || 0)) || 0),
+      vipPrice: Math.max(0, Number(vp !== undefined ? vp : (item.vipPrice || 0)) || 0),
       wholesalePrice: Math.max(0, Number(ws) || 0),
       purchaseCost: Math.max(0, Number(item.purchaseCost !== undefined ? item.purchaseCost : ws) || 0),
       paymentSource: item.paymentSource || 'cash_drawer',
@@ -182,6 +196,7 @@ export function cartItemsFromDraft(draftItemsOrObject, productsList = []) {
       sellMode: item.sellMode || 'unit',
       isService: item.isService || false,
       isCustom: item.isCustom || false,
+      isPriceManuallySet: true,
       source,
       technicianId,
       technicianName,

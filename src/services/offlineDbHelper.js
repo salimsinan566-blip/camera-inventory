@@ -23,6 +23,8 @@ export const BACKUP_KEYS = {
   EXPENSES: 'offline_backup_expenses',
   INCOMES: 'offline_backup_incomes',
   SALARIES: 'offline_backup_salaries',
+  EMPLOYEES: 'offline_backup_employees',
+  SALARY_PAYMENTS: 'offline_backup_salary_payments',
   TRANSFERS: 'offline_backup_fund_transfers',
   LAST_INVOICE_NUM: 'offline_last_invoice_number',
 };

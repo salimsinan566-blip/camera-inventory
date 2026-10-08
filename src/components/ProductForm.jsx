@@ -22,6 +22,8 @@ export default function ProductForm({ product, products = [], onClose }) {
   const isCable = isCableCategory(product?.cameraType) || isCableCategory(product?.category);
   const [form, setForm] = useState(product ? { 
     ...product, 
+    clientPrice: product.clientPrice !== undefined && product.clientPrice !== null ? product.clientPrice : 0,
+    vipPrice: product.vipPrice !== undefined && product.vipPrice !== null ? product.vipPrice : 0,
     sellMode: product.sellMode || (isCable ? 'meter' : 'unit'), 
     metersPerRoll: product.metersPerRoll || 305 
   } : createEmptyProduct());
@@ -513,6 +515,38 @@ export default function ProductForm({ product, products = [], onClose }) {
                 <p className="text-xs text-ink-500 mt-1.5 flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                   يُحسب تلقائياً من سعر الجملة ونسبة الربح، ويمكن تعديله يدوياً
+                </p>
+              </Field>
+
+              <Field label={`سعر العميل الخاص ${form.sellMode === 'meter' ? '(للمتر الواحد)' : form.sellMode === 'roll' ? '(للفة الواحدة)' : ''} (${currency === 'USD' ? '$' : 'د.ع'}) (اختياري)`}>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={currency === 'USD' ? (form.clientPriceUSD !== undefined ? form.clientPriceUSD : (form.clientPrice ? form.clientPrice / exchangeRate : '')) : (form.clientPrice !== undefined && form.clientPrice !== null && form.clientPrice !== 0 ? form.clientPrice : (form.clientPrice === 0 ? '' : (form.clientPrice || '')))}
+                  onChange={(e) => handlePricingChange('clientPrice', e.target.value)}
+                  className="input font-bold text-emerald-800 bg-emerald-50/40 border-emerald-300 focus:border-emerald-500 focus:ring-emerald-500/20"
+                  placeholder="اتركه فارغاً لاعتماد نفس سعر المفرد للعملاء..."
+                />
+                <p className="text-xs text-ink-500 mt-1.5 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  سعر مخصص للعملاء. إذا تُرك فارغاً أو صفر، سيتم اعتماد سعر المفرد تلقائياً.
+                </p>
+              </Field>
+
+              <Field label={`سعر العميل المميز (VIP) ${form.sellMode === 'meter' ? '(للمتر الواحد)' : form.sellMode === 'roll' ? '(للفة الواحدة)' : ''} (${currency === 'USD' ? '$' : 'د.ع'}) (اختياري)`}>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={currency === 'USD' ? (form.vipPriceUSD !== undefined ? form.vipPriceUSD : (form.vipPrice ? form.vipPrice / exchangeRate : '')) : (form.vipPrice !== undefined && form.vipPrice !== null && form.vipPrice !== 0 ? form.vipPrice : (form.vipPrice === 0 ? '' : (form.vipPrice || '')))}
+                  onChange={(e) => handlePricingChange('vipPrice', e.target.value)}
+                  className="input font-bold text-amber-900 bg-amber-50/40 border-amber-300 focus:border-amber-500 focus:ring-amber-500/20"
+                  placeholder="اتركه فارغاً لاعتماد سعر العميل أو المفرد تلقائياً..."
+                />
+                <p className="text-xs text-ink-500 mt-1.5 flex items-center gap-1">
+                  <span className="text-amber-500">⭐</span>
+                  سعر خاص للعميل المميز (VIP). إذا تُرك فارغاً أو صفر، سيعتمد سعر العميل (أو سعر المفرد) تلقائياً.
                 </p>
               </Field>
             </div>

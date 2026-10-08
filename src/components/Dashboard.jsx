@@ -14,19 +14,18 @@ import BarcodeLabel from './BarcodeLabel';
 import HomeLauncher from './HomeLauncher';
 import TopNav from './TopNav';
 import UserAccountCard from './UserAccountCard';
-import { NAVIGATION_SECTIONS } from '../config/navigation';
+import { NAVIGATION_SECTIONS, ALL_NAVIGATION_SECTIONS } from '../config/navigation';
 import { useTrashBin } from '../hooks/useTrashBin';
 import TransferStock from './TransferStock';
 import POSScreen from './POSScreen';
 import OffersScreen from './OffersScreen';
 import PurchasesScreen from './PurchasesScreen';
 import ExpensesScreen from './ExpensesScreen';
-import SalariesScreen from './SalariesScreen';
 import SalesReports from './SalesReports';
+import ReportsCenter from './ReportsCenter';
 import CustomersScreen from './CustomersScreen';
 import HomeDashboard from './HomeDashboard';
 import SettingsScreen from './SettingsScreen';
-import UserGuideScreen from './UserGuideScreen';
 import TrashBinScreen from './TrashBinScreen';
 import ProductHistoryModal from './ProductHistoryModal';
 import InventoryHistoryView from './InventoryHistoryView';
@@ -63,8 +62,35 @@ export default function Dashboard({ user }) {
     }
   });
 
+  // Employee Permissions check
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const currentEmployeePerm = useMemo(() => {
+    const list = Array.isArray(settings?.employeePermissions) ? settings.employeePermissions : [];
+    return list.find(p => (p.email || '').toLowerCase().trim() === userEmail);
+  }, [settings?.employeePermissions, userEmail]);
+
+  const canAccessTab = (tabId) => {
+    if (!tabId || tabId === 'launcher') return true;
+    // If no permission recorded or role is admin, grant full access
+    if (!currentEmployeePerm || currentEmployeePerm.role === 'admin') return true;
+    if (tabId === 'sales_archive') return Boolean(currentEmployeePerm.allowedSections?.sales_archive ?? currentEmployeePerm.allowedSections?.reports);
+    return Boolean(currentEmployeePerm.allowedSections?.[tabId]);
+  };
+
+  // If currently on an active tab that is not allowed, return to launcher
+  React.useEffect(() => {
+    if (activeTab && !canAccessTab(activeTab)) {
+      navigateToTab(null);
+    }
+  }, [activeTab, currentEmployeePerm]);
+
   // Navigation function with browser history support
   const navigateToTab = (tabId, targetPosMode = null) => {
+    if (tabId && tabId !== 'launcher' && !canAccessTab(tabId)) {
+      toast('عذراً، هذا الحساب ليس لديه صلاحية للوصول إلى هذا القسم 🔒', 'warning');
+      return;
+    }
+
     try {
       const url = new URL(window.location);
       if (!tabId || tabId === 'launcher') {
@@ -139,6 +165,15 @@ export default function Dashboard({ user }) {
   const [transferProduct, setTransferProduct] = useState(null);
   const [barcodeError, setBarcodeError] = useState('');
 
+  // Reports navigation and header state lifted to Dashboard for TopNav integration
+  const [reportsNav, setReportsNav] = useState({
+    title: null,
+    code: null,
+    onPrint: null,
+    canGoBack: false,
+    onBack: null,
+  });
+
   // Map product ID to vehicle custody quantities and technician breakdown
   const productCustodyMap = useMemo(() => {
     const map = {};
@@ -166,7 +201,7 @@ export default function Dashboard({ user }) {
   const currentSection = useMemo(() => {
     if (!activeTab) return null;
     return (
-      NAVIGATION_SECTIONS.find(
+      (ALL_NAVIGATION_SECTIONS || NAVIGATION_SECTIONS).find(
         (s) => s.id === activeTab || (s.id === 'dashboard' && activeTab === 'home')
       ) || { id: activeTab, label: activeTab }
     );
@@ -297,18 +332,41 @@ export default function Dashboard({ user }) {
           onSelectTab={navigateToTab}
           settings={settings}
           trashCount={trashCount}
+          canAccessTab={canAccessTab}
         />
       ) : (
         /* شاشة الأقسام الداخلية بعرض كامل وشريط علوي */
         <div className="flex-1 flex flex-col min-h-screen w-full">
           <TopNav
             activeSection={currentSection}
-            onBack={() => navigateToTab(null)}
+            onBack={() => {
+              if (activeTab === 'reports' && reportsNav.canGoBack && reportsNav.onBack) {
+                reportsNav.onBack();
+              } else {
+                navigateToTab(null);
+              }
+            }}
             storeName={settings?.storeName}
             logoUrl={settings?.logoUrl}
+            customTitle={activeTab === 'reports' ? reportsNav.title : undefined}
+            customBadge={activeTab === 'reports' ? reportsNav.code : undefined}
+            leftActions={
+              activeTab === 'reports' && reportsNav.onPrint ? (
+                <button
+                  type="button"
+                  onClick={reportsNav.onPrint}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>طباعة الكشف (A4)</span>
+                </button>
+              ) : undefined
+            }
           />
 
-          <main className={`flex-1 overflow-y-auto w-full ${activeTab === 'pos' ? 'p-2 md:p-4 pb-24' : 'p-3 md:p-8 pb-24'}`}>
+          <main className={`flex-1 overflow-y-auto w-full ${activeTab === 'pos' ? 'p-2 md:p-4 pb-24' : activeTab === 'reports' ? 'p-2 sm:p-4 pb-16' : 'p-3 md:p-8 pb-24'}`}>
             <div className="max-w-7xl mx-auto h-full">
               <div className={activeTab === 'dashboard' || activeTab === 'home' ? 'block h-full' : 'hidden'}>
                 <HomeDashboard
@@ -318,7 +376,6 @@ export default function Dashboard({ user }) {
                     setFilters((prev) => ({ ...prev, stockStatus: status }));
                     navigateToTab('inventory');
                   }}
-                  onOpenGuide={() => navigateToTab('guide')}
                   onOpenDraft={(draft) => {
                     setDraftToOpen(draft);
                     navigateToTab('pos');
@@ -373,17 +430,21 @@ export default function Dashboard({ user }) {
           <ExpensesScreen user={user} />
         </div>
 
-        <div className={activeTab === 'salaries' ? 'block h-full' : 'hidden'}>
-          <SalariesScreen />
-        </div>
-
-        <div className={activeTab === 'reports' ? 'block h-full' : 'hidden'}>
+        <div className={activeTab === 'sales_archive' ? 'block h-full' : 'hidden'}>
           <SalesReports
             onOpenDraft={(draft) => {
               setDraftToOpen(draft);
               setPosMode('sale');
               navigateToTab('pos');
             }}
+          />
+        </div>
+
+        <div className={activeTab === 'reports' ? 'block h-full' : 'hidden'}>
+          <ReportsCenter
+            user={user}
+            onNavigate={navigateToTab}
+            onUpdateNav={setReportsNav}
           />
         </div>
 
@@ -397,15 +458,6 @@ export default function Dashboard({ user }) {
 
         <div className={activeTab === 'settings' ? 'block h-full' : 'hidden'}>
           <SettingsScreen />
-        </div>
-
-        <div className={activeTab === 'guide' ? 'block h-full' : 'hidden'}>
-          <UserGuideScreen
-            onNavigate={(tab) => {
-              if (tab === 'pos') setPosMode('sale');
-              navigateToTab(tab);
-            }}
-          />
         </div>
 
         <div className={activeTab === 'inventory' ? 'block h-full' : 'hidden'}>
@@ -548,7 +600,15 @@ export default function Dashboard({ user }) {
       )}
 
       {/* بطاقة الحساب تظهر فقط في الشاشة الرئيسية لتفادي حجب أزرار العمليات في نقطة البيع */}
-      {!activeTab && <UserAccountCard user={user} onLogout={logout} />}
+      {!activeTab && (
+        <UserAccountCard
+          user={user}
+          onLogout={logout}
+          onNavigate={navigateToTab}
+          trashCount={trashCount}
+          canAccessTab={canAccessTab}
+        />
+      )}
 
       {showForm && <ProductForm product={editingProduct} products={products} onClose={closeForm} />}
 

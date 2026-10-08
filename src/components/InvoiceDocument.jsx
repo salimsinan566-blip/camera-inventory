@@ -76,7 +76,7 @@ export default function InvoiceDocument({
                   {/* اليمين: معلومات المتجر */}
                   <div className="flex flex-col items-start text-right">
                     <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mb-1" style={{ letterSpacing: '0px' }}>
-                      {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
+                      {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : settings.storeName}
                     </h1>
                     {settings?.address && (
                       <p className="text-xs sm:text-sm text-slate-500 font-bold mt-0.5" style={{ letterSpacing: '0px', direction: 'rtl', margin: '4px 0 0 0', lineHeight: '1.5' }}>
@@ -145,13 +145,48 @@ export default function InvoiceDocument({
                             تاريخ الإصدار: <span className="font-bold text-slate-900 mr-1">{dateLabel}</span>
                           </td>
                         </tr>
-                        {sale.invoiceType === 'debt' && !sale.isOffer && (
-                          <tr>
-                            <td className="py-0.5 pr-3 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
-                              نوع الدفع: <span className="font-bold text-rose-600 mr-1">آجل (دين)</span>
-                            </td>
-                          </tr>
-                        )}
+                        {((sale.invoiceType === 'debt' || sale.paymentMethod === 'debt' || Number(sale.remainingDebt) > 0 || (sale.payments && sale.payments.length > 0)) && !sale.isOffer) && (() => {
+                          const totalAmt = Number(sale.total) || 0;
+                          const paymentsSum = Array.isArray(sale.payments)
+                            ? sale.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+                            : 0;
+                          const paidAmt = Math.max(Number(sale.paidAmount || 0), paymentsSum);
+                          let remainingAmt = 0;
+                          if (sale.isSettled === true || sale.paymentStatus === 'paid') {
+                            remainingAmt = 0;
+                          } else if (sale.remainingDebt !== undefined && sale.remainingDebt !== null) {
+                            remainingAmt = Number(sale.remainingDebt);
+                          } else {
+                            remainingAmt = Math.max(0, totalAmt - paidAmt);
+                          }
+                          if (totalAmt > 0 && paidAmt > 0 && remainingAmt === totalAmt) {
+                            remainingAmt = Math.max(0, totalAmt - paidAmt);
+                          }
+                          if (paidAmt >= totalAmt && totalAmt > 0) {
+                            remainingAmt = 0;
+                          }
+                          const isSettled = remainingAmt <= 0 || sale.isSettled === true || sale.paymentStatus === 'paid';
+                          const isPartial = !isSettled && paidAmt > 0;
+                          return (
+                            <tr>
+                              <td className="py-0.5 pr-3 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
+                                حالة السداد: <span className={`font-bold mr-1 ${
+                                  isSettled 
+                                    ? 'text-emerald-600' 
+                                    : isPartial 
+                                      ? 'text-amber-600' 
+                                      : 'text-rose-600'
+                                }`}>
+                                  {isSettled 
+                                    ? 'آجل (مسدد بالكامل ✓)' 
+                                    : isPartial 
+                                      ? 'آجل (مسدد جزئياً)' 
+                                      : 'آجل (دين غير مسدد)'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })()}
                         {sale.cashierEmail && (
                           <tr>
                             <td className="py-0.5 pr-3 text-slate-500 font-medium" style={{ letterSpacing: '0px' }}>
@@ -283,23 +318,42 @@ export default function InvoiceDocument({
                               </tr>
                             )}
 
-                            {sale.invoiceType === 'debt' && (
-                              <>
-                                <tr className="text-emerald-700 border-t border-slate-200">
-                                  <td className="text-right pt-1 px-2">المدفوع:</td>
-                                  <td className="text-left pt-1 px-2 font-mono">{Number(sale.paidAmount || 0).toLocaleString()} د.ع</td>
-                                </tr>
-                                <tr className="text-rose-700 font-black">
-                                  <td className="text-right py-0.5 px-2">المتبقي (الدين):</td>
-                                  <td className="text-left py-0.5 px-2 font-mono">
-                                    {Number(sale.remainingDebt !== undefined 
-                                      ? Math.min(Number(sale.remainingDebt), Math.max(0, Number(sale.total) - Number(sale.paidAmount || 0))) 
-                                      : Math.max(0, Number(sale.total) - Number(sale.paidAmount || 0))
-                                    ).toLocaleString()} د.ع
-                                  </td>
-                                </tr>
-                              </>
-                            )}
+                            {((sale.invoiceType === 'debt' || sale.paymentMethod === 'debt' || Number(sale.remainingDebt) > 0 || (sale.payments && sale.payments.length > 0)) && !sale.isOffer) && (() => {
+                              const totalAmt = Number(sale.total) || 0;
+                              const paymentsSum = Array.isArray(sale.payments)
+                                ? sale.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+                                : 0;
+                              let paidAmt = Math.max(Number(sale.paidAmount || 0), paymentsSum);
+                              let remainingAmt = 0;
+                              if (sale.isSettled === true || sale.paymentStatus === 'paid') {
+                                remainingAmt = 0;
+                                paidAmt = totalAmt;
+                              } else if (sale.remainingDebt !== undefined && sale.remainingDebt !== null) {
+                                remainingAmt = Number(sale.remainingDebt);
+                              } else {
+                                remainingAmt = Math.max(0, totalAmt - paidAmt);
+                              }
+                              if (totalAmt > 0 && paidAmt > 0 && remainingAmt === totalAmt) {
+                                remainingAmt = Math.max(0, totalAmt - paidAmt);
+                              }
+                              if (paidAmt >= totalAmt && totalAmt > 0) {
+                                remainingAmt = 0;
+                              }
+                              return (
+                                <>
+                                  <tr className="text-emerald-700 border-t border-slate-200">
+                                    <td className="text-right pt-1 px-2">المدفوع:</td>
+                                    <td className="text-left pt-1 px-2 font-mono">{paidAmt.toLocaleString()} د.ع</td>
+                                  </tr>
+                                  <tr className={`${remainingAmt > 0 ? 'text-rose-700' : 'text-emerald-700'} font-black`}>
+                                    <td className="text-right py-0.5 px-2">{remainingAmt > 0 ? 'المتبقي (الدين):' : 'حالة الفاتورة:'}</td>
+                                    <td className="text-left py-0.5 px-2 font-mono">
+                                      {remainingAmt > 0 ? `${remainingAmt.toLocaleString()} د.ع` : 'مسددة بالكامل ✓'}
+                                    </td>
+                                  </tr>
+                                </>
+                              );
+                            })()}
                           </tbody>
                         </table>
                       </div>

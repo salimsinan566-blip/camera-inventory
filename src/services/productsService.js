@@ -62,6 +62,8 @@ function normalizePayload(productData) {
     wholesalePrice: Number(productData.wholesalePrice) || 0,
     profitMargin: Number(productData.profitMargin) || 0,
     retailPrice: Number(productData.retailPrice) || 0,
+    clientPrice: productData.clientPrice !== undefined && productData.clientPrice !== null ? Number(productData.clientPrice) || 0 : 0,
+    vipPrice: productData.vipPrice !== undefined && productData.vipPrice !== null ? Number(productData.vipPrice) || 0 : 0,
   };
 }
 
@@ -109,8 +111,11 @@ export async function updateProduct(id, productData, userEmail = '', reason = ''
   const prevSnap = await safeGetDoc(ref);
   const prevData = prevSnap.exists() ? prevSnap.data() : {};
 
+  // دمج البيانات السابقة مع المدخلات الجديدة لضمان عدم تصفير الحقول غير الممررة عند التحديث الجزئي
+  const mergedData = { ...prevData, ...productData };
+
   const payload = {
-    ...normalizePayload(productData),
+    ...normalizePayload(mergedData),
     updatedAt: serverTimestamp(),
   };
   delete payload.quantity;

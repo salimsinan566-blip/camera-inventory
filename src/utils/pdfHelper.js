@@ -79,7 +79,7 @@ export async function generateAndSendShortagesPDF(products, toast) {
         </table>
         
         <div style="margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 20px; font-size: 12px; color: #94a3b8; text-align: center;">
-          تم توليد هذا التقرير تلقائياً بواسطة نظام إدارة المخزون الذكي - Safe Zone
+          تم توليد هذا التقرير تلقائياً بواسطة نظام إدارة المخزون الذكي - المنطقة الآمنة
         </div>
       </div>
     `;
@@ -153,7 +153,7 @@ async function toSafeDataUrl(url) {
  * Matches src/components/InvoiceReceipt.jsx pixel-perfect
  */
 export async function generateInvoicePdfBlob(sale, settings) {
-  const storeName = (!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName;
+  const storeName = (!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : settings.storeName;
   const address = settings?.address || 'العراق - الموصل';
   const logoUrl = settings?.logoUrl || defaultLogo;
   const qrCodeUrl = settings?.qrCodeUrl;
@@ -268,7 +268,7 @@ export async function generateInvoicePdfBlob(sale, settings) {
                 <img src="${safeLogo}" alt="الشعار" style="height: 112px; width: auto; object-fit: contain; transform: scale(2.2); transform-origin: left;" />
               </div>
             ` : `
-              <div style="height: 100px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C; font-family: monospace;">SAFE ZONE</div>
+              <div style="height: 100px; width: 140px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #C89B3C;">المنطقة الآمنة</div>
             `}
             ${isOffer ? `
               <span style="font-size: 13px; font-weight: bold; color: #1e3a8a; background-color: #eff6ff; border: 1px solid #93c5fd; padding: 4px 20px; border-radius: 9999px;">

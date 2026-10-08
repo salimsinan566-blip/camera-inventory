@@ -116,8 +116,10 @@ export default function PosProductsDrawer({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {filteredProducts.map((product) => {
                 const isJustAdded = lastAddedId === product.id;
-                const price = customerType === 'client' 
-                  ? (Number(product.wholesalePrice) || Number(product.retailPrice) || 0)
+                const price = customerType === 'vip'
+                  ? (Number(product.vipPrice) > 0 ? Number(product.vipPrice) : (Number(product.clientPrice) > 0 ? Number(product.clientPrice) : Number(product.retailPrice) || 0))
+                  : customerType === 'client' 
+                  ? (Number(product.clientPrice) > 0 ? Number(product.clientPrice) : (Number(product.retailPrice) || 0))
                   : (Number(product.retailPrice) || 0);
                 const availableQty = Number(product.storeQty) || 0;
 

@@ -33,16 +33,35 @@ export const LOG_TYPE_LABELS_AR = {
   [LOG_TYPES.MANUAL_EDIT]: 'تعديل يدوي',
   [LOG_TYPES.SALE]: 'حركة بيع (محل/مخزن)',
   [LOG_TYPES.SALE_RETURN]: 'إرجاع مبيعات',
-  [LOG_TYPES.TRANSFER]: 'نقل داخلي',
+  [LOG_TYPES.TRANSFER]: 'نقل بين المحل والمخزن',
   [LOG_TYPES.INVENTORY_AUDIT]: 'تسوية جرد',
   [LOG_TYPES.EXCEL_IMPORT]: 'استيراد إكسل',
-  [LOG_TYPES.CREATED]: 'إنشاء منتج',
+  [LOG_TYPES.CREATED]: 'إضافة منتج جديد',
   [LOG_TYPES.DELETED]: 'حذف منتج',
   [LOG_TYPES.CUSTODY_LOAD]: 'تحميل سيارة فني',
   [LOG_TYPES.CUSTODY_RETURN]: 'إرجاع من سيارة',
   [LOG_TYPES.CUSTODY_SALE]: 'بيع من سيارة الفني',
   [LOG_TYPES.PURCHASE]: 'شراء وتوريد',
+  'purchase_inward': 'شراء وتوريد',
+  'purchase_invoice_edited': 'تعديل فاتورة شراء',
+  'purchase_invoice_deleted': 'حذف فاتورة شراء',
+  'supplier_opening_debt_recorded': 'رصيد افتتاحي لمورد',
 };
+
+/**
+ * دالة مساعدة لتوحيد نوع الحركة حتى وإن كان مسجلاً بصيغ سابقة (action)
+ */
+export function normalizeLogType(data) {
+  if (data?.type) return data.type;
+  if (data?.action) {
+    if (data.action.startsWith('purchase_') || data.action === 'supplier_opening_debt_recorded') return LOG_TYPES.PURCHASE;
+    if (data.action === 'custody_load') return LOG_TYPES.CUSTODY_LOAD;
+    if (data.action === 'custody_return') return LOG_TYPES.CUSTODY_RETURN;
+    if (data.action === 'custody_sale') return LOG_TYPES.CUSTODY_SALE;
+    return data.action;
+  }
+  return LOG_TYPES.MANUAL_EDIT;
+}
 
 /**
  * تسجيل حركة/تعديل في المخزون
@@ -123,9 +142,9 @@ export async function getProductInventoryLogs(productId, maxCount = 50) {
 }
 
 /**
- * جلب أحدث سجلات حركات المخزون الشاملة
+ * جلب أحدث سجلات حركات المخزون الشاملة (مع ضمان شمولية التعديل اليدوي، النقل، والمبيعات)
  */
-export async function getRecentInventoryLogs(maxCount = 100) {
+export async function getRecentInventoryLogs(maxCount = 1000) {
   try {
     const q = query(
       collection(db, INVENTORY_LOGS_COLLECTION),
@@ -133,10 +152,37 @@ export async function getRecentInventoryLogs(maxCount = 100) {
       limit(maxCount)
     );
     const snap = await safeGetDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const list = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        type: normalizeLogType(data),
+        createdAt: data.createdAt || data.timestamp
+      };
+    });
+    // In-memory sort by exact timestamp for complete chronological consistency
+    list.sort((a, b) => parseDateSafe(b.createdAt).getTime() - parseDateSafe(a.createdAt).getTime());
+    return list;
   } catch (err) {
-    console.error('Failed to fetch recent inventory logs:', err);
-    return [];
+    console.warn('Fallback querying recent inventory logs without orderBy:', err);
+    try {
+      const snap = await safeGetDocs(collection(db, INVENTORY_LOGS_COLLECTION));
+      const list = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          type: normalizeLogType(data),
+          createdAt: data.createdAt || data.timestamp
+        };
+      });
+      list.sort((a, b) => parseDateSafe(b.createdAt).getTime() - parseDateSafe(a.createdAt).getTime());
+      return maxCount ? list.slice(0, maxCount) : list;
+    } catch (e) {
+      console.error('Failed to fetch recent inventory logs fallback:', e);
+      return [];
+    }
   }
 }
 
@@ -237,6 +283,8 @@ export async function getComprehensiveProductHistory(product, maxCount = 200) {
             type: isCustody ? LOG_TYPES.CUSTODY_SALE : LOG_TYPES.SALE,
             typeLabel: isCustody ? 'بيع من سيارة الفني' : (isWarehouse ? 'حركة بيع (المخزن)' : 'حركة بيع (المحل)'),
             quantity: -qty,
+            unitPrice: Number(item.unitPrice || item.price) || 0,
+            totalPrice: qty * (Number(item.unitPrice || item.price) || 0),
             storeQtyDiff: isCustody || isWarehouse ? 0 : -qty,
             warehouseQtyDiff: isWarehouse ? -qty : 0,
             previousStoreQty: null,
@@ -270,6 +318,7 @@ export async function getComprehensiveProductHistory(product, maxCount = 200) {
           const eventKey = `purchase_${purchase.invoiceNumber || purchase.id}_${idx}_${item.productId || ''}`;
           seenEventKeys.add(eventKey);
 
+          const unitCost = Number(item.costPrice || item.effectiveCostPrice || item.baseCostPrice || item.price || 0);
           normalizedLogs.push({
             id: eventKey,
             timestamp: dateObj.getTime(),
@@ -278,6 +327,8 @@ export async function getComprehensiveProductHistory(product, maxCount = 200) {
             type: LOG_TYPES.PURCHASE,
             typeLabel: 'شراء وتوريد',
             quantity: qty,
+            unitPrice: unitCost,
+            totalPrice: qty * unitCost,
             storeQtyDiff: item.location === 'store' ? qty : 0,
             warehouseQtyDiff: item.location === 'warehouse' ? qty : 0,
             previousStoreQty: null,

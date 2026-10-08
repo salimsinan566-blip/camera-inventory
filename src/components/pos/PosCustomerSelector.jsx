@@ -116,6 +116,12 @@ export default function PosCustomerSelector({
             setInputValue(e.target.value);
             setIsOpen(true);
           }}
+          onBlur={() => {
+            const trimmed = inputValue.trim();
+            if (trimmed && trimmed !== (customerName || '').trim()) {
+              onSetNewCustomer(trimmed, customerType);
+            }
+          }}
           onKeyDown={handleKeyDown}
           placeholder="اكتب اسم العميل أو الزبون..."
           className={`w-full h-10 bg-slate-100 hover:bg-white focus:bg-white border rounded-xl pr-9 pl-14 text-xs md:text-sm font-bold text-slate-800 placeholder-slate-400 outline-none transition-all shadow-2xs ${
@@ -128,14 +134,16 @@ export default function PosCustomerSelector({
           {!isGeneric && (
             <span
               className={`text-[10px] font-black px-1.5 py-0.5 rounded-md shrink-0 ${
-                customerType === 'client'
+                customerType === 'vip'
+                  ? 'bg-amber-500 text-white shadow-2xs'
+                  : customerType === 'client'
                   ? 'bg-indigo-600 text-white'
                   : customerType === 'offer'
                   ? 'bg-amber-500 text-white'
                   : 'bg-slate-200 text-slate-700'
               }`}
             >
-              {customerType === 'client' ? 'عميل' : customerType === 'offer' ? 'عرض' : 'زبون'}
+              {customerType === 'vip' ? '⭐ مميز' : customerType === 'client' ? 'عميل' : customerType === 'offer' ? 'عرض' : 'زبون'}
             </span>
           )}
 
@@ -179,6 +187,7 @@ export default function PosCustomerSelector({
                   {inputValue.trim() ? 'العملاء المسجلون المطابقون:' : 'العملاء المسجلون مسبقاً:'}
                 </div>
                 {matchingCustomers.map((cust) => {
+                  const isVip = cust.customerType === 'vip';
                   const isClient = cust.customerType === 'client';
                   const hasDebt = Number(cust.totalDebt || 0) > 0;
 
@@ -204,12 +213,14 @@ export default function PosCustomerSelector({
 
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ${
-                          isClient
+                          isVip
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : isClient
                             ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
                             : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}
                       >
-                        {isClient ? 'عميل (جملة)' : 'زبون (مفرد)'}
+                        {isVip ? '⭐ عميل مميز' : isClient ? 'عميل (خاص)' : 'زبون (مفرد)'}
                       </span>
                     </div>
                   );
@@ -228,23 +239,32 @@ export default function PosCustomerSelector({
                   حدد فئة هذا العميل لتطبيق فئة السعر المناسبة فوراً:
                 </p>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
-                    onClick={() => handlePickNewCustomer('retail')}
-                    className="py-1.5 px-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                    onClick={() => handlePickNewCustomer('vip')}
+                    className="py-1.5 px-1.5 bg-amber-500 hover:bg-amber-600 border border-amber-600 rounded-xl text-[11px] font-bold text-white shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
                   >
-                    <span>👤</span>
-                    <span>زبون (مفرد)</span>
+                    <span>⭐</span>
+                    <span>مميز (VIP)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handlePickNewCustomer('client')}
-                    className="py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 border border-indigo-600 rounded-xl text-xs font-bold text-white shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                    className="py-1.5 px-1.5 bg-indigo-600 hover:bg-indigo-700 border border-indigo-600 rounded-xl text-[11px] font-bold text-white shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <span>🏢</span>
-                    <span>عميل (جملة)</span>
+                    <span>عميل (خاص)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePickNewCustomer('retail')}
+                    className="py-1.5 px-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl text-[11px] font-bold text-slate-800 shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>👤</span>
+                    <span>زبون (مفرد)</span>
                   </button>
                 </div>
               </div>

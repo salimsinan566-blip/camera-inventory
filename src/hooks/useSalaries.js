@@ -77,7 +77,25 @@ export function useSalaries() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    const handleOfflineUpdate = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setEmployees(e.detail);
+      } else {
+        setEmployees(loadLocalBackup(BACKUP_KEYS.EMPLOYEES || 'offline_backup_employees', []));
+      }
+      setLoading(false);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('offline_employees_updated', handleOfflineUpdate);
+    }
+
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('offline_employees_updated', handleOfflineUpdate);
+      }
+    };
   }, []);
 
   // حساب الإحصائيات والأرقام التجميعية

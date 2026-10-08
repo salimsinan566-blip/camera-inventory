@@ -116,15 +116,35 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
     let oldInvoicesAmount = 0;
 
     for (const s of customerSales) {
-      const type = s.invoiceType || 'cash';
       const amt = Number(s.total) || 0;
       totalPurchases += amt;
+
+      const isDebt = (s.invoiceType || 'cash') === 'debt' || 
+                     s.paymentMethod === 'debt' || 
+                     (s.remainingDebt !== undefined && Number(s.remainingDebt) > 0) ||
+                     s.paymentStatus === 'unpaid' ||
+                     s.paymentStatus === 'partial';
       
-      if (type === 'debt') {
-        const paid = Number(s.paidAmount) || 0;
-        const remaining = s.remainingDebt !== undefined 
-          ? Math.min(Number(s.remainingDebt), Math.max(0, amt - paid)) 
-          : Math.max(0, amt - paid);
+      if (isDebt) {
+        const paymentsSum = Array.isArray(s.payments)
+          ? s.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+          : 0;
+        let paid = Math.max(Number(s.paidAmount || 0), paymentsSum);
+        let remaining = 0;
+        if (s.isSettled === true || s.paymentStatus === 'paid') {
+          remaining = 0;
+          paid = amt;
+        } else if (s.remainingDebt !== undefined && s.remainingDebt !== null) {
+          remaining = Number(s.remainingDebt);
+        } else {
+          remaining = Math.max(0, amt - paid);
+        }
+        if (amt > 0 && paid > 0 && remaining === amt) {
+          remaining = Math.max(0, amt - paid);
+        }
+        if (paid >= amt && amt > 0) {
+          remaining = 0;
+        }
         totalDebt += remaining;
         cashPaid += paid;
       } else {
@@ -190,13 +210,38 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
 
     customerSales.forEach((sale) => {
       const date = toDateSafe(sale.createdAt);
-      const isDebt = (sale.invoiceType || 'cash') === 'debt';
+      const isDebt = (sale.invoiceType || 'cash') === 'debt' || 
+                     sale.paymentMethod === 'debt' || 
+                     (sale.remainingDebt !== undefined && Number(sale.remainingDebt) > 0) ||
+                     sale.paymentStatus === 'unpaid' ||
+                     sale.paymentStatus === 'partial';
       const totalAmt = Number(sale.total) || 0;
-      const paidAmt = Number(sale.paidAmount) || 0;
-      const remainingAmt = sale.remainingDebt !== undefined 
-        ? Math.min(Number(sale.remainingDebt), Math.max(0, totalAmt - paidAmt))
-        : Math.max(0, totalAmt - paidAmt);
-      const isSettled = isDebt && remainingAmt <= 0;
+      const paymentsSum = Array.isArray(sale.payments)
+        ? sale.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+        : 0;
+      let paidAmt = Math.max(Number(sale.paidAmount || 0), paymentsSum);
+      if (!isDebt) {
+        paidAmt = totalAmt;
+      }
+      let remainingAmt = 0;
+      if (isDebt) {
+        if (sale.isSettled === true || sale.paymentStatus === 'paid') {
+          remainingAmt = 0;
+        } else if (sale.remainingDebt !== undefined && sale.remainingDebt !== null) {
+          remainingAmt = Number(sale.remainingDebt);
+        } else {
+          remainingAmt = Math.max(0, totalAmt - paidAmt);
+        }
+        if (totalAmt > 0 && paidAmt > 0 && remainingAmt === totalAmt) {
+          remainingAmt = Math.max(0, totalAmt - paidAmt);
+        }
+        if (paidAmt >= totalAmt && totalAmt > 0) {
+          remainingAmt = 0;
+        }
+      }
+      const isSettled = !isDebt || remainingAmt <= 0 || sale.isSettled === true || sale.paymentStatus === 'paid';
+      const isPartial = isDebt && !isSettled && paidAmt > 0;
+      const isUnpaid = isDebt && !isSettled && paidAmt === 0;
 
       rows.push({
         id: `sale-${sale.id}`,
@@ -205,13 +250,23 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
         date: date,
         dateFormatted: date ? date.toLocaleString('ar-IQ') : '—',
         refNumber: `#${sale.invoiceNumber}`,
-        badgeLabel: isDebt ? (isSettled ? 'مسدد بالكامل ✓' : paidAmt > 0 ? 'مسدد جزئياً' : 'دين غير مسدد') : 'نقدي',
-        badgeClass: isDebt ? (isSettled ? 'text-emerald-700 bg-emerald-100 border border-emerald-200' : paidAmt > 0 ? 'text-amber-800 bg-amber-100 border border-amber-200' : 'text-rose-700 bg-rose-100 border border-rose-200') : 'text-emerald-700 bg-emerald-100',
+        badgeLabel: !isDebt 
+          ? 'نقدي (خالص) ✓' 
+          : isSettled 
+            ? 'مسدد بالكامل ✓' 
+            : isPartial 
+              ? 'مسدد جزئياً' 
+              : 'دين غير مسدد',
+        badgeClass: !isDebt || isSettled
+          ? 'text-emerald-700 bg-emerald-100 border border-emerald-200' 
+          : isPartial 
+            ? 'text-amber-800 bg-amber-100 border border-amber-200' 
+            : 'text-rose-700 bg-rose-100 border border-rose-200',
         itemsDescription: (sale.items || []).map(i => i.name).slice(0, 3).join('، ') + ((sale.items?.length || 0) > 3 ? '...' : ''),
         itemsCount: `${sale.items?.length || 0} مادة`,
         totalAmt,
-        paidAmt: isDebt ? paidAmt : totalAmt,
-        remainingAmt: isDebt ? remainingAmt : 0,
+        paidAmt,
+        remainingAmt,
         saleObj: sale
       });
     });
@@ -574,12 +629,38 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
                 ) : (
                   <div className="space-y-8">
                     {displayedSales.map((sale, index) => {
-                      const isDebt = sale.invoiceType === 'debt';
+                      const isDebt = (sale.invoiceType || 'cash') === 'debt' || 
+                                     sale.paymentMethod === 'debt' || 
+                                     (sale.remainingDebt !== undefined && Number(sale.remainingDebt) > 0) ||
+                                     sale.paymentStatus === 'unpaid' ||
+                                     sale.paymentStatus === 'partial';
                       const totalAmt = Number(sale.total) || 0;
-                      const paidAmt = Number(sale.paidAmount) || 0;
-                      const remainingAmt = sale.remainingDebt !== undefined 
-                        ? Math.min(Number(sale.remainingDebt), Math.max(0, totalAmt - paidAmt))
-                        : Math.max(0, totalAmt - paidAmt);
+                      const paymentsSum = Array.isArray(sale.payments)
+                        ? sale.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+                        : 0;
+                      let paidAmt = Math.max(Number(sale.paidAmount || 0), paymentsSum);
+                      if (!isDebt) {
+                        paidAmt = totalAmt;
+                      }
+                      let remainingAmt = 0;
+                      if (isDebt) {
+                        if (sale.isSettled === true || sale.paymentStatus === 'paid') {
+                          remainingAmt = 0;
+                        } else if (sale.remainingDebt !== undefined && sale.remainingDebt !== null) {
+                          remainingAmt = Number(sale.remainingDebt);
+                        } else {
+                          remainingAmt = Math.max(0, totalAmt - paidAmt);
+                        }
+                        if (totalAmt > 0 && paidAmt > 0 && remainingAmt === totalAmt) {
+                          remainingAmt = Math.max(0, totalAmt - paidAmt);
+                        }
+                        if (paidAmt >= totalAmt && totalAmt > 0) {
+                          remainingAmt = 0;
+                        }
+                      }
+                      const isSettled = !isDebt || remainingAmt <= 0 || sale.isSettled === true || sale.paymentStatus === 'paid';
+                      const isPartial = isDebt && !isSettled && paidAmt > 0;
+                      const isUnpaid = isDebt && !isSettled && paidAmt === 0;
 
                       return (
                         <div 
@@ -605,17 +686,21 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
 
                             <div className="flex items-center gap-2">
                               {/* شارة حالة الدفع */}
-                              {isDebt ? (
-                                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                                  remainingAmt <= 0 
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                                    : 'bg-rose-100 text-rose-800 border border-rose-200'
-                                }`}>
-                                  {remainingAmt <= 0 ? 'دين مسدد بالكامل ✓' : `متبقي دين: ${remainingAmt.toLocaleString()} د.ع`}
+                              {!isDebt ? (
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  نقدي مباشر ✓
+                                </span>
+                              ) : isSettled ? (
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  دين مسدد بالكامل ✓
+                                </span>
+                              ) : isPartial ? (
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  مسدد جزئياً (متبقي: {remainingAmt.toLocaleString()} د.ع)
                                 </span>
                               ) : (
-                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  نقدي ✓
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                  غير مسدد (دين: {remainingAmt.toLocaleString()} د.ع)
                                 </span>
                               )}
 
@@ -685,7 +770,7 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
                   <div className="flex items-center justify-between border-b-2 border-[#C89B3C] pb-3 mb-4">
                     <div className="flex flex-col items-start text-right">
                       <h1 className="text-3xl font-black text-slate-900 mb-1" style={{ letterSpacing: '0px' }}>
-                        {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الامنة' : settings.storeName}
+                        {(!settings?.storeName || settings.storeName.toUpperCase() === 'SAFE ZONE') ? 'المنطقة الآمنة' : settings.storeName}
                       </h1>
                       <p className="text-xs text-slate-600 font-bold mt-0.5">أنظمة المراقبة الذكية والحماية الإلكترونية</p>
                       {settings?.address && (
@@ -807,7 +892,7 @@ export default function CustomerStatementModal({ initialCustomerName = '', onClo
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-500 text-center mt-3">
-                    وثيقة كشف حساب معتمدة صادرة من نظام Safe Zone المحاسبي - تم الاستخراج بتاريخ {new Date().toLocaleString('ar-IQ')}
+                    وثيقة كشف حساب معتمدة صادرة من نظام المنطقة الآمنة المحاسبي - تم الاستخراج بتاريخ {new Date().toLocaleString('ar-IQ')}
                   </p>
                 </div>
               </div>

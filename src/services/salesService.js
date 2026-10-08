@@ -83,7 +83,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
 
   // إيجاد/إنشاء العميل للعملاء المسجلين والديون فقط (تجاوز الزبائن النقديين لتسريع العملية فوراً)
   const isGeneric = !customerName || customerName.trim() === 'زبون عام' || customerName.trim() === 'زبون نقدي';
-  const customerType = orderOptions.customerType === 'client' ? 'client' : 'customer';
+  const customerType = orderOptions.customerType === 'vip' ? 'vip' : (orderOptions.customerType === 'client' ? 'client' : 'customer');
   const customerId = !isGeneric ? await findOrCreateCustomer(customerName, phone1, phone2, customerType) : null;
 
   const counterRef = doc(db, ...SALES_COUNTER_PATH);
@@ -326,6 +326,7 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       phone1: phone1 || '',
       phone2: phone2 || '',
       invoiceType,
+      customerType: orderOptions?.customerType || customerType || 'retail',
       notes: notes || '',
       paymentMethod: orderOptions?.paymentMethod || (invoiceType === 'mastercard' ? 'mastercard' : (invoiceType === 'debt' ? 'debt' : 'cash')),
       stockSource: overallStockSource,
@@ -376,6 +377,14 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
       const isCustody = item.source === 'custody';
       const isWarehouse = item.source === 'warehouse';
 
+      const pSnap = productSnapsMap[item.productId];
+      const pData = pSnap?.exists() ? pSnap.data() : null;
+      const prevStore = pData ? Number(pData.storeQty) || 0 : null;
+      const prevWh = pData ? Number(pData.warehouseQty) || 0 : null;
+
+      const unitPrice = Number(item.unitPrice || item.price) || 0;
+      const totalPrice = (Number(item.quantity) || 1) * unitPrice;
+
       transaction.set(invLogRef, {
         productId: item.productId,
         productName: item.name || '',
@@ -383,14 +392,20 @@ export async function checkoutSale(cartItems, cashierEmail, orderOptions = {}) {
         type: isCustody ? 'custody_sale' : 'sale',
         location: isCustody ? 'custody' : (isWarehouse ? 'warehouse' : 'store'),
         quantity: item.quantity,
+        unitPrice,
+        totalPrice,
+        previousStoreQty: isCustody || isWarehouse ? prevStore : prevStore,
+        newStoreQty: isCustody || isWarehouse ? prevStore : (prevStore !== null ? Math.max(0, prevStore - item.quantity) : null),
         storeQtyDiff: isCustody || isWarehouse ? 0 : -item.quantity,
+        previousWarehouseQty: isWarehouse ? prevWh : prevWh,
+        newWarehouseQty: isWarehouse ? (prevWh !== null ? Math.max(0, prevWh - item.quantity) : null) : prevWh,
         warehouseQtyDiff: isWarehouse ? -item.quantity : 0,
         technicianName: item.technicianName || '',
         customerName: customerName || 'زبون نقدي',
         referenceNumber: nextInvoiceNumber,
         reason: `فاتورة بيع رقم: ${nextInvoiceNumber}`,
         userEmail: cashierEmail || 'الكاشير',
-        createdAt: new Date().toISOString()
+        createdAt: serverTimestamp()
       });
     }
 
@@ -978,10 +993,12 @@ export async function revertSaleToSuspended(saleId) {
  * ويعيد المخزون للقطع المحذوفة أو يقلله للقطع المضافة حديثاً.
  * يسجل التغييرات في مصفوفة historyLogs داخل المستند.
  */
-export async function editConfirmedSale(saleId, newCartItems = [], orderOptions, cashierEmail) {
+export async function editConfirmedSale(saleId, newCartItems = [], orderOptions = {}, cashierEmail) {
 
-  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '' } = orderOptions;
-  const customerId = customerName ? await findOrCreateCustomer(customerName, phone1, phone2) : null;
+  const { discount = 0, taxRate = 0, customerName = '', invoiceType = 'cash', phone1 = '', phone2 = '', notes = '' } = orderOptions;
+  const isGeneric = !customerName || customerName.trim() === 'زبون عام' || customerName.trim() === 'زبون نقدي';
+  const customerType = orderOptions.customerType === 'vip' ? 'vip' : (orderOptions.customerType === 'client' ? 'client' : 'customer');
+  const customerId = (!isGeneric && customerName) ? await findOrCreateCustomer(customerName, phone1, phone2, customerType) : null;
   const saleRef = doc(db, SALES_COLLECTION, saleId);
 
   const result = await runOfflineSafeTransaction(db, async (transaction) => {
@@ -990,15 +1007,17 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
       throw new Error('الفاتورة غير موجودة');
     }
     const saleData = saleSnap.data();
-    if (saleData.status !== 'confirmed') {
+    if (saleData.status && saleData.status !== 'confirmed') {
       throw new Error('هذه الفاتورة ليست مؤكدة ولا يمكن تعديلها من هنا');
     }
 
     const oldItems = saleData.items || [];
     
+    const isPhysicalProduct = (i) => i && !i.isService && !i.isCustom && !i.isSitePurchase && i.productId;
+
     const productIdsSet = new Set([
-      ...oldItems.filter(i => !i.isService).map(i => i.productId),
-      ...newCartItems.filter(i => !i.isService).map(i => i.productId)
+      ...oldItems.filter(isPhysicalProduct).map(i => i.productId),
+      ...newCartItems.filter(isPhysicalProduct).map(i => i.productId)
     ]);
     const productIds = Array.from(productIdsSet);
     const productRefs = productIds.map(id => doc(db, PRODUCTS_COLLECTION, id));
@@ -1029,7 +1048,7 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
       const oldItem = oldItems.find(o => o.productId === item.productId);
       
       if (delta > 0) {
-        if (!item.isService) {
+        if (isPhysicalProduct(item)) {
           const pData = productsMap[pid];
           if (!pData) throw new Error(`المنتج "${item.name}" غير موجود في قاعدة البيانات`);
           const currentQty = Number(pData.storeQty) || 0;
@@ -1148,12 +1167,24 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
       }
     });
 
+    const isNotesChanged = (saleData.notes || '') !== (notes || '');
+    const isPhoneChanged = (saleData.phone1 || '') !== (phone1 || '');
+    const isPaymentChanged = (saleData.invoiceType || 'cash') !== invoiceType;
+
     if (logs.length === 0 && 
-        saleData.discount === discount && 
-        saleData.taxRate === taxRate && 
-        saleData.invoiceType === invoiceType &&
-        saleData.customerName === customerName) {
-      throw new Error('لم تقم بإجراء أي تغييرات.');
+        Number(saleData.discount || 0) === Number(discount || 0) && 
+        Number(saleData.taxRate || 0) === Number(taxRate || 0) && 
+        !isPaymentChanged &&
+        (saleData.customerName || '') === (customerName || '') &&
+        !isNotesChanged &&
+        !isPhoneChanged) {
+      // لا توجد تغييرات تستدعي تعديل المخزون، نرجع الفاتورة بنجاح
+      return {
+        id: saleId,
+        ...saleData,
+        items: updatedItems,
+        total: saleData.total
+      };
     }
 
     for (const pid of productIds) {
@@ -1189,10 +1220,12 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
       remainingDebt,
       isSettled,
       invoiceType,
-      customerId,
+      paymentMethod: orderOptions?.paymentMethod || invoiceType || saleData.paymentMethod || 'cash',
+      customerId: customerId || saleData.customerId || null,
       customerName: customerName || null,
       phone1: phone1 || '',
       phone2: phone2 || '',
+      notes: notes !== undefined ? notes : (saleData.notes || ''),
       updatedAt: serverTimestamp(),
       historyLogs: [...historyLogs, logEntry]
     });
@@ -1206,9 +1239,11 @@ export async function editConfirmedSale(saleId, newCartItems = [], orderOptions,
       taxRate: summary.taxRate,
       total: summary.total,
       invoiceType,
+      paymentMethod: orderOptions?.paymentMethod || invoiceType || saleData.paymentMethod || 'cash',
       customerName: customerName || null,
       phone1: phone1 || '',
       phone2: phone2 || '',
+      notes: notes !== undefined ? notes : (saleData.notes || ''),
       historyLogs: [...historyLogs, logEntry]
     };
   });

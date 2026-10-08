@@ -110,11 +110,37 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
     const incomes = session.incomes || [];
 
     sales.forEach((s) => {
-      const isDebt = s.invoiceType === 'debt';
+      const isDebt = (s.invoiceType || 'cash') === 'debt' || 
+                     s.paymentMethod === 'debt' || 
+                     (s.remainingDebt !== undefined && Number(s.remainingDebt) > 0) ||
+                     s.paymentStatus === 'unpaid' ||
+                     s.paymentStatus === 'partial';
       const totalAmt = Number(s.total) || 0;
-      const paidAmt = Number(s.paidAmount) || 0;
-      const remainingAmt = s.remainingDebt !== undefined ? Math.min(Number(s.remainingDebt), Math.max(0, totalAmt - paidAmt)) : Math.max(0, totalAmt - paidAmt);
-      const isSettled = isDebt ? remainingAmt <= 0 : true;
+      const paymentsSum = Array.isArray(s.payments)
+        ? s.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+        : 0;
+      let paidAmt = Math.max(Number(s.paidAmount || 0), paymentsSum);
+      if (!isDebt) {
+        paidAmt = totalAmt;
+      }
+      let remainingAmt = 0;
+      if (isDebt) {
+        if (s.isSettled === true || s.paymentStatus === 'paid') {
+          remainingAmt = 0;
+        } else if (s.remainingDebt !== undefined && s.remainingDebt !== null) {
+          remainingAmt = Number(s.remainingDebt);
+        } else {
+          remainingAmt = Math.max(0, totalAmt - paidAmt);
+        }
+        if (totalAmt > 0 && paidAmt > 0 && remainingAmt === totalAmt) {
+          remainingAmt = Math.max(0, totalAmt - paidAmt);
+        }
+        if (paidAmt >= totalAmt && totalAmt > 0) {
+          remainingAmt = 0;
+        }
+      }
+      const isSettled = !isDebt || remainingAmt <= 0 || s.isSettled === true || s.paymentStatus === 'paid';
+      const isPartial = isDebt && !isSettled && paidAmt > 0;
 
       const itemsDesc = (s.items || []).map(i => `${i.name}${i.quantity > 1 ? ` (${i.quantity})` : ''}`).join('، ');
 
@@ -124,16 +150,31 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
         dateFormatted: s.createdAt ? new Date(s.createdAt).toLocaleDateString('ar-IQ') : '—',
         refNumber: `#${s.invoiceNumber || s.id.slice(0, 6)}`,
         type: isDebt ? (isSettled ? 'debt_settled' : 'debt_active') : 'cash',
-        typeLabel: isDebt ? (isSettled ? 'آجل (مسدد بالكامل)' : 'آجل غير مسدد') : 'نقدي (خالص)',
-        badgeLabel: isDebt ? (isSettled ? 'آجل مسدد' : 'دين غير مسدد') : 'نقدي (خالص)',
-        badgeClass: isDebt 
-          ? (isSettled ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200')
-          : 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        typeLabel: !isDebt 
+          ? 'نقدي (خالص)' 
+          : isSettled 
+            ? 'آجل (مسدد بالكامل)' 
+            : isPartial 
+              ? 'آجل (مسدد جزئياً)' 
+              : 'آجل غير مسدد',
+        badgeLabel: !isDebt 
+          ? 'نقدي (خالص)' 
+          : isSettled 
+            ? 'آجل مسدد بالكامل ✓' 
+            : isPartial 
+              ? 'مسدد جزئياً' 
+              : 'دين غير مسدد',
+        badgeClass: !isDebt || isSettled
+          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+          : isPartial 
+            ? 'bg-amber-50 text-amber-800 border-amber-200' 
+            : 'bg-rose-50 text-rose-800 border-rose-200',
         title: itemsDesc ? `فاتورة مبيعات (${itemsDesc})` : 'فاتورة مبيعات',
         totalAmt,
         paidAmt,
         remainingAmt,
         isSettled,
+        isPartial,
         saleObj: s
       });
     });

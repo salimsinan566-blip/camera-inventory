@@ -14,7 +14,7 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
   const [phone2, setPhone2] = useState(customer?.phone2 || '');
   const [pinCode, setPinCode] = useState(customer?.pinCode || '');
   const [notes, setNotes] = useState(customer?.notes || '');
-  const [customerType, setCustomerType] = useState(customer?.customerType || 'client'); // 'client' | 'customer'
+  const [customerType, setCustomerType] = useState(customer?.customerType || 'customer'); // 'customer' | 'client'
   const [reminderSchedule, setReminderSchedule] = useState(customer?.reminderSchedule || 'default');
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useUI();
@@ -101,7 +101,32 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
             <label className="block text-xs font-bold text-slate-700 mb-2">
               صنف المعاملة / نوع الحساب *
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label 
+                className={`flex flex-col p-3 rounded-2xl border-2 cursor-pointer transition-all ${
+                  customerType === 'vip' 
+                    ? 'border-amber-500 bg-amber-50/60 shadow-sm ring-2 ring-amber-500/20' 
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                    ⭐ عميل مميز (VIP)
+                  </span>
+                  <input 
+                    type="radio" 
+                    name="customerType" 
+                    value="vip" 
+                    checked={customerType === 'vip'} 
+                    onChange={() => setCustomerType('vip')} 
+                    className="accent-amber-600 w-4 h-4 cursor-pointer"
+                  />
+                </div>
+                <span className="text-[11px] text-slate-500 leading-tight">
+                  أسعار خاصة مميزة (VIP)، فواتير دورية، وديون.
+                </span>
+              </label>
+
               <label 
                 className={`flex flex-col p-3 rounded-2xl border-2 cursor-pointer transition-all ${
                   customerType === 'client' 
@@ -119,11 +144,11 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
                     value="client" 
                     checked={customerType === 'client'} 
                     onChange={() => setCustomerType('client')} 
-                    className="accent-brand-600 w-4 h-4"
+                    className="accent-brand-600 w-4 h-4 cursor-pointer"
                   />
                 </div>
                 <span className="text-[11px] text-slate-500 leading-tight">
-                  حساب دائم، فواتير دورية، ديون، وتذكير منتظم عبر الواتساب.
+                  حساب دائم، أسعار خاصة بالعملاء، فواتير دورية، وديون.
                 </span>
               </label>
 
@@ -144,7 +169,7 @@ export default function AddCustomerModal({ customer = null, onClose, onSaved }) 
                     value="customer" 
                     checked={customerType === 'customer'} 
                     onChange={() => setCustomerType('customer')} 
-                    className="accent-emerald-600 w-4 h-4"
+                    className="accent-emerald-600 w-4 h-4 cursor-pointer"
                   />
                 </div>
                 <span className="text-[11px] text-slate-500 leading-tight">

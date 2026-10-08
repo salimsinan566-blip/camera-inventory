@@ -11,7 +11,26 @@ export function useExpenses() {
       setExpenses(list);
       setLoading(false);
     });
-    return () => unsub && unsub();
+
+    const handleOfflineUpdate = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setExpenses(e.detail);
+      } else {
+        setExpenses(loadLocalBackup(BACKUP_KEYS.EXPENSES, []));
+      }
+      setLoading(false);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('offline_expenses_updated', handleOfflineUpdate);
+    }
+
+    return () => {
+      unsub && unsub();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('offline_expenses_updated', handleOfflineUpdate);
+      }
+    };
   }, []);
 
   const todayStr = new Date().toISOString().slice(0, 10);

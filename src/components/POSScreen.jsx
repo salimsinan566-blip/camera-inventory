@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { checkoutSale, findProductByBarcode } from '../services/salesService';
+import { checkoutSale, editConfirmedSale, updateDraftSale, findProductByBarcode } from '../services/salesService';
+import { updateProduct } from '../services/productsService';
 import { createOffer, updateOffer } from '../services/offersService';
 import { createCartItem, cartItemsFromDraft } from '../models/sale';
 import { useCustomers } from '../hooks/useCustomers';
@@ -25,7 +26,7 @@ function createInitialCart(index = 1) {
     name: `سلة ${index}`,
     invoiceNumber: null,
     items: [],
-    customerType: 'retail', // 'retail' (زبون) | 'client' (عميل) | 'offer' (عرض سعر)
+    customerType: 'retail', // 'retail' (زبون) | 'client' (عميل) | 'vip' (عميل مميز) | 'offer' (عرض سعر)
     invoiceDate: new Date().toISOString().slice(0, 10),
     customerName: '',
     phone1: '',
@@ -209,21 +210,39 @@ export default function POSScreen({
     }
   }, [mode, offerToOpen, activeCart.customerType, carts.length]);
 
-  // Switch customer type (زبون / عميل / عرض سعر) and adjust item prices
+// Helper: Checks if item price was manually edited in cart or is custom/service
+function isPriceLockedOrCustom(item) {
+  if (!item) return false;
+  if (item.isCustom || item.isService || item.isSitePurchase || item.isPriceManuallySet) {
+    return true;
+  }
+  // إذا كان السعر الحالي يختلف عن السعر الأولي الذي أضيفت به المادة للسلة
+  if (item.initialUnitPrice !== undefined && Number(item.unitPrice) !== Number(item.initialUnitPrice)) {
+    return true;
+  }
+  return false;
+}
+
+  // Switch customer type (زبون / عميل / عميل مميز / عرض سعر) and adjust item prices
   const handleChangeCustomerType = (newType) => {
     if (newType === activeCart.customerType) return;
 
     const updatedItems = (activeCart.items || []).map((item) => {
-      if (item.isCustom || item.isService || item.isSitePurchase) {
+      if (isPriceLockedOrCustom(item)) {
         return item;
       }
       let newPrice = item.unitPrice;
-      if (newType === 'client') {
-        // سعر الجملة / العميل
-        newPrice = Number(item.wholesalePrice) > 0 ? Number(item.wholesalePrice) : item.unitPrice;
+      if (newType === 'vip') {
+        // سعر العميل المميز (إذا محدد) وإلا سعر العميل وإلا سعر المفرد
+        newPrice = Number(item.vipPrice) > 0 
+          ? Number(item.vipPrice) 
+          : (Number(item.clientPrice) > 0 ? Number(item.clientPrice) : (Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice));
+      } else if (newType === 'client') {
+        // سعر العميل الخاص (إذا محدد) وإلا نفس سعر المفرد
+        newPrice = Number(item.clientPrice) > 0 ? Number(item.clientPrice) : (Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice);
       } else {
         // سعر المفرد / الزبون أو عرض السعر
-        newPrice = Number(item.originalPrice) > 0 ? Number(item.originalPrice) : (Number(item.retailPrice) || item.unitPrice);
+        newPrice = Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice;
       }
       return {
         ...item,
@@ -250,19 +269,23 @@ export default function POSScreen({
   // Handle choosing an existing customer: auto-detects if client or retail and switches prices
   const handleSelectCustomer = useCallback((customer) => {
     if (!customer) return;
-    const newType = customer.customerType === 'client' ? 'client' : 'retail';
+    const newType = customer.customerType === 'vip' ? 'vip' : (customer.customerType === 'client' ? 'client' : 'retail');
 
     setCarts((prevCarts) =>
       prevCarts.map((c) => {
         if (c.id !== activeCartId) return c;
 
         const updatedItems = (c.items || []).map((item) => {
-          if (item.isCustom || item.isService || item.isSitePurchase) return item;
+          if (isPriceLockedOrCustom(item)) return item;
           let newPrice = item.unitPrice;
-          if (newType === 'client') {
-            newPrice = Number(item.wholesalePrice) > 0 ? Number(item.wholesalePrice) : item.unitPrice;
+          if (newType === 'vip') {
+            newPrice = Number(item.vipPrice) > 0 
+              ? Number(item.vipPrice) 
+              : (Number(item.clientPrice) > 0 ? Number(item.clientPrice) : (Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice));
+          } else if (newType === 'client') {
+            newPrice = Number(item.clientPrice) > 0 ? Number(item.clientPrice) : (Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice);
           } else {
-            newPrice = Number(item.originalPrice) > 0 ? Number(item.originalPrice) : (Number(item.retailPrice) || item.unitPrice);
+            newPrice = Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice;
           }
           return { ...item, unitPrice: newPrice };
         });
@@ -279,8 +302,8 @@ export default function POSScreen({
     );
   }, [activeCartId]);
 
-  // Handle setting a new customer with chosen type ('retail' or 'client')
-  const handleSetNewCustomer = useCallback((name, type = 'retail') => {
+  // Handle setting a new customer with chosen type ('retail', 'client', or 'vip')
+  const handleSetNewCustomer = useCallback((name, type) => {
     const trimmedName = (name || '').trim();
     if (!trimmedName) return;
 
@@ -288,13 +311,29 @@ export default function POSScreen({
       prevCarts.map((c) => {
         if (c.id !== activeCartId) return c;
 
+        const targetType = type || c.customerType || 'retail';
+
+        // إذا كانت الفئة مطابقة لسلة التسوق الحالية، فقط نحدث اسم العميل دون مساس بأي مادة في السلة
+        if (targetType === c.customerType) {
+          return {
+            ...c,
+            customerName: trimmedName,
+            customerId: null,
+          };
+        }
+
+        // إذا تم تغيير الفئة، نحدث فقط المواد التي لم يتم تعديل سعرها يدوياً
         const updatedItems = (c.items || []).map((item) => {
-          if (item.isCustom || item.isService || item.isSitePurchase) return item;
+          if (isPriceLockedOrCustom(item)) return item;
           let newPrice = item.unitPrice;
-          if (type === 'client') {
-            newPrice = Number(item.wholesalePrice) > 0 ? Number(item.wholesalePrice) : item.unitPrice;
+          if (targetType === 'vip') {
+            newPrice = Number(item.vipPrice) > 0 
+              ? Number(item.vipPrice) 
+              : (Number(item.clientPrice) > 0 ? Number(item.clientPrice) : (Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice));
+          } else if (targetType === 'client') {
+            newPrice = Number(item.clientPrice) > 0 ? Number(item.clientPrice) : (Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice);
           } else {
-            newPrice = Number(item.originalPrice) > 0 ? Number(item.originalPrice) : (Number(item.retailPrice) || item.unitPrice);
+            newPrice = Number(item.retailPrice) || Number(item.originalPrice) || item.unitPrice;
           }
           return { ...item, unitPrice: newPrice };
         });
@@ -303,7 +342,7 @@ export default function POSScreen({
           ...c,
           customerName: trimmedName,
           customerId: null,
-          customerType: type,
+          customerType: targetType,
           items: updatedItems,
         };
       })
@@ -327,10 +366,14 @@ export default function POSScreen({
 
   // Add a product from products list (drawer or barcode)
   const handleAddProductToCart = useCallback((product, qty = 1) => {
+    const isVip = activeCart.customerType === 'vip';
     const isClient = activeCart.customerType === 'client';
-    const basePrice = isClient
-      ? (Number(product.wholesalePrice) > 0 ? Number(product.wholesalePrice) : Number(product.retailPrice) || 0)
-      : (Number(product.retailPrice) || 0);
+    const vipPrice = Number(product.vipPrice) > 0 
+      ? Number(product.vipPrice) 
+      : (Number(product.clientPrice) > 0 ? Number(product.clientPrice) : (Number(product.retailPrice) || 0));
+    const clientPrice = Number(product.clientPrice) > 0 ? Number(product.clientPrice) : (Number(product.retailPrice) || 0);
+    const retailPrice = Number(product.retailPrice) || 0;
+    const basePrice = isVip ? vipPrice : (isClient ? clientPrice : retailPrice);
 
     const existingIndex = activeCart.items.findIndex(
       (it) => it.productId === product.id && !it.isCustom && !it.isService && !it.isSitePurchase
@@ -347,8 +390,13 @@ export default function POSScreen({
       // Add new cart item
       const newItem = createCartItem(product, qty);
       newItem.unitPrice = basePrice;
-      newItem.originalPrice = Number(product.retailPrice) || basePrice;
+      newItem.originalPrice = retailPrice;
+      newItem.retailPrice = retailPrice;
+      newItem.clientPrice = Number(product.clientPrice) || 0;
+      newItem.vipPrice = Number(product.vipPrice) || 0;
       newItem.wholesalePrice = Number(product.wholesalePrice) || 0;
+      newItem.isPriceManuallySet = false;
+      newItem.initialUnitPrice = basePrice;
       updateActiveCart({ items: [...(activeCart.items || []), newItem] });
     }
   }, [activeCart, updateActiveCart]);
@@ -427,6 +475,7 @@ export default function POSScreen({
           return;
         } else {
           nextPartial.unitPrice = reqPrice;
+          nextPartial.isPriceManuallySet = true;
           if (reqPrice === 0 && Number(item.unitPrice) !== 0) {
             toast('🎁 تم تحديد المادة كهدية (سعر 0 د.ع)', 'info');
           }
@@ -524,13 +573,29 @@ export default function POSScreen({
       discount: Number(invoice.discount) || 0,
       notes: invoice.notes || '',
       editingSaleId: invoice.id,
+      isEditingDraft: Boolean(invoice.isDraft),
+      customerType: invoice.customerType || 'retail',
+      paymentMethod: invoice.paymentMethod || invoice.invoiceType || 'cash',
+      invoiceType: invoice.invoiceType || invoice.paymentMethod || 'cash',
       invoiceDate: invoice.createdAt ? new Date(invoice.createdAt.toDate ? invoice.createdAt.toDate() : invoice.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
     });
 
-    toast(`تم تحميل الفاتورة #${invoice.invoiceNumber || ''} في السلة الفعّالة`, 'success');
+    toast(`تم تحميل الفاتورة #${invoice.invoiceNumber || ''} في السلة الفعّالة للتعديل`, 'success');
   };
 
-  // Confirm Checkout (نقدي / ماستر كارد / دين)
+  // Cancel invoice editing and reset cart
+  const handleCancelEditInvoice = () => {
+    if (window.confirm('هل تريد إلغاء تعديل هذه الفاتورة وإعادة السلة فارغة؟')) {
+      const fresh = createInitialCart(carts.findIndex((c) => c.id === activeCartId) + 1);
+      updateActiveCart({
+        ...fresh,
+        id: activeCartId,
+      });
+      toast('تم إلغاء تعديل الفاتورة وإعادة ضبط السلة', 'info');
+    }
+  };
+
+  // Confirm Checkout / Save Invoice (حفظ الفاتورة / إتمام الحساب والدفع)
   const handleConfirmCheckout = async (paymentDetails) => {
     if ((activeCart.items || []).length === 0) {
       toast('السلة فارغة!', 'error');
@@ -564,6 +629,40 @@ export default function POSScreen({
         stockSource: activeCart.stockSource || 'store',
       };
 
+      // إذا كنا في وضع تعديل فاتورة سابقة (مؤكدة أو مسودة)
+      if (activeCart.editingSaleId) {
+        let result;
+        if (activeCart.isEditingDraft) {
+          await updateDraftSale(activeCart.editingSaleId, activeCart.items, orderOptions);
+          result = {
+            id: activeCart.editingSaleId,
+            invoiceNumber: activeCart.invoiceNumber || 'مسودة',
+            total: Math.max(0, (activeCart.items || []).reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0), 0) - (Number(activeCart.discount) || 0)),
+          };
+        } else {
+          result = await editConfirmedSale(activeCart.editingSaleId, activeCart.items, orderOptions, cashierEmail);
+        }
+
+        const completedSale = {
+          ...result,
+          invoiceNumber: result.invoiceNumber || activeCart.invoiceNumber,
+          items: activeCart.items,
+          total: result.total,
+          customerName: orderOptions.customerName,
+          phone1: orderOptions.phone1,
+          invoiceType: orderOptions.invoiceType,
+          paymentMethod: orderOptions.paymentMethod,
+          createdAt: new Date(),
+        };
+
+        setLastCompletedSale(completedSale);
+        setShowCheckoutModal(false);
+        closeActiveCartAfterPayment();
+        toast(`✅ تم حفظ الفاتورة #${result.invoiceNumber || activeCart.invoiceNumber} بنجاح!`, 'success');
+        return;
+      }
+
+      // البيع العادي الجديد
       const result = await checkoutSale(activeCart.items, cashierEmail, orderOptions);
 
       // Prepare receipt preview
@@ -575,15 +674,56 @@ export default function POSScreen({
         customerName: orderOptions.customerName,
         phone1: orderOptions.phone1,
         invoiceType: orderOptions.invoiceType,
+        paymentMethod: orderOptions.paymentMethod,
         createdAt: new Date(),
       };
+
+      // إذا اختار المستخدم حفظ الأسعار الجديدة للعملاء في المخزون
+      if (paymentDetails.saveClientPrices && Array.isArray(paymentDetails.clientPriceUpdates) && paymentDetails.clientPriceUpdates.length > 0) {
+        try {
+          for (const upd of paymentDetails.clientPriceUpdates) {
+            if (upd.productId && Number(upd.newClientPrice) >= 0) {
+              await updateProduct(
+                upd.productId, 
+                { clientPrice: Number(upd.newClientPrice) }, 
+                cashierEmail, 
+                `تحديث سعر العميل من نقطة البيع للمادة: ${upd.name || ''}`
+              );
+            }
+          }
+        } catch (priceErr) {
+          console.error('Failed to update client prices in inventory:', priceErr);
+        }
+      }
+
+      // إذا اختار المستخدم حفظ الأسعار الجديدة للعملاء المميزين (VIP) في المخزون
+      if (paymentDetails.saveVipPrices && Array.isArray(paymentDetails.vipPriceUpdates) && paymentDetails.vipPriceUpdates.length > 0) {
+        try {
+          for (const upd of paymentDetails.vipPriceUpdates) {
+            if (upd.productId && Number(upd.newVipPrice) >= 0) {
+              await updateProduct(
+                upd.productId, 
+                { vipPrice: Number(upd.newVipPrice) }, 
+                cashierEmail, 
+                `تحديث سعر العميل المميز (VIP) من نقطة البيع للمادة: ${upd.name || ''}`
+              );
+            }
+          }
+        } catch (vipPriceErr) {
+          console.error('Failed to update VIP prices in inventory:', vipPriceErr);
+        }
+      }
+
+      const savedPricesNote = paymentDetails.saveVipPrices 
+        ? ' (تم حفظ أسعار العملاء المميزين في المخزون)' 
+        : (paymentDetails.saveClientPrices ? ' (تم حفظ أسعار العملاء في المخزون)' : '');
 
       setLastCompletedSale(completedSale);
       setShowCheckoutModal(false);
       closeActiveCartAfterPayment();
-      toast(`✅ تم إتمام الدفع بنجاح! رقم الفاتورة: #${result.invoiceNumber}`, 'success');
+      toast(`✅ تم إتمام الدفع بنجاح! رقم الفاتورة: #${result.invoiceNumber}${savedPricesNote}`, 'success');
     } catch (err) {
-      toast(`فشل إتمام البيع: ${err.message}`, 'error');
+      toast(`فشل العملية: ${err.message}`, 'error');
     } finally {
       setProcessingAction(false);
     }
@@ -713,6 +853,7 @@ export default function POSScreen({
         onClearCustomer={handleClearCustomer}
         isOfferMode={isOfferMode}
         onCloseOfferMode={handleExitOfferMode}
+        onCancelEditInvoice={handleCancelEditInvoice}
       />
 
       {/* 2. جدول السلة الرئيسي (Cart Table) */}

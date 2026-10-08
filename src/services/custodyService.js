@@ -12,6 +12,7 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { 
@@ -265,15 +266,19 @@ export async function loadItemsToCustody({
     // Inventory Log
     const invLogRef = doc(collection(db, 'inventory_logs'));
     transaction.set(invLogRef, {
+      type: 'custody_load',
       action: 'custody_load',
       technicianId,
       technicianName,
       source: sourceLocation,
+      location: sourceLocation,
       itemsCount: logItems.length,
       totalQuantity: logItems.reduce((s, i) => s + i.quantity, 0),
       notes: `تحميل عهدة سيارة للفني: ${technicianName} (${notes.trim()})`,
+      reason: `تحميل عهدة سيارة للفني: ${technicianName} (${notes.trim()})`,
       performedBy: performedBy || 'المسؤول',
-      timestamp: new Date().toISOString()
+      userEmail: performedBy || 'المسؤول',
+      createdAt: serverTimestamp()
     });
   });
 }
@@ -400,15 +405,19 @@ export async function returnItemsFromCustody({
     // Inventory Log
     const invLogRef = doc(collection(db, 'inventory_logs'));
     transaction.set(invLogRef, {
+      type: 'custody_return',
       action: 'custody_return',
       technicianId,
       technicianName,
       target: targetLocation,
+      location: targetLocation,
       itemsCount: logItems.length,
       totalQuantity: logItems.reduce((s, i) => s + i.quantity, 0),
       notes: `استرجاع عهدة من الفني: ${technicianName} إلى ${targetLocation === 'warehouse' ? 'المخزن' : 'المحل'} (${notes.trim()})`,
+      reason: `استرجاع عهدة من الفني: ${technicianName} إلى ${targetLocation === 'warehouse' ? 'المخزن' : 'المحل'} (${notes.trim()})`,
       performedBy: performedBy || 'المسؤول',
-      timestamp: new Date().toISOString()
+      userEmail: performedBy || 'المسؤول',
+      createdAt: serverTimestamp()
     });
   });
 }
