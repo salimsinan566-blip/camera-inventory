@@ -6,15 +6,13 @@ import {
   createEmptyProduct,
   validateProduct,
   calculateRetailPrice,
+  isCableCategory,
+  isCableProduct,
 } from '../models/product';
 import { createProduct, updateProduct, isSkuTaken } from '../services/productsService';
 import { uploadProductImage } from '../services/storageService';
 
-export const isCableCategory = (type) => {
-  if (!type) return false;
-  const t = String(type).trim().toLowerCase();
-  return t === 'cables' || t === 'cables & connectors' || t.includes('cable') || t.includes('كبل') || t.includes('كيبل') || t.includes('سلك') || t.includes('connectors');
-};
+export { isCableCategory };
 
 export default function ProductForm({ product, products = [], onClose }) {
   const { user } = useAuth();

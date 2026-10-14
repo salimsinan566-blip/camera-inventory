@@ -15,6 +15,7 @@ import PosAddProductModal from './pos/PosAddProductModal';
 import PosProductsDrawer from './pos/PosProductsDrawer';
 import PosCheckoutModal from './pos/PosCheckoutModal';
 import PosLaborModal from './pos/PosLaborModal';
+import PosSupplyRequestModal from './pos/PosSupplyRequestModal';
 import InvoiceReceipt from './InvoiceReceipt';
 
 const STORAGE_KEY = 'safezone_pos_multi_carts_v3';
@@ -87,6 +88,7 @@ export default function POSScreen({
   const [showLaborModal, setShowLaborModal] = useState(false);
   const [showProductsDrawer, setShowProductsDrawer] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [showSupplyRequestModal, setShowSupplyRequestModal] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
 
@@ -111,6 +113,50 @@ export default function POSScreen({
   const activeCart = useMemo(() => {
     return carts.find((c) => c.id === activeCartId) || carts[0] || createInitialCart(1);
   }, [carts, activeCartId]);
+
+  // اختصار Ctrl + I لتحويل فاتورة البيع الحالية إلى فاتورة طلب توريد
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const isKeyI = e.key === 'i' || e.key === 'I' || e.key === 'ه' || e.code === 'KeyI';
+
+      if (isCtrlOrCmd && isKeyI) {
+        e.preventDefault();
+
+        // تجنب التشغيل المتزامن إذا كانت إحدى النوافذ الحوارية مفتوحة بالفعل
+        if (
+          showCheckoutModal ||
+          showCartsModal ||
+          showEditInvoiceModal ||
+          showAddProductModal ||
+          showLaborModal ||
+          showSupplyRequestModal
+        ) {
+          return;
+        }
+
+        const items = activeCart?.items || [];
+        if (items.length === 0) {
+          toast('السلة فارغة! أضف مواد أولاً لتحويلها إلى فاتورة طلب توريد 📋', 'warning');
+          return;
+        }
+
+        setShowSupplyRequestModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    activeCart,
+    toast,
+    showCheckoutModal,
+    showCartsModal,
+    showEditInvoiceModal,
+    showAddProductModal,
+    showLaborModal,
+    showSupplyRequestModal,
+  ]);
 
   // Determine if we are in offer mode (either from Offers section or selected from customerType dropdown)
   const isOfferMode = mode === 'offer' || activeCart.customerType === 'offer';
@@ -932,6 +978,20 @@ function isPriceLockedOrCustom(item) {
         customers={customers}
         onConfirmCheckout={handleConfirmCheckout}
         processing={processingAction}
+      />
+
+      {/* نافذة تحويل إلى فاتورة طلب توريد (Ctrl + I) */}
+      <PosSupplyRequestModal
+        isOpen={showSupplyRequestModal}
+        onClose={() => setShowSupplyRequestModal(false)}
+        activeCart={activeCart}
+        cashierEmail={cashierEmail}
+        onSuccess={(receiptData, { shouldPrint } = {}) => {
+          closeActiveCartAfterPayment();
+          if (shouldPrint && receiptData) {
+            setLastCompletedSale(receiptData);
+          }
+        }}
       />
 
       {/* نافذة طباعة الوصل / عرض السعر النهائي */}

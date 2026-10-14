@@ -27,10 +27,13 @@ export default function PrintableReportDocument({
   userName = 'المحاسب المسؤول',
   onClose = null,
   detailedInvoices = [],
+  expensesBreakdown = [],
+  detailedExpenses = [],
 }) {
   const documentRef = useRef(null);
   const [downloading, setDownloading] = useState(false);
   const [includeDetailedPages, setIncludeDetailedPages] = useState(true);
+  const [includeExpensesSection, setIncludeExpensesSection] = useState(true);
 
   const logoUrl = storeSettings?.logoUrl || defaultLogo;
   const rawStoreName = storeSettings?.storeName || 'المنطقة الآمنة';
@@ -154,6 +157,18 @@ export default function PrintableReportDocument({
                   className="rounded accent-indigo-600 cursor-pointer"
                 />
                 <span>تضمين صفحات الفواتير ({detailedInvoices.length})</span>
+              </label>
+            )}
+
+            {detailedExpenses && detailedExpenses.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-rose-200 font-bold cursor-pointer select-none bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-750 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={includeExpensesSection}
+                  onChange={(e) => setIncludeExpensesSection(e.target.checked)}
+                  className="rounded accent-rose-500 cursor-pointer"
+                />
+                <span>تضمين توضيح المصاريف ({detailedExpenses.length})</span>
               </label>
             )}
 
@@ -385,6 +400,118 @@ export default function PrintableReportDocument({
                 )}
               </table>
             </div>
+
+            {/* قسم توضيح وتوزيع المصاريف التشغيلية المنصرفة */}
+            {includeExpensesSection && (expensesBreakdown.length > 0 || (detailedExpenses && detailedExpenses.length > 0)) && (
+              <div className="mt-5 pt-3 border-t-2 border-slate-800 break-inside-avoid space-y-3">
+                <div className="flex items-center justify-between bg-rose-50 border border-rose-200 p-2.5 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+                    <h3 className="text-xs sm:text-sm font-black text-rose-950">
+                      توضيح وتوزيع المصاريف التشغيلية المنصرفة
+                    </h3>
+                  </div>
+                  <span className="text-xs font-mono font-black text-rose-800">
+                    إجمالي المصاريف: {formatIQD(detailedExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0))} د.ع
+                  </span>
+                </div>
+
+                {/* جدول توزيع المصاريف حسب الأبواب والتصنيفات */}
+                {expensesBreakdown && expensesBreakdown.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-800 text-white">
+                          <th className="py-1.5 px-2 border border-slate-700 w-10 text-center text-[10px]">ت</th>
+                          <th className="py-1.5 px-2 border border-slate-700 text-[10px]">باب / تصنيف المصروف</th>
+                          <th className="py-1.5 px-2 border border-slate-700 text-center w-24 text-[10px]">عدد القيود</th>
+                          <th className="py-1.5 px-2 border border-slate-700 text-left w-32 text-[10px]">إجمالي المبلغ</th>
+                          <th className="py-1.5 px-2 border border-slate-700 text-center w-24 text-[10px]">النسبة</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {expensesBreakdown.map((catItem, cIdx) => (
+                          <tr key={cIdx} className={cIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                            <td className="py-1.5 px-2 text-center font-bold text-slate-500 font-mono border border-slate-200 text-[10px]">
+                              {cIdx + 1}
+                            </td>
+                            <td className="py-1.5 px-2 font-bold text-slate-900 border border-slate-200 text-[11px]">
+                              {catItem.category}
+                            </td>
+                            <td className="py-1.5 px-2 text-center font-mono text-slate-700 border border-slate-200 text-[11px]">
+                              {catItem.count} قيد
+                            </td>
+                            <td className="py-1.5 px-2 text-left font-mono font-bold text-rose-700 border border-slate-200 text-[11px]">
+                              {formatIQD(catItem.totalAmount)} د.ع
+                            </td>
+                            <td className="py-1.5 px-2 text-center font-mono font-bold text-slate-700 border border-slate-200 text-[11px]">
+                              {catItem.percentage}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* جدول كشف بنود المصاريف المنصرفة التفصيلي */}
+                {detailedExpenses && detailedExpenses.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right border-collapse text-[10px]">
+                      <thead>
+                        <tr className="bg-slate-700 text-white">
+                          <th className="py-1 px-2 border border-slate-600 text-center w-8">ت</th>
+                          <th className="py-1 px-2 border border-slate-600 w-20">التاريخ</th>
+                          <th className="py-1 px-2 border border-slate-600">بند / عنوان المصروف</th>
+                          <th className="py-1 px-2 border border-slate-600 w-24 text-center">التصنيف</th>
+                          <th className="py-1 px-2 border border-slate-600 w-28 text-left">المبلغ</th>
+                          <th className="py-1 px-2 border border-slate-600 w-24">المسؤول</th>
+                          <th className="py-1 px-2 border border-slate-600">ملاحظات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {detailedExpenses.map((exp, eIdx) => (
+                          <tr key={eIdx} className={eIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                            <td className="py-1 px-2 text-center font-bold text-slate-400 font-mono border border-slate-200">
+                              {eIdx + 1}
+                            </td>
+                            <td className="py-1 px-2 font-mono text-slate-600 border border-slate-200">
+                              {(exp.date || exp.createdAt || '').slice(0, 10)}
+                            </td>
+                            <td className="py-1 px-2 font-bold text-slate-900 border border-slate-200">
+                              {exp.title}
+                            </td>
+                            <td className="py-1 px-2 text-center text-slate-700 border border-slate-200">
+                              {exp.category || 'عام'}
+                            </td>
+                            <td className="py-1 px-2 text-left font-mono font-bold text-rose-700 border border-slate-200">
+                              {formatIQD(exp.amount)} د.ع
+                            </td>
+                            <td className="py-1 px-2 text-slate-700 border border-slate-200">
+                              {exp.buyerName || '—'}
+                            </td>
+                            <td className="py-1 px-2 text-slate-500 border border-slate-200">
+                              {exp.notes || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-100 font-bold text-slate-900">
+                          <td colSpan={4} className="py-1 px-2 text-right border border-slate-200">
+                            مجموع بنود المصاريف ({detailedExpenses.length} قيد)
+                          </td>
+                          <td className="py-1 px-2 text-left font-mono font-black text-rose-700 border border-slate-200">
+                            {formatIQD(detailedExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0))} د.ع
+                          </td>
+                          <td colSpan={2} className="border border-slate-200"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* خانات الاعتماد تظهر هنا إذا لم تكن هناك صفحات تفصيلية تابعة */}
             {!(includeDetailedPages && detailedInvoices && detailedInvoices.length > 0) && renderSignaturesFooter()}

@@ -194,6 +194,23 @@ export async function deleteDraftPurchase(draftId) {
 }
 
 /**
+ * تحديث اسم المورد ورقم الهاتف في مسودة فاتورة شراء
+ */
+export async function updateDraftPurchaseSupplier(draftId, supplierName = '', supplierPhone = '') {
+  if (!draftId) return;
+  const cleanName = (supplierName || '').trim();
+  const draftRef = doc(db, DRAFT_PURCHASES_COLLECTION, draftId);
+  const updates = {
+    supplierName: cleanName,
+    updatedAt: new Date().toISOString()
+  };
+  if (supplierPhone !== undefined && supplierPhone !== null) {
+    updates.supplierPhone = (supplierPhone || '').trim();
+  }
+  await updateDoc(draftRef, updates);
+}
+
+/**
  * تسجيل فاتورة شراء جديدة وتوريد المخزون
  */
 export async function createPurchaseInvoice({

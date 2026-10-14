@@ -3,6 +3,7 @@ import PurchaseShippingModal from './PurchaseShippingModal';
 import PurchaseCheckoutModal from './PurchaseCheckoutModal';
 import PurchaseProductsDrawer from './PurchaseProductsDrawer';
 import NewProductQuickModal from './NewProductQuickModal';
+import InvoiceReceipt from '../InvoiceReceipt';
 import { compressImageToSafeDataUrl } from '../../services/storageService';
 
 function formatIQD(num) {
@@ -59,6 +60,7 @@ export default function PurchaseRegisterScreen({
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showProductsDrawer, setShowProductsDrawer] = useState(false);
   const [showNewProductModal, setShowNewProductModal] = useState(false);
+  const [showPrintReceipt, setShowPrintReceipt] = useState(false);
 
   // Search input & ref
   const [searchBarcodeOrName, setSearchBarcodeOrName] = useState('');
@@ -982,6 +984,18 @@ export default function PurchaseRegisterScreen({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Print Draft */}
+              <button
+                type="button"
+                onClick={() => setShowPrintReceipt(true)}
+                disabled={cartItems.length === 0}
+                className="px-3.5 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-300 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                title="معاينة وطباعة الفاتورة الحالية"
+              >
+                <span>🖨️</span>
+                <span>طباعة</span>
+              </button>
+
               {/* Save Draft F3 */}
               <button
                 type="button"
@@ -1080,6 +1094,33 @@ export default function PurchaseRegisterScreen({
         onClose={() => setShowNewProductModal(false)}
         onAddProduct={handleAddNewProductItem}
       />
+
+      {/* Printable Invoice Receipt Modal */}
+      {showPrintReceipt && (
+        <InvoiceReceipt
+          sale={{
+            id: currentDraftId || editingInvoice?.id || `draft_${Date.now()}`,
+            invoiceNumber: invoiceNumber || 'مسودة',
+            isSupplyRequest: true,
+            supplierName: supplierName || 'بدون اسم مورد',
+            supplierPhone: supplierPhone || '',
+            customerName: supplierName || 'بدون اسم مورد',
+            customerPhone: supplierPhone || '',
+            items: cartItems.map((it) => ({
+              ...it,
+              unitPrice: Number(it.effectiveCostPrice || it.costPrice || 0),
+              lineTotal: Number(it.effectiveCostPrice || it.costPrice || 0) * Number(it.quantity || 1),
+            })),
+            total: grandTotal,
+            subtotal: itemsTotal,
+            discount: 0,
+            cashierEmail: user?.displayName || user?.email?.split('@')[0] || 'المسؤول',
+            notes: notes || '',
+            createdAt: purchaseDate ? new Date(purchaseDate) : new Date(),
+          }}
+          onClose={() => setShowPrintReceipt(false)}
+        />
+      )}
     </div>
   );
 }

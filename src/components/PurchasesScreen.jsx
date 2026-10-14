@@ -8,6 +8,7 @@ import {
   deletePurchaseInvoice,
   saveDraftPurchase,
   deleteDraftPurchase,
+  updateDraftPurchaseSupplier,
   syncInvoicePricesToInventory,
 } from '../services/purchasesService';
 import { compressImageToSafeDataUrl } from '../services/storageService';
@@ -23,6 +24,7 @@ import PurchasesArchiveTab from './purchases/PurchasesArchiveTab';
 import DebtPaymentsTab from './purchases/DebtPaymentsTab';
 import DebtPaymentModal from './purchases/DebtPaymentModal';
 import OpeningDebtModal from './purchases/OpeningDebtModal';
+import InvoiceReceipt from './InvoiceReceipt';
 
 /** Convert base64 PDF Data URL to a Blob Object URL */
 function getPdfBlobUrl(base64OrUrl) {
@@ -69,6 +71,7 @@ export default function PurchasesScreen({ products = [], user }) {
   const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState(null);
   const [selectedSupplierForPayment, setSelectedSupplierForPayment] = useState(null);
   const [showOpeningDebtModal, setShowOpeningDebtModal] = useState(false);
+  const [printingDraftInvoice, setPrintingDraftInvoice] = useState(null);
 
   // Form State for Purchase Register Screen
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -155,6 +158,16 @@ export default function PurchasesScreen({ products = [], user }) {
         }
       }
     );
+  };
+
+  // Handler: Quick Update Draft Supplier Name
+  const handleUpdateDraftSupplierName = async (draftId, supplierName) => {
+    try {
+      await updateDraftPurchaseSupplier(draftId, supplierName);
+      toast('تم تحديث اسم المورد في المسودة بنجاح! ✏️🏢', 'success');
+    } catch (err) {
+      toast(`فشل تحديث اسم المورد: ${err.message}`, 'error');
+    }
   };
 
   // Handler: Delete Purchase Invoice (with inventory reversal)
@@ -470,6 +483,8 @@ export default function PurchasesScreen({ products = [], user }) {
           onLoadDraft={handleLoadDraft}
           onDeleteDraft={handleDeleteDraft}
           onNewInvoice={handleOpenRegisterNew}
+          onUpdateDraftSupplierName={handleUpdateDraftSupplierName}
+          onPrintDraft={(draft) => setPrintingDraftInvoice(draft)}
         />
       )}
 
@@ -603,6 +618,33 @@ export default function PurchasesScreen({ products = [], user }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* نافذة معاينة وطباعة مسودة الشراء / طلب التوريد */}
+      {printingDraftInvoice && (
+        <InvoiceReceipt
+          sale={{
+            id: printingDraftInvoice.id,
+            invoiceNumber: printingDraftInvoice.invoiceNumber || (printingDraftInvoice.id ? String(printingDraftInvoice.id).slice(0, 8) : 'مسودة'),
+            isSupplyRequest: true,
+            supplierName: printingDraftInvoice.supplierName,
+            supplierPhone: printingDraftInvoice.supplierPhone,
+            customerName: printingDraftInvoice.supplierName,
+            customerPhone: printingDraftInvoice.supplierPhone,
+            items: (printingDraftInvoice.items || []).map((it) => ({
+              ...it,
+              unitPrice: Number(it.costPrice || it.unitPrice || 0),
+              lineTotal: Number(it.costPrice || it.unitPrice || 0) * Number(it.quantity || 1),
+            })),
+            total: Number(printingDraftInvoice.totalAmount || 0),
+            subtotal: Number(printingDraftInvoice.totalAmount || 0),
+            discount: 0,
+            cashierEmail: printingDraftInvoice.createdBy,
+            notes: printingDraftInvoice.notes,
+            createdAt: printingDraftInvoice.date || printingDraftInvoice.createdAt || new Date(),
+          }}
+          onClose={() => setPrintingDraftInvoice(null)}
+        />
       )}
     </div>
   );

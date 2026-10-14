@@ -82,6 +82,71 @@ export function calculateRetailPrice(wholesalePrice, profitMargin) {
   return Math.round((wp * (1 + margin / 100)) * 100) / 100;
 }
 
+/** يتحقق مما إذا كان نوع/فئة الصنف ينتمي للكيبلات ومستلزماتها */
+export function isCableCategory(type) {
+  if (!type) return false;
+  const t = String(type).trim().toLowerCase();
+  return (
+    t === 'cables' ||
+    t === 'cables & connectors' ||
+    t.includes('cable') ||
+    t.includes('كبل') ||
+    t.includes('كيبل') ||
+    t.includes('سلك') ||
+    t.includes('connectors')
+  );
+}
+
+/**
+ * يتحقق مما إذا كان المنتج ينتمي للكيبلات (حسب الفئة، الاسم، أو وضع البيع بالمتر/اللفة)
+ * @param {object} product
+ * @returns {boolean}
+ */
+export function isCableProduct(product) {
+  if (!product) return false;
+  if (product.sellMode === 'meter' || product.sellMode === 'roll') return true;
+  if (isCableCategory(product.cameraType) || isCableCategory(product.category)) return true;
+  const name = String(product.name || '').toLowerCase();
+  if (name.includes('كيبل') || name.includes('كبل') || name.includes('سلك') || name.includes('cable')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * معادلة رفع الأسعار بنسبة مئوية والتقريب لأعلى مضاعف (افتراضياً 20% والتقريب لأعلى 5,000 للدينار العراقي أو 5 للدولار).
+ * تستثني الكيبلات تماماً بحيث يبقى سعرها دون أي تغيير.
+ * مثال: سعر 35,000 بعد زيادة 20% يصبح 42,000، فيُقرّب لأعلى 5,000 ليصبح 45,000.
+ *
+ * @param {number} price السعر الحالي
+ * @param {boolean|object} productOrIsCable كائن المنتج أو قيمة منطقية تحدد ما إذا كان كيبل
+ * @param {number} percentage نسبة الزيادة المئوية (افتراضياً 20)
+ * @param {number|null} roundUpTo مضاعف التقريب (افتراضياً تلقائي: 5,000 إذا كان السعر >= 1000، و 5 إذا كان < 1000)
+ * @returns {number} السعر الجديد بعد الزيادة والتقريب
+ */
+export function calculateIncreasedPrice(price, productOrIsCable = false, percentage = 20, roundUpTo = null) {
+  const p = Number(price) || 0;
+  if (p <= 0) return 0;
+
+  const isCable = typeof productOrIsCable === 'boolean'
+    ? productOrIsCable
+    : isCableProduct(productOrIsCable);
+
+  // الكيبلات تبقى أسعارها كما هي دون تعديل
+  if (isCable) {
+    return p;
+  }
+
+  // تحديد خطوة التقريب: إذا لم تُحدد صراحة، تكون 5,000 للدينار (>= 1000) أو 5 للدولار (< 1000)
+  const step = roundUpTo !== null && roundUpTo !== undefined ? roundUpTo : (p >= 1000 ? 5000 : 5);
+
+  // حساب السعر بعد الزيادة
+  const increased = p * (1 + percentage / 100);
+
+  // التقريب دائماً لأعلى مضاعف للخطوة
+  return Math.ceil(increased / step) * step;
+}
+
 /**
  * يوحّد شكل المنتج القادم من Firestore للبنية الجديدة.
  * لو المنتج قديم (فيه quantity/location بدل storeQty/warehouseQty)،

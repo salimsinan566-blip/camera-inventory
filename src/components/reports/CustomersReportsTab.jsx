@@ -75,6 +75,40 @@ function isSaleMatchedToCustomer(sale, customer) {
   return false;
 }
 
+function isIncomeMatchedToCustomer(inc, customer) {
+  if (!inc || !customer) return false;
+  if (inc.customerId && customer.id && String(inc.customerId) === String(customer.id)) {
+    return true;
+  }
+  const iName = (inc.customerName || inc.payerName || '').trim().toLowerCase();
+  const cName = (customer.name || '').trim().toLowerCase();
+  if (iName && cName && (iName === cName || normalizeArabic(iName) === normalizeArabic(cName))) {
+    return true;
+  }
+  return false;
+}
+
+function formatDebtDuration(days) {
+  if (days === undefined || days === null || isNaN(days)) return '—';
+  if (days <= 0) return 'اليوم';
+  if (days === 1) return 'منذ يوم واحد';
+  if (days === 2) return 'منذ يومين';
+  if (days <= 10) return `منذ ${days} أيام`;
+  if (days < 30) return `منذ ${days} يوماً`;
+  const months = Math.floor(days / 30);
+  const remDays = days % 30;
+  if (months === 1) {
+    return remDays > 4 ? `شهر و ${remDays} يوم` : 'منذ شهر';
+  }
+  if (months === 2) {
+    return remDays > 4 ? `شهرين و ${remDays} يوم` : 'منذ شهرين';
+  }
+  if (months < 12) {
+    return remDays > 4 ? `${months} أشهر و ${remDays} يوم` : `منذ ${months} أشهر`;
+  }
+  return `منذ أكثر من سنة (${days} يوم)`;
+}
+
 function getSaleRemainingDebt(s) {
   if (!s) return 0;
   const isDebt = s.invoiceType === 'debt' || 
@@ -207,8 +241,12 @@ export default function CustomersReportsTab({
       let totalDebt = 0;
       let invoicesCount = 0;
       let unpaidInvoicesCount = 0;
+      let oldestUnpaidTimestamp = null;
+      let latestPaymentTimestamp = null;
+      let latestPaymentAmount = 0;
 
       (sales || []).forEach((sale) => {
+        if (sale.status === 'deleted' || sale.status === 'draft') return;
         if (isSaleMatchedToCustomer(sale, c)) {
           const total = Number(sale.total !== undefined ? sale.total : (sale.totalAmount || 0));
           const isDebt = sale.invoiceType === 'debt' || 
@@ -219,6 +257,8 @@ export default function CustomersReportsTab({
                          sale.paymentStatus === 'partial';
           totalPurchases += total;
           invoicesCount += 1;
+
+          const saleTime = toTimestampNumber(sale.date || sale.createdAt);
 
           if (isDebt) {
             const paymentsSum = Array.isArray(sale.payments) 
@@ -234,12 +274,68 @@ export default function CustomersReportsTab({
             totalDebt += remaining;
             if (remaining > 0) {
               unpaidInvoicesCount += 1;
+              if (saleTime > 0) {
+                if (!oldestUnpaidTimestamp || saleTime < oldestUnpaidTimestamp) {
+                  oldestUnpaidTimestamp = saleTime;
+                }
+              }
+            }
+
+            // Track latest payment on debt sale
+            if (Array.isArray(sale.payments) && sale.payments.length > 0) {
+              sale.payments.forEach((p) => {
+                const pAmt = Number(p.amount) || 0;
+                if (pAmt > 0) {
+                  const pTime = toTimestampNumber(p.date || p.createdAt || sale.date || sale.createdAt);
+                  if (pTime > 0 && (!latestPaymentTimestamp || pTime > latestPaymentTimestamp)) {
+                    latestPaymentTimestamp = pTime;
+                    latestPaymentAmount = pAmt;
+                  }
+                }
+              });
+            } else if (Number(sale.paidAmount || 0) > 0) {
+              // Initial down payment
+              if (saleTime > 0 && (!latestPaymentTimestamp || saleTime > latestPaymentTimestamp)) {
+                latestPaymentTimestamp = saleTime;
+                latestPaymentAmount = Number(sale.paidAmount);
+              }
             }
           } else {
             totalPaid += total;
           }
         }
       });
+
+      // Also check incomes (سندات القبض المباشرة) matching this customer
+      (incomes || []).forEach((inc) => {
+        if (isIncomeMatchedToCustomer(inc, c)) {
+          const amt = Number(inc.amount) || 0;
+          if (amt > 0) {
+            const incTime = toTimestampNumber(inc.date || inc.createdAt);
+            if (incTime > 0 && (!latestPaymentTimestamp || incTime > latestPaymentTimestamp)) {
+              latestPaymentTimestamp = incTime;
+              latestPaymentAmount = amt;
+            }
+          }
+        }
+      });
+
+      // Fallback for oldest debt timestamp if debt exists but no invoice timestamp
+      if (totalDebt > 0 && !oldestUnpaidTimestamp && c.createdAt) {
+        oldestUnpaidTimestamp = toTimestampNumber(c.createdAt);
+      }
+
+      let debtDays = 0;
+      if (totalDebt > 0 && oldestUnpaidTimestamp) {
+        const diffMs = Math.max(0, Date.now() - oldestUnpaidTimestamp);
+        debtDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      }
+
+      const debtDurationText = totalDebt > 0 ? formatDebtDuration(debtDays) : '—';
+      const lastPaymentDate = latestPaymentTimestamp ? toIsoDateStr(new Date(latestPaymentTimestamp)) : null;
+      const daysSinceLastPayment = latestPaymentTimestamp
+        ? Math.max(0, Math.floor((Date.now() - latestPaymentTimestamp) / (1000 * 60 * 60 * 24)))
+        : null;
 
       return {
         ...c,
@@ -252,9 +348,16 @@ export default function CustomersReportsTab({
         totalDebt,
         invoicesCount,
         unpaidInvoicesCount,
+        oldestUnpaidTimestamp,
+        debtDays,
+        debtDurationText,
+        latestPaymentTimestamp,
+        lastPaymentDate,
+        latestPaymentAmount,
+        daysSinceLastPayment,
       };
     });
-  }, [customers, sales]);
+  }, [customers, sales, incomes]);
 
   // Unique Customer Names for Dropdowns
   const allCustomerNames = useMemo(() => {
@@ -782,19 +885,28 @@ export default function CustomersReportsTab({
         ],
         columns: [
           { header: 'اسم الزبون / العميل', key: 'name', isBold: true },
-          { 
-            header: 'التصنيف', 
-            key: 'customerType', 
-            align: 'center',
-            render: (v) => v === 'vip' ? 'عميل مميز' : v === 'client' ? 'عميل' : 'زبون'
-          },
           { header: 'رقم الهاتف', key: 'phone1', isMono: true },
           { header: 'الفواتير المعلقة', key: 'unpaidInvoicesCount', isMono: true, align: 'center' },
           { 
-            header: 'إجمالي المشتريات', 
-            key: 'totalPurchases', 
+            header: 'صافي الدين المتبقي', 
+            key: 'totalDebt', 
             isMono: true, 
+            isBold: true,
             render: (v) => `${formatIQD(v)} د.ع` 
+          },
+          {
+            header: 'مدة الدين / آخر تسديد',
+            key: 'debtAgeInfo',
+            render: (_, row) => (
+              <div>
+                <span style={{ fontWeight: 'bold', display: 'block' }}>
+                  {row.debtDurationText || '—'} {row.debtDays > 0 ? `(${row.debtDays} يوم)` : ''}
+                </span>
+                <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>
+                  آخر تسديد: {row.lastPaymentDate || 'لم يسدد بعد'}
+                </span>
+              </div>
+            )
           },
           { 
             header: 'إجمالي المسدد', 
@@ -803,32 +915,20 @@ export default function CustomersReportsTab({
             render: (v) => `${formatIQD(v)} د.ع` 
           },
           { 
-            header: 'صافي الدين المتبقي', 
-            key: 'totalDebt', 
+            header: 'إجمالي المشتريات', 
+            key: 'totalPurchases', 
             isMono: true, 
-            isBold: true,
             render: (v) => `${formatIQD(v)} د.ع` 
-          },
-          { 
-            header: 'نسبة السداد', 
-            key: 'totalDebt', 
-            align: 'center',
-            isMono: true,
-            render: (v, row) => {
-              const tot = Number(row.totalPurchases || 0);
-              const pd = Number(row.totalPaid || 0);
-              if (tot <= 0) return '0%';
-              return `${Math.round((pd / tot) * 100)}%`;
-            } 
           },
         ],
         data: filteredDebtsData,
         totals: {
           name: 'المجموع الإجمالي',
           unpaidInvoicesCount: filteredDebtsData.reduce((s, c) => s + (c.unpaidInvoicesCount || 0), 0),
-          totalPurchases: `${formatIQD(totalPurchases)} د.ع`,
-          totalPaid: `${formatIQD(totalPaid)} د.ع`,
           totalDebt: `${formatIQD(totalDebt)} د.ع`,
+          debtAgeInfo: '',
+          totalPaid: `${formatIQD(totalPaid)} د.ع`,
+          totalPurchases: `${formatIQD(totalPurchases)} د.ع`,
         },
       });
     } else if (selectedReport === 'purchases') {
@@ -1960,29 +2060,24 @@ export default function CustomersReportsTab({
                       <tr className="bg-slate-900 text-white">
                         <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
                         <th className="py-2.5 px-3 font-bold">اسم الزبون / العميل</th>
-                        <th className="py-2.5 px-3 font-bold text-center">نوع الحساب</th>
                         <th className="py-2.5 px-3 font-bold">رقم الهاتف</th>
                         <th className="py-2.5 px-3 font-bold text-center">الفواتير المعلقة</th>
-                        <th className="py-2.5 px-3 font-bold text-left">إجمالي المشتريات</th>
-                        <th className="py-2.5 px-3 font-bold text-left">إجمالي المسدد</th>
                         <th className="py-2.5 px-3 font-bold text-left">صافي الدين المتبقي</th>
-                        <th className="py-2.5 px-3 font-bold text-center">نسبة السداد</th>
+                        <th className="py-2.5 px-3 font-bold">مدة الدين / آخر تسديد</th>
+                        <th className="py-2.5 px-3 font-bold text-left">إجمالي المسدد</th>
+                        <th className="py-2.5 px-3 font-bold text-left">إجمالي المشتريات</th>
                         <th className="py-2.5 px-3 font-bold text-center">إجراءات</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {filteredDebtsData.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="py-12 text-center text-slate-400 font-medium">
+                          <td colSpan={9} className="py-12 text-center text-slate-400 font-medium">
                             🎉 لا توجد ديون معلقة بذمة أي زبون أو عميل! كافة الحسابات مسددة بالكامل.
                           </td>
                         </tr>
                       ) : (
                         filteredDebtsData.map((c, idx) => {
-                          const tot = Number(c.totalPurchases || 0);
-                          const pd = Number(c.totalPaid || 0);
-                          const pct = tot > 0 ? Math.round((pd / tot) * 100) : 0;
-
                           return (
                             <tr key={c.id || idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
                               <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
@@ -1991,46 +2086,54 @@ export default function CustomersReportsTab({
                               <td className="py-2.5 px-3 font-black text-slate-900 text-xs sm:text-sm">
                                 {c.name}
                               </td>
-                              <td className="py-2.5 px-3 text-center">
-                                {c.customerType === 'vip' ? (
-                                  <span className="bg-amber-50 border border-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded text-[10px]">
-                                    عميل مميز ⭐
-                                  </span>
-                                ) : c.customerType === 'client' ? (
-                                  <span className="bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold px-2 py-0.5 rounded text-[10px]">
-                                    عميل 🏢
-                                  </span>
-                                ) : (
-                                  <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded text-[10px]">
-                                    زبون 👤
-                                  </span>
-                                )}
-                              </td>
                               <td className="py-2.5 px-3 font-mono font-bold text-slate-700" dir="ltr">
                                 {c.phone1 || '—'}
                               </td>
                               <td className="py-2.5 px-3 text-center font-mono font-black text-rose-700">
                                 {c.unpaidInvoicesCount || 1}
                               </td>
-                              <td className="py-2.5 px-3 text-left font-mono font-bold text-slate-800">
-                                {formatIQD(c.totalPurchases)} د.ع
+                              <td className="py-2.5 px-3 text-left font-mono font-black text-rose-700 text-xs sm:text-sm">
+                                {formatIQD(c.totalDebt)} د.ع
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <span
+                                    className={`w-2 h-2 rounded-full shrink-0 ${
+                                      c.debtDays >= 60
+                                        ? 'bg-rose-500 animate-pulse'
+                                        : c.debtDays >= 30
+                                        ? 'bg-amber-500'
+                                        : 'bg-emerald-500'
+                                    }`}
+                                    title={c.debtDays >= 60 ? 'متأخر أكثر من شهرين' : c.debtDays >= 30 ? 'بين شهر وشهرين' : 'أقل من 30 يوماً'}
+                                  />
+                                  <span className="font-black text-slate-800 text-xs">
+                                    {c.debtDurationText}
+                                  </span>
+                                  {c.debtDays > 0 && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ({c.debtDays} يوم)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                                  <span className="text-slate-400 shrink-0">آخر تسديد:</span>
+                                  {c.lastPaymentDate ? (
+                                    <span className="font-mono font-bold text-slate-700">
+                                      {c.lastPaymentDate}
+                                    </span>
+                                  ) : (
+                                    <span className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">
+                                      لم يسدد بعد
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-2.5 px-3 text-left font-mono font-bold text-emerald-700">
                                 {formatIQD(c.totalPaid)} د.ع
                               </td>
-                              <td className="py-2.5 px-3 text-left font-mono font-black text-rose-700 text-xs sm:text-sm">
-                                {formatIQD(c.totalDebt)} د.ع
-                              </td>
-                              <td className="py-2.5 px-3 text-center">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  <span className="font-mono text-[11px] font-bold text-slate-600">{pct}%</span>
-                                  <div className="w-12 bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                      className="bg-emerald-500 h-1.5 rounded-full"
-                                      style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                                    ></div>
-                                  </div>
-                                </div>
+                              <td className="py-2.5 px-3 text-left font-mono font-bold text-slate-800">
+                                {formatIQD(c.totalPurchases)} د.ع
                               </td>
                               <td className="py-2.5 px-3 text-center">
                                 <button
@@ -2050,22 +2153,23 @@ export default function CustomersReportsTab({
                     {filteredDebtsData.length > 0 && (
                       <tfoot>
                         <tr className="bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
-                          <td colSpan={4} className="py-3 px-3 text-right">
+                          <td colSpan={3} className="py-3 px-3 text-right">
                             الإجمالي ({filteredDebtsData.length} شخص مدين)
                           </td>
                           <td className="py-3 px-3 text-center font-mono text-rose-700">
                             {filteredDebtsData.reduce((s, c) => s + (c.unpaidInvoicesCount || 0), 0)}
                           </td>
-                          <td className="py-3 px-3 text-left font-mono">
-                            {formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalPurchases || 0), 0))} د.ع
-                          </td>
-                          <td className="py-3 px-3 text-left font-mono text-emerald-700">
-                            {formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalPaid || 0), 0))} د.ع
-                          </td>
                           <td className="py-3 px-3 text-left font-mono text-rose-700">
                             {formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalDebt || 0), 0))} د.ع
                           </td>
-                          <td colSpan={2}></td>
+                          <td></td>
+                          <td className="py-3 px-3 text-left font-mono text-emerald-700">
+                            {formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalPaid || 0), 0))} د.ع
+                          </td>
+                          <td className="py-3 px-3 text-left font-mono">
+                            {formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalPurchases || 0), 0))} د.ع
+                          </td>
+                          <td></td>
                         </tr>
                       </tfoot>
                     )}

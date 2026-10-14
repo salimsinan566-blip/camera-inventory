@@ -12,7 +12,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { LOCATIONS } from '../models/product';
+import { LOCATIONS, isCableProduct, calculateIncreasedPrice } from '../models/product';
 import { logInventoryChange, LOG_TYPES } from './inventoryLogsService';
 import { moveToTrash } from './trashBinService';
 import { 
@@ -376,3 +376,77 @@ export async function renameCategoryInProducts(oldCategoryName, newCategoryName)
   await batch.commit();
   return docMap.size;
 }
+
+/**
+ * تطبيق معادلة رفع الأسعار (20% والتقريب لأعلى 5 مع استثناء الكيبلات تماماً) على المنتجات دفعة واحدة
+ *
+ * @param {Object} options
+ * @param {number} [options.percentage=20] نسبة الزيادة المئوية
+ * @param {number} [options.roundUpTo=5] مضاعف التقريب لأعلى (مثلاً 5)
+ * @param {string[]} [options.priceFields=['retailPrice']] مصفوفة الحقول المراد تحديثها (مثل retailPrice, clientPrice, vipPrice)
+ * @param {string} [options.userEmail=''] بريد المستخدم المنفذ
+ * @returns {Promise<{ updatedCount: number, skippedCablesCount: number, totalProcessed: number }>}
+ */
+export async function bulkIncreasePrices({
+  percentage = 20,
+  roundUpTo = 5,
+  priceFields = ['retailPrice'],
+  userEmail = '',
+} = {}) {
+  const snap = await getDocs(collection(db, PRODUCTS_COLLECTION));
+  let updatedCount = 0;
+  let skippedCablesCount = 0;
+  const updates = [];
+
+  snap.docs.forEach((d) => {
+    const prod = { id: d.id, ...d.data() };
+    if (isCableProduct(prod)) {
+      skippedCablesCount++;
+      return;
+    }
+
+    const changedFields = {};
+    let hasChange = false;
+
+    priceFields.forEach((field) => {
+      const currentVal = Number(prod[field]) || 0;
+      if (currentVal > 0) {
+        const newVal = calculateIncreasedPrice(currentVal, false, percentage, roundUpTo);
+        if (newVal !== currentVal) {
+          changedFields[field] = newVal;
+          hasChange = true;
+        }
+      }
+    });
+
+    if (hasChange) {
+      if (changedFields.retailPrice !== undefined) {
+        const wp = Number(prod.wholesalePrice) || 0;
+        if (wp > 0) {
+          changedFields.profitMargin = Math.round(((changedFields.retailPrice - wp) / wp) * 100 * 10) / 10;
+        }
+      }
+      changedFields.updatedAt = serverTimestamp();
+      updates.push({ ref: d.ref, data: changedFields });
+      updatedCount++;
+    }
+  });
+
+  // تنفيذ التحديثات على دفعات بحد أقصى 400 لكل دفعة
+  const BATCH_SIZE = 400;
+  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+    const batch = writeBatch(db);
+    const chunk = updates.slice(i, i + BATCH_SIZE);
+    chunk.forEach((item) => {
+      batch.update(item.ref, item.data);
+    });
+    await batch.commit();
+  }
+
+  return {
+    updatedCount,
+    skippedCablesCount,
+    totalProcessed: snap.size,
+  };
+}
+

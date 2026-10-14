@@ -11,6 +11,7 @@ import CustomerPaymentModal from './CustomerPaymentModal';
 import IncomeReportTab from './IncomeReportTab';
 import ProfitsReportTab from './ProfitsReportTab';
 import ComprehensiveFinancialReport from './ComprehensiveFinancialReport';
+import SalesProfitsReportsTab from './reports/SalesProfitsReportsTab';
 import { useDraftSales } from '../hooks/useDraftSales';
 import { useAuth } from '../hooks/useAuth';
 import { useUI } from '../contexts/UIContext';
@@ -282,6 +283,23 @@ export default function SalesReports({ onOpenDraft }) {
       {/* Upper Navigation Tabs */}
       <div className="flex border-b border-brand-200 mb-6 gap-2 bg-white px-4 pt-3 rounded-t-xl shadow-xs overflow-x-auto whitespace-nowrap scrollbar-none">
         <button
+          onClick={() => setActiveSubTab('summary-cards')}
+          className={`pb-3 px-4 font-bold text-sm border-b-2 transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+            activeSubTab === 'summary-cards'
+              ? 'border-emerald-600 text-emerald-800 font-black'
+              : 'border-transparent text-ink-500 hover:text-ink-900'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          كروت الأرباح والمبيعات
+          <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-black">
+            4 كروت
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('invoices')}
           className={`pb-3 px-4 font-bold text-sm border-b-2 transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
             activeSubTab === 'invoices'
@@ -360,6 +378,13 @@ export default function SalesReports({ onOpenDraft }) {
           </span>
         </button>
       </div>
+
+      {/* TAB 0: Summary 4 Cards (المبيعات والأرباح والتكاليف) */}
+      {activeSubTab === 'summary-cards' && (
+        <div className="pb-8">
+          <SalesProfitsReportsTab />
+        </div>
+      )}
 
       {/* TAB 1: General Invoices Ledger */}
       {activeSubTab === 'invoices' && (

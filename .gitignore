@@ -15,5 +15,6 @@ patch*.txt
 test_*.html
 net/
 
-.vercel
 .env*
+/backups/
+/reports/
