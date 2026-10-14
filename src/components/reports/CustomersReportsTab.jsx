@@ -109,6 +109,68 @@ function formatDebtDuration(days) {
   return `منذ أكثر من سنة (${days} يوم)`;
 }
 
+function getDebtAgeColorInfo(debtDays) {
+  const d = Number(debtDays) || 0;
+  if (d >= 60) {
+    // أحمر: مدة شهرين فما فوق
+    return {
+      category: 'red',
+      label: 'شهرين فما فوق',
+      dotColor: 'bg-rose-500 animate-pulse',
+      badgeClass: 'bg-rose-100 text-rose-800 border-rose-300 font-bold',
+      pdfBadgeStyle: {
+        backgroundColor: '#fee2e2',
+        color: '#b91c1c',
+        border: '1px solid #ef4444',
+        borderRadius: '4px',
+        padding: '2px 6px',
+        fontWeight: 'bold',
+        fontSize: '11px',
+        display: 'inline-block',
+      },
+      pdfDot: '🔴',
+    };
+  }
+  if (d >= 30) {
+    // برتقالي: أكثر من شهر إلى أقل من شهرين
+    return {
+      category: 'orange',
+      label: 'أكثر من شهر',
+      dotColor: 'bg-amber-500',
+      badgeClass: 'bg-amber-100 text-amber-900 border-amber-300 font-bold',
+      pdfBadgeStyle: {
+        backgroundColor: '#fef3c7',
+        color: '#b45309',
+        border: '1px solid #f59e0b',
+        borderRadius: '4px',
+        padding: '2px 6px',
+        fontWeight: 'bold',
+        fontSize: '11px',
+        display: 'inline-block',
+      },
+      pdfDot: '🟠',
+    };
+  }
+  // أخضر: أقل من شهر
+  return {
+    category: 'green',
+    label: 'أقل من شهر',
+    dotColor: 'bg-emerald-500',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
+    pdfBadgeStyle: {
+      backgroundColor: '#dcfce7',
+      color: '#15803d',
+      border: '1px solid #22c55e',
+      borderRadius: '4px',
+      padding: '2px 6px',
+      fontWeight: 'bold',
+      fontSize: '11px',
+      display: 'inline-block',
+    },
+    pdfDot: '🟢',
+  };
+}
+
 function getSaleRemainingDebt(s) {
   if (!s) return 0;
   const isDebt = s.invoiceType === 'debt' || 
@@ -168,6 +230,37 @@ export default function CustomersReportsTab({
   const [selectedCustomer, setSelectedCustomer] = useState('all');
   const [purchasesTypeFilter, setPurchasesTypeFilter] = useState('all'); // 'all' | 'debt' | 'cash'
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('all');
+
+  // Debts Report Specific Filters & Sorting (REP-CUS-03)
+  const [debtsSortBy, setDebtsSortBy] = useState('duration_desc'); // 'duration_desc' | 'duration_asc' | 'amount_desc' | 'amount_asc' | 'name_asc'
+  const [debtsStatusFilter, setDebtsStatusFilter] = useState('all'); // 'all' | 'active' | 'dead'
+
+  // Persistent Dead Debt Customer IDs (مربع دين ميت)
+  const [deadDebtCustomerIds, setDeadDebtCustomerIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('camera_inventory_dead_debt_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (e) {
+      return new Set();
+    }
+  });
+
+  const toggleDeadDebt = (idOrName) => {
+    if (!idOrName) return;
+    setDeadDebtCustomerIds((prev) => {
+      const next = new Set(prev);
+      const key = String(idOrName);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      try {
+        localStorage.setItem('camera_inventory_dead_debt_ids', JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+  };
 
   // Customer Account Statement Specific State (REP-CUS-02)
   const [statementCustomerName, setStatementCustomerName] = useState('');
@@ -638,10 +731,19 @@ export default function CustomersReportsTab({
 
   // Report 3: Debts (REP-CUS-03: ديون الزبائن والعملاء - كل من عليه فلوس)
   const filteredDebtsData = useMemo(() => {
-    return debtorCustomersList.filter((c) => {
+    const list = debtorCustomersList.map((c) => {
+      const isDeadDebt = deadDebtCustomerIds.has(String(c.id)) || deadDebtCustomerIds.has(String(c.name));
+      return {
+        ...c,
+        isDeadDebt,
+      };
+    }).filter((c) => {
       if (selectedCustomer !== 'all') {
         if (c.name.toLowerCase() !== selectedCustomer.toLowerCase().trim()) return false;
       }
+
+      if (debtsStatusFilter === 'active' && c.isDeadDebt) return false;
+      if (debtsStatusFilter === 'dead' && !c.isDeadDebt) return false;
 
       if (searchTerm.trim()) {
         const q = normalizeArabic(searchTerm);
@@ -655,7 +757,32 @@ export default function CustomersReportsTab({
       }
       return true;
     });
-  }, [debtorCustomersList, selectedCustomer, searchTerm]);
+
+    // فرز الديون حسب الفلتر المختار (الافتراضي: الأطول مدة أولاً)
+    return list.sort((a, b) => {
+      if (debtsSortBy === 'duration_desc') {
+        // الأطول مدة أولاً (الأقدم ديناً)
+        return (b.debtDays || 0) - (a.debtDays || 0);
+      }
+      if (debtsSortBy === 'duration_asc') {
+        // الأقصر مدة أولاً (الأحدث)
+        return (a.debtDays || 0) - (b.debtDays || 0);
+      }
+      if (debtsSortBy === 'amount_desc') {
+        // الأعلى ديناً أولاً
+        return (b.totalDebt || 0) - (a.totalDebt || 0);
+      }
+      if (debtsSortBy === 'amount_asc') {
+        // الأقل ديناً أولاً
+        return (a.totalDebt || 0) - (b.totalDebt || 0);
+      }
+      if (debtsSortBy === 'name_asc') {
+        // أبجدياً بالاسم
+        return (a.name || '').localeCompare(b.name || '', 'ar');
+      }
+      return (b.debtDays || 0) - (a.debtDays || 0);
+    });
+  }, [debtorCustomersList, selectedCustomer, searchTerm, debtsSortBy, debtsStatusFilter, deadDebtCustomerIds]);
 
   // Report 4: Purchases / Sales Invoices (REP-CUS-04)
   const filteredPurchasesData = useMemo(() => {
@@ -884,7 +1011,56 @@ export default function CustomersReportsTab({
           { label: 'إجمالي المسدد منهم', value: totalPaid, currency: 'د.ع' },
         ],
         columns: [
-          { header: 'اسم الزبون / العميل', key: 'name', isBold: true },
+          { 
+            header: 'اسم الزبون / العميل', 
+            key: 'name', 
+            isBold: true,
+            render: (val, row) => (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {row.isDeadDebt && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '15px',
+                      height: '15px',
+                      backgroundColor: '#000000',
+                      color: '#ffffff',
+                      borderRadius: '3px',
+                      fontSize: '11px',
+                      fontWeight: '900',
+                      lineHeight: '1',
+                      flexShrink: 0,
+                      WebkitPrintColorAdjust: 'exact',
+                      printColorAdjust: 'exact',
+                    }}
+                    title="دين ميت"
+                  >
+                    ✕
+                  </span>
+                )}
+                <span style={{ fontWeight: 'bold' }}>{row.name}</span>
+                {row.isDeadDebt && (
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      fontWeight: 'bold',
+                      color: '#000000',
+                      backgroundColor: '#f1f5f9',
+                      border: '1px solid #000000',
+                      borderRadius: '3px',
+                      padding: '0 4px',
+                      WebkitPrintColorAdjust: 'exact',
+                      printColorAdjust: 'exact',
+                    }}
+                  >
+                    دين ميت
+                  </span>
+                )}
+              </div>
+            )
+          },
           { header: 'رقم الهاتف', key: 'phone1', isMono: true },
           { header: 'الفواتير المعلقة', key: 'unpaidInvoicesCount', isMono: true, align: 'center' },
           { 
@@ -897,16 +1073,26 @@ export default function CustomersReportsTab({
           {
             header: 'مدة الدين / آخر تسديد',
             key: 'debtAgeInfo',
-            render: (_, row) => (
-              <div>
-                <span style={{ fontWeight: 'bold', display: 'block' }}>
-                  {row.debtDurationText || '—'} {row.debtDays > 0 ? `(${row.debtDays} يوم)` : ''}
-                </span>
-                <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>
-                  آخر تسديد: {row.lastPaymentDate || 'لم يسدد بعد'}
-                </span>
-              </div>
-            )
+            render: (_, row) => {
+              const colorInfo = getDebtAgeColorInfo(row.debtDays || 0);
+              return (
+                <div>
+                  <div
+                    style={{
+                      ...colorInfo.pdfBadgeStyle,
+                      WebkitPrintColorAdjust: 'exact',
+                      printColorAdjust: 'exact',
+                      marginBottom: '2px',
+                    }}
+                  >
+                    {colorInfo.pdfDot} {row.debtDurationText || '—'} {row.debtDays > 0 ? `(${row.debtDays} يوم)` : ''}
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>
+                    آخر تسديد: {row.lastPaymentDate || 'لم يسدد بعد'}
+                  </div>
+                </div>
+              );
+            }
           },
           { 
             header: 'إجمالي المسدد', 
@@ -1995,8 +2181,10 @@ export default function CustomersReportsTab({
           {selectedReport === 'debts' && (
             <div className="space-y-4">
               {/* شريط الفلتر والبحث السريع */}
+              {/* شريط الفلتر والبحث السريع والترتيب */}
               <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-2xs space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* بحث */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">بحث باسم المدين أو هاتفه:</label>
                     <div className="relative">
@@ -2018,6 +2206,7 @@ export default function CustomersReportsTab({
                     </div>
                   </div>
 
+                  {/* تحديد شخص معين */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">تحديد شخص معين:</label>
                     <select
@@ -2032,12 +2221,60 @@ export default function CustomersReportsTab({
                     </select>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 self-end">
-                    <div className="bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl text-left">
-                      <span className="text-[10px] font-bold text-rose-600 block">إجمالي الديون المطلوبة:</span>
-                      <span className="text-sm font-black font-mono text-rose-700">
-                        {formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalDebt || 0), 0))} د.ع
-                      </span>
+                  {/* فلتر الترتيب */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">ترتيب القائمة حسب:</label>
+                    <select
+                      value={debtsSortBy}
+                      onChange={(e) => setDebtsSortBy(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-slate-800"
+                    >
+                      <option value="duration_desc">⏳ الأطول مدة أولاً (الأقدم ديناً)</option>
+                      <option value="duration_asc">⏱️ الأقصر مدة أولاً (الأحدث)</option>
+                      <option value="amount_desc">💰 الأعلى ديناً أولاً</option>
+                      <option value="amount_asc">📉 الأقل ديناً أولاً</option>
+                      <option value="name_asc">🔤 أبجدياً (اسم الزبون)</option>
+                    </select>
+                  </div>
+
+                  {/* فلتر حالة الديون */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">حالة الديون:</label>
+                    <div className="flex bg-slate-100 p-0.5 rounded-xl text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setDebtsStatusFilter('all')}
+                        className={`flex-1 py-1 rounded-lg transition-all cursor-pointer text-center ${
+                          debtsStatusFilter === 'all'
+                            ? 'bg-white text-slate-900 shadow-2xs font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        الكل ({debtorCustomersList.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDebtsStatusFilter('active')}
+                        className={`flex-1 py-1 rounded-lg transition-all cursor-pointer text-center ${
+                          debtsStatusFilter === 'active'
+                            ? 'bg-white text-emerald-900 shadow-2xs font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        نشطة
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDebtsStatusFilter('dead')}
+                        className={`flex-1 py-1 rounded-lg transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                          debtsStatusFilter === 'dead'
+                            ? 'bg-black text-white shadow-2xs font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>ميتة</span>
+                        <span className="font-mono text-xs">({deadDebtCustomerIds.size})</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2045,12 +2282,36 @@ export default function CustomersReportsTab({
 
               {/* جدول ديون الزبائن والعملاء */}
               <div className="bg-white rounded-2xl border border-slate-300 shadow-2xs overflow-hidden">
-                <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700">
-                    عدد الأشخاص المدينين: <strong className="font-mono text-slate-900">{filteredDebtsData.length}</strong>
-                  </span>
-                  <span className="text-xs font-bold text-slate-700">
-                    إجمالي الديون القائمة: <strong className="font-mono text-rose-700 font-black">{formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalDebt || 0), 0))} د.ع</strong>
+                <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-slate-700">
+                      عدد المدينين: <strong className="font-mono text-slate-900">{filteredDebtsData.length}</strong>
+                    </span>
+                    {deadDebtCustomerIds.size > 0 && (
+                      <span className="font-bold text-slate-800 bg-slate-200 px-2 py-0.5 rounded-full text-[11px] flex items-center gap-1">
+                        <span className="text-black font-black">✖</span> ديون ميتة: <strong className="font-mono">{deadDebtCustomerIds.size}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* دلالات الألوان المطلوبة بدقة */}
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold flex-wrap">
+                    <span className="flex items-center gap-1 bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-full">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                      <span>شهرين فما فوق (أحمر)</span>
+                    </span>
+                    <span className="flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span>أكثر من شهر (برتقالي)</span>
+                    </span>
+                    <span className="flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span>أقل من شهر (أخضر)</span>
+                    </span>
+                  </div>
+
+                  <span className="font-bold text-slate-700">
+                    إجمالي الديون القائمة: <strong className="font-mono text-rose-700 font-black text-sm">{formatIQD(filteredDebtsData.reduce((s, c) => s + (c.totalDebt || 0), 0))} د.ع</strong>
                   </span>
                 </div>
 
@@ -2073,18 +2334,63 @@ export default function CustomersReportsTab({
                       {filteredDebtsData.length === 0 ? (
                         <tr>
                           <td colSpan={9} className="py-12 text-center text-slate-400 font-medium">
-                            🎉 لا توجد ديون معلقة بذمة أي زبون أو عميل! كافة الحسابات مسددة بالكامل.
+                            🎉 لا توجد ديون معلقة تطابق خيارات الفلترة المحددة!
                           </td>
                         </tr>
                       ) : (
                         filteredDebtsData.map((c, idx) => {
+                          const colorInfo = getDebtAgeColorInfo(c.debtDays);
                           return (
-                            <tr key={c.id || idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                            <tr
+                              key={c.id || idx}
+                              className={`transition-colors ${
+                                c.isDeadDebt
+                                  ? 'bg-slate-100/70 hover:bg-slate-100'
+                                  : idx % 2 === 0
+                                  ? 'bg-white hover:bg-slate-50'
+                                  : 'bg-slate-50/50 hover:bg-slate-50'
+                              }`}
+                            >
                               <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
                                 {idx + 1}
                               </td>
-                              <td className="py-2.5 px-3 font-black text-slate-900 text-xs sm:text-sm">
-                                {c.name}
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center gap-2">
+                                  {/* زر مربع دين ميت */}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDeadDebt(c.id || c.name)}
+                                    className={`w-6 h-6 rounded-md transition-all cursor-pointer flex items-center justify-center shrink-0 border ${
+                                      c.isDeadDebt
+                                        ? 'bg-black text-white border-black ring-2 ring-black/20 shadow-xs'
+                                        : 'bg-white hover:bg-slate-100 text-slate-400 border-slate-300 hover:border-slate-500'
+                                    }`}
+                                    title={c.isDeadDebt ? 'إلغاء وسم دين ميت' : 'تحديد كـ دين ميت (سيظهر X أسود بجانب اسمه في الـ PDF)'}
+                                  >
+                                    {c.isDeadDebt ? (
+                                      <span className="font-black text-xs">✕</span>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-300">□</span>
+                                    )}
+                                  </button>
+
+                                  {/* الاسم وعلامة X السوداء */}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {c.isDeadDebt && (
+                                      <span className="text-black font-black text-sm select-none" title="دين ميت">
+                                        ✖
+                                      </span>
+                                    )}
+                                    <span className={`font-black text-xs sm:text-sm ${c.isDeadDebt ? 'text-slate-800' : 'text-slate-900'}`}>
+                                      {c.name}
+                                    </span>
+                                    {c.isDeadDebt && (
+                                      <span className="text-[9px] bg-black text-white px-1.5 py-0.2 rounded font-bold font-sans">
+                                        دين ميت
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </td>
                               <td className="py-2.5 px-3 font-mono font-bold text-slate-700" dir="ltr">
                                 {c.phone1 || '—'}
@@ -2096,34 +2402,19 @@ export default function CustomersReportsTab({
                                 {formatIQD(c.totalDebt)} د.ع
                               </td>
                               <td className="py-2.5 px-3">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <span
-                                    className={`w-2 h-2 rounded-full shrink-0 ${
-                                      c.debtDays >= 60
-                                        ? 'bg-rose-500 animate-pulse'
-                                        : c.debtDays >= 30
-                                        ? 'bg-amber-500'
-                                        : 'bg-emerald-500'
-                                    }`}
-                                    title={c.debtDays >= 60 ? 'متأخر أكثر من شهرين' : c.debtDays >= 30 ? 'بين شهر وشهرين' : 'أقل من 30 يوماً'}
-                                  />
-                                  <span className="font-black text-slate-800 text-xs">
-                                    {c.debtDurationText}
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-black border flex items-center gap-1 ${colorInfo.badgeClass}`}>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${colorInfo.dotColor}`} />
+                                    <span>{c.debtDurationText}</span>
+                                    {c.debtDays > 0 && <span className="font-mono text-[10px]">({c.debtDays} يوم)</span>}
                                   </span>
-                                  {c.debtDays > 0 && (
-                                    <span className="text-[10px] text-slate-400 font-mono">
-                                      ({c.debtDays} يوم)
-                                    </span>
-                                  )}
                                 </div>
-                                <div className="text-[11px] text-slate-500 flex items-center gap-1">
-                                  <span className="text-slate-400 shrink-0">آخر تسديد:</span>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
+                                  <span className="text-slate-400 font-sans">آخر تسديد:</span>
                                   {c.lastPaymentDate ? (
-                                    <span className="font-mono font-bold text-slate-700">
-                                      {c.lastPaymentDate}
-                                    </span>
+                                    <span className="font-bold text-slate-700">{c.lastPaymentDate}</span>
                                   ) : (
-                                    <span className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">
+                                    <span className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100 font-sans">
                                       لم يسدد بعد
                                     </span>
                                   )}
