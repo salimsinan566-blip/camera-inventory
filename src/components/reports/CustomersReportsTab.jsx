@@ -235,7 +235,7 @@ export default function CustomersReportsTab({
   const [debtsSortBy, setDebtsSortBy] = useState('duration_desc'); // 'duration_desc' | 'duration_asc' | 'amount_desc' | 'amount_asc' | 'name_asc'
   const [debtsStatusFilter, setDebtsStatusFilter] = useState('all'); // 'all' | 'active' | 'dead'
 
-  // Persistent Dead Debt Customer IDs (مربع دين ميت)
+  // Persistent Marked Customer IDs (مربع علامة ✖)
   const [deadDebtCustomerIds, setDeadDebtCustomerIds] = useState(() => {
     try {
       const saved = localStorage.getItem('camera_inventory_dead_debt_ids');
@@ -1020,44 +1020,18 @@ export default function CustomersReportsTab({
                 {row.isDeadDebt && (
                   <span
                     style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '15px',
-                      height: '15px',
-                      backgroundColor: '#000000',
-                      color: '#ffffff',
-                      borderRadius: '3px',
-                      fontSize: '11px',
+                      display: 'inline-block',
+                      color: '#000000',
+                      fontSize: '14px',
                       fontWeight: '900',
                       lineHeight: '1',
                       flexShrink: 0,
-                      WebkitPrintColorAdjust: 'exact',
-                      printColorAdjust: 'exact',
                     }}
-                    title="دين ميت"
                   >
-                    ✕
+                    ✖
                   </span>
                 )}
                 <span style={{ fontWeight: 'bold' }}>{row.name}</span>
-                {row.isDeadDebt && (
-                  <span
-                    style={{
-                      fontSize: '9px',
-                      fontWeight: 'bold',
-                      color: '#000000',
-                      backgroundColor: '#f1f5f9',
-                      border: '1px solid #000000',
-                      borderRadius: '3px',
-                      padding: '0 4px',
-                      WebkitPrintColorAdjust: 'exact',
-                      printColorAdjust: 'exact',
-                    }}
-                  >
-                    دين ميت
-                  </span>
-                )}
               </div>
             )
           },
@@ -2272,7 +2246,7 @@ export default function CustomersReportsTab({
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        <span>ميتة</span>
+                        <span>محددة بـ ✖</span>
                         <span className="font-mono text-xs">({deadDebtCustomerIds.size})</span>
                       </button>
                     </div>
@@ -2289,7 +2263,7 @@ export default function CustomersReportsTab({
                     </span>
                     {deadDebtCustomerIds.size > 0 && (
                       <span className="font-bold text-slate-800 bg-slate-200 px-2 py-0.5 rounded-full text-[11px] flex items-center gap-1">
-                        <span className="text-black font-black">✖</span> ديون ميتة: <strong className="font-mono">{deadDebtCustomerIds.size}</strong>
+                        <span className="text-black font-black">✖</span> محددة بـ ✖: <strong className="font-mono">{deadDebtCustomerIds.size}</strong>
                       </span>
                     )}
                   </div>
@@ -2356,7 +2330,7 @@ export default function CustomersReportsTab({
                               </td>
                               <td className="py-2.5 px-3">
                                 <div className="flex items-center gap-2">
-                                  {/* زر مربع دين ميت */}
+                                  {/* زر مربع التحديد */}
                                   <button
                                     type="button"
                                     onClick={() => toggleDeadDebt(c.id || c.name)}
@@ -2365,7 +2339,7 @@ export default function CustomersReportsTab({
                                         ? 'bg-black text-white border-black ring-2 ring-black/20 shadow-xs'
                                         : 'bg-white hover:bg-slate-100 text-slate-400 border-slate-300 hover:border-slate-500'
                                     }`}
-                                    title={c.isDeadDebt ? 'إلغاء وسم دين ميت' : 'تحديد كـ دين ميت (سيظهر X أسود بجانب اسمه في الـ PDF)'}
+                                    title={c.isDeadDebt ? 'إلغاء علامة (✖)' : 'تحديد علامة (✖) بجانب الاسم في ملف الـ PDF'}
                                   >
                                     {c.isDeadDebt ? (
                                       <span className="font-black text-xs">✕</span>
@@ -2377,18 +2351,13 @@ export default function CustomersReportsTab({
                                   {/* الاسم وعلامة X السوداء */}
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     {c.isDeadDebt && (
-                                      <span className="text-black font-black text-sm select-none" title="دين ميت">
+                                      <span className="text-black font-black text-sm select-none" title="علامة ✖">
                                         ✖
                                       </span>
                                     )}
                                     <span className={`font-black text-xs sm:text-sm ${c.isDeadDebt ? 'text-slate-800' : 'text-slate-900'}`}>
                                       {c.name}
                                     </span>
-                                    {c.isDeadDebt && (
-                                      <span className="text-[9px] bg-black text-white px-1.5 py-0.2 rounded font-bold font-sans">
-                                        دين ميت
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                               </td>
