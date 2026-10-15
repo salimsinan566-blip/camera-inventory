@@ -19,6 +19,9 @@ function toDateSafe(val) {
       return null;
     }
   }
+  if (typeof val?.seconds === 'number') {
+    return new Date(val.seconds * 1000);
+  }
   if (typeof val === 'number') {
     const d = new Date(val);
     return isNaN(d.getTime()) ? null : d;
@@ -52,7 +55,7 @@ function getLastDayOfMonth(yearMonth) {
   return `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
 }
 
-// دالة التحقق الدقيقة: هل المصروف ثابت/تشغيلي أم متغير/نثريات؟
+// فحص دقيق: هل المصروف ثابت/تشغيلي أم متغير/نثريات؟
 function isFixedExpense(e) {
   if (e.expenseType === 'shop') return true;
   if (e.expenseType === 'daily') return false;
@@ -65,19 +68,19 @@ function isFixedExpense(e) {
     'بلدية ورسوم',
     'صيانة وتجهيزات',
     'رسوم حكومية',
-    'مصاريف تشغيلية'
+    'مصاريف تشغيلية',
   ];
   if (fixedCategories.includes(e.category)) return true;
 
   return SHOP_EXPENSE_PRESETS.some(
-    p => p.title === e.title || p.category === e.category
+    (p) => p.title === e.title || p.category === e.category
   );
 }
 
-// أيقونة البند أو التصنيف
+// الحصول على أيقونة مناسبة للبند
 function getExpenseIcon(item) {
   const allPresets = [...SHOP_EXPENSE_PRESETS, ...DAILY_EXPENSE_PRESETS];
-  const matched = allPresets.find(p => p.title === item.title || p.category === item.category);
+  const matched = allPresets.find((p) => p.title === item.title || p.category === item.category);
   if (matched?.icon) return matched.icon;
   if (isFixedExpense(item)) return '🏢';
   return '☕';
@@ -91,7 +94,7 @@ export default function ExpensesReportsTab({
 }) {
   const { expenses = [], loading: expensesLoading } = useExpenses();
 
-  // Period Filter: 'today' | 'month' | 'custom' (مثل تقرير الأرباح تماماً)
+  // 1. تحديد الفترة: اليوم | هذا الشهر | مخصص (مطابقة 100% لتقرير الأرباح)
   const [period, setPeriod] = useState('month');
   const [customSubMode, setCustomSubMode] = useState('months'); // 'months' | 'days'
   const [customFrom, setCustomFrom] = useState('');
@@ -102,22 +105,21 @@ export default function ExpensesReportsTab({
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
   const [monthSelectionType, setMonthSelectionType] = useState('single'); // 'single' | 'range'
 
-  // القسم النشط: 'fixed' (المصاريف الثابتة) أو 'variable' (المصاريف المتغيرة)
-  // تم إلغاء 'all' وعرض البنود فقط عند الضغط على القسم المطلوب
-  const [activeTab, setActiveTab] = useState('fixed');
+  // 2. النافذة المنبثقة النشطة: null | 'all' | 'fixed' | 'variable' | 'categories'
+  const [activeModal, setActiveModal] = useState(null);
 
-  // Search, Category, and Sorting
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('date_desc'); // 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'
+  // فلاتر داخل النوافذ المنبثقة
+  const [modalSearch, setModalSearch] = useState('');
+  const [modalCategoryFilter, setModalCategoryFilter] = useState('all');
+  const [modalTypeFilter, setModalTypeFilter] = useState('all'); // for 'all' modal: 'all' | 'fixed' | 'variable'
 
-  // Print Document State
+  // وثيقة الطباعة
   const [printDocumentProps, setPrintDocumentProps] = useState(null);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
-  // Compute effective date bounds for custom range
+  // حساب النطاق الزمني الفعلي للتصفية المخصصة
   const effectiveCustomFrom = useMemo(() => {
     if (customSubMode === 'months') {
       if (!customMonthFrom) return '';
@@ -146,7 +148,7 @@ export default function ExpensesReportsTab({
     return customTo;
   }, [customSubMode, customMonthFrom, customMonthTo, customFrom, customTo]);
 
-  // Label for Selected Period
+  // نص الفترة المختارة
   const periodLabel = useMemo(() => {
     if (period === 'today') return 'اليوم';
     if (period === 'month') return 'هذا الشهر';
@@ -186,7 +188,7 @@ export default function ExpensesReportsTab({
     return 'هذا الشهر';
   }, [period, customSubMode, customMonthFrom, customMonthTo, customFrom, customTo]);
 
-  // 1. Filter Expenses by Period
+  // 1. تصفية المصاريف حسب الفترة الزمنية المحددة
   const periodFilteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
       const dateStr = toIsoDateStr(e.date || e.createdAt);
@@ -203,7 +205,7 @@ export default function ExpensesReportsTab({
     });
   }, [expenses, period, effectiveCustomFrom, effectiveCustomTo, todayStr, currentMonthStr]);
 
-  // 2. Classify into Fixed and Sundries & Enrich
+  // 2. تحليل وتصنيف المصاريف إلى ثابتة ومتغيرة مع إثراء البيانات
   const analyzedExpenses = useMemo(() => {
     return periodFilteredExpenses.map((e) => {
       const isFixed = isFixedExpense(e);
@@ -218,8 +220,8 @@ export default function ExpensesReportsTab({
         isFixed,
         typeLabel: isFixed ? 'مصاريف ثابتة' : 'مصاريف متغيرة',
         typeBadgeColor: isFixed
-          ? 'bg-purple-100 text-purple-900 border-purple-300'
-          : 'bg-amber-100 text-amber-900 border-amber-300',
+          ? 'bg-amber-100 text-amber-900 border-amber-300'
+          : 'bg-rose-100 text-rose-900 border-rose-300',
         typeIcon: icon,
         numAmount,
         dateStr,
@@ -228,7 +230,7 @@ export default function ExpensesReportsTab({
     });
   }, [periodFilteredExpenses]);
 
-  // Fixed and Sundries Lists
+  // قوائم المفصولين
   const fixedExpenses = useMemo(() => {
     return analyzedExpenses.filter((e) => e.isFixed);
   }, [analyzedExpenses]);
@@ -237,7 +239,7 @@ export default function ExpensesReportsTab({
     return analyzedExpenses.filter((e) => !e.isFixed);
   }, [analyzedExpenses]);
 
-  // Summary Totals
+  // الإجماليات المالية
   const totalExpensesAmount = useMemo(() => {
     return analyzedExpenses.reduce((sum, e) => sum + e.numAmount, 0);
   }, [analyzedExpenses]);
@@ -262,61 +264,64 @@ export default function ExpensesReportsTab({
       : 0;
   }, [totalExpensesAmount, fixedPercentage]);
 
-  // Categories available for the currently active tab (fixed or variable)
-  const availableCategories = useMemo(() => {
-    const list = activeTab === 'fixed' ? fixedExpenses : sundryExpenses;
-    const set = new Set();
-    list.forEach((e) => {
-      if (e.category) set.add(e.category.trim());
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'));
-  }, [activeTab, fixedExpenses, sundryExpenses]);
-
-  // Filtered & Sorted list for the table (strictly based on activeTab)
-  const displayedExpenses = useMemo(() => {
-    let list = activeTab === 'fixed' ? fixedExpenses : sundryExpenses;
-
-    // Search filter
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
-      list = list.filter((e) => {
-        const titleMatch = (e.title || '').toLowerCase().includes(q);
-        const catMatch = (e.category || '').toLowerCase().includes(q);
-        const buyerMatch = (e.buyerName || '').toLowerCase().includes(q);
-        const notesMatch = (e.notes || '').toLowerCase().includes(q);
-        const periodMatch = (e.periodCovered || '').toLowerCase().includes(q);
-        return titleMatch || catMatch || buyerMatch || notesMatch || periodMatch;
-      });
-    }
-
-    // Category filter
-    if (selectedCategory !== 'all') {
-      list = list.filter((e) => e.category === selectedCategory);
-    }
-
-    // Sort
-    return [...list].sort((a, b) => {
-      if (sortBy === 'amount_desc') return b.numAmount - a.numAmount;
-      if (sortBy === 'amount_asc') return a.numAmount - b.numAmount;
-      if (sortBy === 'date_asc') {
-        const d1 = new Date(a.date || a.createdAt || 0).getTime();
-        const d2 = new Date(b.date || b.createdAt || 0).getTime();
-        return d1 - d2;
-      }
-      // default: date_desc
-      const d1 = new Date(b.date || b.createdAt || 0).getTime();
-      const d2 = new Date(a.date || a.createdAt || 0).getTime();
-      return d1 - d2;
-    });
-  }, [activeTab, fixedExpenses, sundryExpenses, searchTerm, selectedCategory, sortBy]);
-
-  // بنود القسم المحدد فقط (تظهر فقط بنود الثابتة عند الضغط على الثابتة، وبنود المتغيرة عند الضغط على المتغيرة)
-  const categoryBreakdown = useMemo(() => {
+  // تصنيفات وبنود المصاريف الثابتة
+  const fixedCategoryBreakdown = useMemo(() => {
     const map = new Map();
-    const sourceList = activeTab === 'fixed' ? fixedExpenses : sundryExpenses;
-    const currentTotal = activeTab === 'fixed' ? totalFixedAmount : totalSundryAmount;
+    fixedExpenses.forEach((e) => {
+      const cat = (e.category || 'عام').trim();
+      if (!map.has(cat)) {
+        map.set(cat, {
+          category: cat,
+          totalAmount: 0,
+          count: 0,
+          isFixed: true,
+          icon: getExpenseIcon(e),
+        });
+      }
+      const entry = map.get(cat);
+      entry.totalAmount += e.numAmount;
+      entry.count += 1;
+    });
 
-    sourceList.forEach((e) => {
+    return Array.from(map.values())
+      .map((entry) => ({
+        ...entry,
+        percentage: totalFixedAmount > 0 ? Math.round((entry.totalAmount / totalFixedAmount) * 100) : 0,
+      }))
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [fixedExpenses, totalFixedAmount]);
+
+  // تصنيفات وبنود المصاريف المتغيرة
+  const sundryCategoryBreakdown = useMemo(() => {
+    const map = new Map();
+    sundryExpenses.forEach((e) => {
+      const cat = (e.category || 'عام').trim();
+      if (!map.has(cat)) {
+        map.set(cat, {
+          category: cat,
+          totalAmount: 0,
+          count: 0,
+          isFixed: false,
+          icon: getExpenseIcon(e),
+        });
+      }
+      const entry = map.get(cat);
+      entry.totalAmount += e.numAmount;
+      entry.count += 1;
+    });
+
+    return Array.from(map.values())
+      .map((entry) => ({
+        ...entry,
+        percentage: totalSundryAmount > 0 ? Math.round((entry.totalAmount / totalSundryAmount) * 100) : 0,
+      }))
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [sundryExpenses, totalSundryAmount]);
+
+  // كافة التصنيفات والبنود مجتمعة للبطاقة الرابعة
+  const allCategoryBreakdown = useMemo(() => {
+    const map = new Map();
+    analyzedExpenses.forEach((e) => {
       const cat = (e.category || 'عام').trim();
       if (!map.has(cat)) {
         map.set(cat, {
@@ -335,12 +340,70 @@ export default function ExpensesReportsTab({
     return Array.from(map.values())
       .map((entry) => ({
         ...entry,
-        percentage: currentTotal > 0 ? Math.round((entry.totalAmount / currentTotal) * 100) : 0,
+        percentage: totalExpensesAmount > 0 ? Math.round((entry.totalAmount / totalExpensesAmount) * 100) : 0,
       }))
       .sort((a, b) => b.totalAmount - a.totalAmount);
-  }, [activeTab, fixedExpenses, sundryExpenses, totalFixedAmount, totalSundryAmount]);
+  }, [analyzedExpenses, totalExpensesAmount]);
 
-  // Date Popover handlers
+  // أعلى بند صرف
+  const topCategory = useMemo(() => {
+    return allCategoryBreakdown.length > 0 ? allCategoryBreakdown[0] : null;
+  }, [allCategoryBreakdown]);
+
+  // تصفية السجلات داخل النوافذ المنبثقة
+  const modalFilteredExpenses = useMemo(() => {
+    let list = [];
+    if (activeModal === 'fixed') {
+      list = fixedExpenses;
+    } else if (activeModal === 'variable') {
+      list = sundryExpenses;
+    } else {
+      list = analyzedExpenses;
+    }
+
+    // Type filter for 'all' modal
+    if (activeModal === 'all' && modalTypeFilter !== 'all') {
+      list = list.filter((e) => (modalTypeFilter === 'fixed' ? e.isFixed : !e.isFixed));
+    }
+
+    // Category filter
+    if (modalCategoryFilter !== 'all') {
+      list = list.filter((e) => e.category === modalCategoryFilter);
+    }
+
+    // Search query
+    if (modalSearch.trim()) {
+      const q = modalSearch.toLowerCase().trim();
+      list = list.filter((e) => {
+        const titleMatch = (e.title || '').toLowerCase().includes(q);
+        const catMatch = (e.category || '').toLowerCase().includes(q);
+        const notesMatch = (e.notes || '').toLowerCase().includes(q);
+        const buyerMatch = (e.buyerName || '').toLowerCase().includes(q);
+        const periodMatch = (e.periodCovered || '').toLowerCase().includes(q);
+        return titleMatch || catMatch || notesMatch || buyerMatch || periodMatch;
+      });
+    }
+
+    return list;
+  }, [
+    activeModal,
+    fixedExpenses,
+    sundryExpenses,
+    analyzedExpenses,
+    modalTypeFilter,
+    modalCategoryFilter,
+    modalSearch,
+  ]);
+
+  // إعادة ضبط فلاتر النافذة عند فتح نافذة جديدة
+  const handleOpenModal = (modalName) => {
+    setModalSearch('');
+    setModalCategoryFilter('all');
+    setModalTypeFilter('all');
+    setActiveModal(modalName);
+  };
+
+  // معالجات النافذة المنبثقة للتقويم المخصص
   const handleToggleCustomPopover = () => {
     if (!showCalendarPopover) {
       if (!customMonthFrom) {
@@ -377,1058 +440,1446 @@ export default function ExpensesReportsTab({
     }
   };
 
-  // Sync TopNav
+  // طباعة التقرير الشامل
+  const handlePrintFullReport = useCallback(() => {
+    setPrintDocumentProps({
+      title: 'تقرير المصاريف والمنصرفات الشامل',
+      subtitle: `كشف حركة المصاريف الثابتة والمتغيرة - ${periodLabel}`,
+      reportCode: `REP-EXP-ALL-${Date.now().toString().slice(-6)}`,
+      filterDescription: `كافة المصاريف المسجلة خلال: ${periodLabel}`,
+      kpis: [
+        { label: 'إجمالي كافة المصاريف', value: totalExpensesAmount, currency: 'د.ع', highlight: true },
+        { label: 'المصاريف الثابتة', value: totalFixedAmount, currency: 'د.ع' },
+        { label: 'المصاريف المتغيرة (النثريات)', value: totalSundryAmount, currency: 'د.ع' },
+        { label: 'عدد القيود المسجلة', value: analyzedExpenses.length },
+      ],
+      columns: [
+        { header: 'ت', key: 'index', align: 'center', render: (_, __, idx) => idx + 1, isMono: true },
+        { header: 'التاريخ', key: 'dateStr', isMono: true, render: (v, r) => `${v || '—'} ${r.dayName ? `(${r.dayName})` : ''}` },
+        { header: 'عنوان وبند المصروف', key: 'title', isBold: true },
+        {
+          header: 'النوع',
+          key: 'typeLabel',
+          render: (_, r) => (r.isFixed ? '🏢 ثابتة' : '☕ متغيرة'),
+        },
+        { header: 'التصنيف', key: 'category' },
+        { header: 'المبلغ', key: 'numAmount', isMono: true, isBold: true, render: (v) => `${formatIQD(v)} د.ع` },
+        { header: 'المسؤول / المشتري', key: 'buyerName' },
+        { header: 'ملاحظات', key: 'notes' },
+      ],
+      data: analyzedExpenses,
+      totals: {
+        title: 'المجموع الإجمالي لكافة المصاريف',
+        numAmount: `${formatIQD(totalExpensesAmount)} د.ع`,
+      },
+      expensesBreakdown: allCategoryBreakdown,
+      detailedExpenses: analyzedExpenses,
+    });
+  }, [
+    periodLabel,
+    totalExpensesAmount,
+    totalFixedAmount,
+    totalSundryAmount,
+    analyzedExpenses,
+    allCategoryBreakdown,
+  ]);
+
+  // طباعة تقرير مخصص لكل نافذة
+  const handlePrintModalReport = (modalName) => {
+    if (modalName === 'fixed') {
+      setPrintDocumentProps({
+        title: 'تقرير المصاريف الثابتة والتشغيلية',
+        subtitle: `كشف الالتزامات الدورية والمصاريف الثابتة - ${periodLabel}`,
+        reportCode: `REP-EXP-FIX-${Date.now().toString().slice(-6)}`,
+        filterDescription: `المصاريف الثابتة خلال: ${periodLabel}${modalCategoryFilter !== 'all' ? ` | البند: ${modalCategoryFilter}` : ''}`,
+        kpis: [
+          { label: 'إجمالي المصاريف الثابتة', value: totalFixedAmount, currency: 'د.ع', highlight: true },
+          { label: 'النسبة من الإجمالي', value: `${fixedPercentage}%` },
+          { label: 'عدد القيود', value: modalFilteredExpenses.length },
+        ],
+        columns: [
+          { header: 'ت', key: 'index', align: 'center', render: (_, __, idx) => idx + 1, isMono: true },
+          { header: 'التاريخ', key: 'dateStr', isMono: true, render: (v, r) => `${v || '—'} ${r.dayName ? `(${r.dayName})` : ''}` },
+          { header: 'عنوان وبند المصروف', key: 'title', isBold: true },
+          { header: 'التصنيف', key: 'category' },
+          { header: 'المبلغ', key: 'numAmount', isMono: true, isBold: true, render: (v) => `${formatIQD(v)} د.ع` },
+          { header: 'المسؤول / المشتري', key: 'buyerName' },
+          { header: 'ملاحظات', key: 'notes' },
+        ],
+        data: modalFilteredExpenses,
+        totals: {
+          title: 'إجمالي المصاريف الثابتة',
+          numAmount: `${formatIQD(modalFilteredExpenses.reduce((s, x) => s + x.numAmount, 0))} د.ع`,
+        },
+      });
+    } else if (modalName === 'variable') {
+      setPrintDocumentProps({
+        title: 'تقرير المصاريف المتغيرة (النثريات)',
+        subtitle: `كشف النثريات والمنصرفات اليومية - ${periodLabel}`,
+        reportCode: `REP-EXP-VAR-${Date.now().toString().slice(-6)}`,
+        filterDescription: `المصاريف المتغيرة خلال: ${periodLabel}${modalCategoryFilter !== 'all' ? ` | البند: ${modalCategoryFilter}` : ''}`,
+        kpis: [
+          { label: 'إجمالي المصاريف المتغيرة', value: totalSundryAmount, currency: 'د.ع', highlight: true },
+          { label: 'النسبة من الإجمالي', value: `${sundryPercentage}%` },
+          { label: 'عدد القيود', value: modalFilteredExpenses.length },
+        ],
+        columns: [
+          { header: 'ت', key: 'index', align: 'center', render: (_, __, idx) => idx + 1, isMono: true },
+          { header: 'التاريخ', key: 'dateStr', isMono: true, render: (v, r) => `${v || '—'} ${r.dayName ? `(${r.dayName})` : ''}` },
+          { header: 'عنوان وبند المصروف', key: 'title', isBold: true },
+          { header: 'التصنيف', key: 'category' },
+          { header: 'المبلغ', key: 'numAmount', isMono: true, isBold: true, render: (v) => `${formatIQD(v)} د.ع` },
+          { header: 'المسؤول / المشتري', key: 'buyerName' },
+          { header: 'ملاحظات', key: 'notes' },
+        ],
+        data: modalFilteredExpenses,
+        totals: {
+          title: 'إجمالي المصاريف المتغيرة',
+          numAmount: `${formatIQD(modalFilteredExpenses.reduce((s, x) => s + x.numAmount, 0))} د.ع`,
+        },
+      });
+    } else if (modalName === 'categories') {
+      setPrintDocumentProps({
+        title: 'تقرير بنود وتصنيفات الصرف',
+        subtitle: `توزيع وتحليل نفقات المحل حسب التصنيفات - ${periodLabel}`,
+        reportCode: `REP-EXP-CAT-${Date.now().toString().slice(-6)}`,
+        filterDescription: `تحليل التصنيفات خلال: ${periodLabel}`,
+        kpis: [
+          { label: 'إجمالي المصاريف', value: totalExpensesAmount, currency: 'د.ع', highlight: true },
+          { label: 'عدد بنود الصرف', value: allCategoryBreakdown.length },
+          { label: 'أعلى بند صرف', value: topCategory ? `${topCategory.category} (${formatIQD(topCategory.totalAmount)} د.ع)` : '—' },
+        ],
+        columns: [
+          { header: 'ت', key: 'index', align: 'center', render: (_, __, idx) => idx + 1, isMono: true },
+          { header: 'اسم البند / التصنيف', key: 'category', isBold: true },
+          { header: 'نوع المصروف', key: 'isFixed', render: (v) => (v ? '🏢 ثابتة' : '☕ متغيرة') },
+          { header: 'عدد القيود', key: 'count', align: 'center', isMono: true },
+          { header: 'إجمالي المبلغ', key: 'totalAmount', isMono: true, isBold: true, render: (v) => `${formatIQD(v)} د.ع` },
+          { header: 'النسبة من الإجمالي', key: 'percentage', align: 'center', render: (v) => `${v}%` },
+        ],
+        data: allCategoryBreakdown,
+        totals: {
+          category: 'المجموع الإجمالي',
+          count: allCategoryBreakdown.reduce((s, x) => s + x.count, 0),
+          totalAmount: `${formatIQD(totalExpensesAmount)} د.ع`,
+          percentage: '100%',
+        },
+      });
+    } else {
+      handlePrintFullReport();
+    }
+  };
+
+  // المزامنة مع الشريط العلوي
   useEffect(() => {
     if (!setReportMeta) return;
     setReportMeta({
+      title: 'تقرير المصاريف',
       code: 'SEC-EXP-01',
-      title: activeTab === 'fixed' ? 'تقارير المصاريف الثابتة' : 'تقارير المصاريف المتغيرة',
-      onPrint: () => handlePrintReport(activeTab),
+      onPrint: handlePrintFullReport,
     });
-  }, [setReportMeta, activeTab]);
-
-  // Print Handler
-  const handlePrintReport = useCallback(
-    (tab = activeTab) => {
-      let printTitle = 'تقرير المصاريف الثابتة والتشغيلية';
-      let printSub = `كشف الالتزامات الدورية والمصاريف الثابتة - ${periodLabel}`;
-      let reportCode = `REP-EXP-FIX-${Date.now().toString().slice(-6)}`;
-      let kpis = [
-        { label: 'إجمالي المصاريف الثابتة', value: totalFixedAmount, currency: 'د.ع', highlight: true },
-        { label: 'نسبة من إجمالي المصاريف', value: `${fixedPercentage}%` },
-        { label: 'عدد القيود المسجلة', value: fixedExpenses.length },
-      ];
-
-      if (tab === 'variable') {
-        printTitle = 'تقرير المصاريف المتغيرة (النثريات)';
-        printSub = `كشف النثريات والمنصرفات اليومية - ${periodLabel}`;
-        reportCode = `REP-EXP-VAR-${Date.now().toString().slice(-6)}`;
-        kpis = [
-          { label: 'إجمالي المصاريف المتغيرة', value: totalSundryAmount, currency: 'د.ع', highlight: true },
-          { label: 'نسبة من إجمالي المصاريف', value: `${sundryPercentage}%` },
-          { label: 'عدد القيود المسجلة', value: sundryExpenses.length },
-        ];
-      }
-
-      setPrintDocumentProps({
-        title: printTitle,
-        subtitle: printSub,
-        reportCode,
-        filterDescription: `الفترة الزمنية: ${periodLabel} | التصنيف المعروض: ${
-          tab === 'fixed' ? 'المصاريف الثابتة والتشغيلية' : 'المصاريف المتغيرة (النثريات)'
-        }${selectedCategory !== 'all' ? ` | البند: ${selectedCategory}` : ''}`,
-        kpis,
-        columns: [
-          {
-            header: 'ت',
-            key: 'index',
-            align: 'center',
-            render: (_, __, idx) => idx + 1,
-            isMono: true,
-          },
-          {
-            header: 'التاريخ واليوم',
-            key: 'dateStr',
-            isMono: true,
-            render: (_, row) => (
-              <div>
-                <span style={{ fontWeight: 'bold' }}>{row.dateStr || '—'}</span>
-                {row.dayName && (
-                  <span style={{ fontSize: '10px', color: '#64748b', marginRight: '4px' }}>
-                    ({row.dayName})
-                  </span>
-                )}
-              </div>
-            ),
-          },
-          {
-            header: 'عنوان وبند المصروف',
-            key: 'title',
-            isBold: true,
-            render: (val, row) => (
-              <div>
-                <span>{row.typeIcon} </span>
-                <span style={{ fontWeight: 'bold' }}>{val}</span>
-                {row.periodCovered && (
-                  <div style={{ fontSize: '10px', color: '#4338ca', fontWeight: 'bold', marginTop: '2px' }}>
-                    🗓️ {row.periodCovered}
-                  </div>
-                )}
-              </div>
-            ),
-          },
-          {
-            header: 'النوع',
-            key: 'typeLabel',
-            render: (_, row) => (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  fontSize: '10px',
-                  fontWeight: 'bold',
-                  backgroundColor: row.isFixed ? '#f3e8ff' : '#fef3c7',
-                  color: row.isFixed ? '#6b21a8' : '#92400e',
-                  border: `1px solid ${row.isFixed ? '#d8b4fe' : '#fcd34d'}`,
-                  WebkitPrintColorAdjust: 'exact',
-                  printColorAdjust: 'exact',
-                }}
-              >
-                {row.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
-              </span>
-            ),
-          },
-          { header: 'التصنيف', key: 'category' },
-          { header: 'المنفذ / المشتري', key: 'buyerName' },
-          { header: 'ملاحظات', key: 'notes' },
-          {
-            header: 'المبلغ',
-            key: 'numAmount',
-            isMono: true,
-            isBold: true,
-            align: 'left',
-            render: (v) => `${formatIQD(v)} د.ع`,
-          },
-        ],
-        data: displayedExpenses,
-        totals: {
-          title: 'المجموع الإجمالي',
-          numAmount: `${formatIQD(displayedExpenses.reduce((s, e) => s + e.numAmount, 0))} د.ع`,
-        },
-      });
-    },
-    [
-      activeTab,
-      periodLabel,
-      totalFixedAmount,
-      totalSundryAmount,
-      fixedExpenses,
-      sundryExpenses,
-      displayedExpenses,
-      fixedPercentage,
-      sundryPercentage,
-      selectedCategory,
-    ]
-  );
+  }, [setReportMeta, handlePrintFullReport]);
 
   return (
     <div className="w-full space-y-4 text-slate-800" dir="rtl">
-      {/* 1. Header & Controls Bar */}
+      {/* 1. الشريط العلوي الرئيسي (مطابق 100% للرسم والتقرير المرفق) */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* عنوان القسم وأزرار الرجوع والطباعة */}
-          <div className="flex items-center gap-3">
+          {/* عنوان التقرير */}
+          <div className="flex items-center gap-2.5">
             {onBackToDepartments && (
               <button
                 type="button"
                 onClick={onBackToDepartments}
-                className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs transition-colors cursor-pointer"
                 title="رجوع لأقسام التقارير"
               >
                 ➔
               </button>
             )}
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></span>
-                <h1 className="text-lg md:text-xl font-black text-slate-900">
-                  تقارير المصاريف
-                </h1>
-                <span className="text-[10px] font-mono font-bold bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded">
-                  SEC-EXP-01
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                اضغط على المصاريف الثابتة أو المصاريف المتغيرة لعرض بنودها وسجلاتها بدقة
-              </p>
+            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+            <h1 className="text-lg md:text-xl font-black text-slate-900">
+              تقرير المصاريف
+            </h1>
+          </div>
+
+          {/* محدد المدة: اليوم | هذا الشهر | مخصص */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod('today');
+                setShowCalendarPopover(false);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                period === 'today'
+                  ? 'bg-white text-slate-900 shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              اليوم
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod('month');
+                setShowCalendarPopover(false);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                period === 'month'
+                  ? 'bg-white text-slate-900 shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              هذا الشهر
+            </button>
+
+            {/* زر مخصص مع القائمة المنبثقة للتقويم */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={handleToggleCustomPopover}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  period === 'custom'
+                    ? 'bg-white text-indigo-900 shadow-2xs border border-indigo-200 font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>📅</span>
+                <span>مخصص</span>
+                {period === 'custom' && (
+                  <span className="text-[10px] bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                    {periodLabel}
+                  </span>
+                )}
+                <svg
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showCalendarPopover ? 'rotate-180 text-indigo-600' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* النافذة المنبثقة الملتصقة بالزر */}
+              {showCalendarPopover && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40 bg-black/10 sm:bg-transparent"
+                    onClick={() => setShowCalendarPopover(false)}
+                  />
+
+                  <div
+                    className="fixed sm:absolute top-20 sm:top-full start-2 sm:start-auto sm:end-0 mt-0 sm:mt-2 w-80 max-w-[95vw] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 p-3.5 text-right font-sans"
+                    dir="rtl"
+                  >
+                    {/* التبويب الداخلي: بالأشهر vs بالأيام */}
+                    <div className="flex bg-slate-100 p-0.5 rounded-xl mb-3 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setCustomSubMode('months')}
+                        className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer text-center ${
+                          customSubMode === 'months'
+                            ? 'bg-white text-indigo-900 shadow-2xs font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        📅 بالأشهر
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSubMode('days')}
+                        className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer text-center ${
+                          customSubMode === 'days'
+                            ? 'bg-white text-indigo-900 shadow-2xs font-black'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        📆 بالأيام
+                      </button>
+                    </div>
+
+                    {/* تبويب الأشهر */}
+                    {customSubMode === 'months' ? (
+                      <div>
+                        {/* شريط تبديل السنة */}
+                        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl mb-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newY = calendarYear - 1;
+                              setCalendarYear(newY);
+                              if (customMonthFrom) {
+                                const m = customMonthFrom.split('-')[1];
+                                setCustomMonthFrom(`${newY}-${m}`);
+                              }
+                              if (customMonthTo) {
+                                const m = customMonthTo.split('-')[1];
+                                setCustomMonthTo(`${newY}-${m}`);
+                              }
+                            }}
+                            className="w-7 h-7 flex items-center justify-center hover:bg-white rounded-lg text-slate-700 font-bold transition-colors cursor-pointer text-xs"
+                            title="السنة السابقة"
+                          >
+                            ◀
+                          </button>
+                          <span className="font-mono font-black text-slate-900 text-sm">
+                            {calendarYear}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newY = calendarYear + 1;
+                              setCalendarYear(newY);
+                              if (customMonthFrom) {
+                                const m = customMonthFrom.split('-')[1];
+                                setCustomMonthFrom(`${newY}-${m}`);
+                              }
+                              if (customMonthTo) {
+                                const m = customMonthTo.split('-')[1];
+                                setCustomMonthTo(`${newY}-${m}`);
+                              }
+                            }}
+                            className="w-7 h-7 flex items-center justify-center hover:bg-white rounded-lg text-slate-700 font-bold transition-colors cursor-pointer text-xs"
+                            title="السنة التالية"
+                          >
+                            ▶
+                          </button>
+                        </div>
+
+                        {/* مفتاح نمط الاختيار: شهر واحد vs فترة */}
+                        <div className="flex items-center gap-1 mb-2 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMonthSelectionType('single');
+                              if (customMonthFrom) setCustomMonthTo(customMonthFrom);
+                            }}
+                            className={`flex-1 py-1 rounded-md transition-all cursor-pointer text-center ${
+                              monthSelectionType === 'single'
+                                ? 'bg-white text-indigo-900 shadow-2xs font-black'
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            شهر واحد
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMonthSelectionType('range')}
+                            className={`flex-1 py-1 rounded-md transition-all cursor-pointer text-center ${
+                              monthSelectionType === 'range'
+                                ? 'bg-white text-indigo-900 shadow-2xs font-black'
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            فترة عدة أشهر
+                          </button>
+                        </div>
+
+                        {/* اختصارات سريعة */}
+                        <div className="flex flex-wrap gap-1 mb-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              const ym = d.toISOString().slice(0, 7);
+                              setCalendarYear(d.getFullYear());
+                              setMonthSelectionType('single');
+                              setCustomMonthFrom(ym);
+                              setCustomMonthTo(ym);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                          >
+                            الشهر الحالي
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              d.setMonth(d.getMonth() - 1);
+                              const ym = d.toISOString().slice(0, 7);
+                              setCalendarYear(d.getFullYear());
+                              setMonthSelectionType('single');
+                              setCustomMonthFrom(ym);
+                              setCustomMonthTo(ym);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                          >
+                            الشهر السابق
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const y = calendarYear;
+                              setMonthSelectionType('range');
+                              setCustomMonthFrom(`${y}-01`);
+                              setCustomMonthTo(`${y}-03`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
+                          >
+                            أشهر (1 - 3)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const y = calendarYear;
+                              setMonthSelectionType('range');
+                              setCustomMonthFrom(`${y}-01`);
+                              setCustomMonthTo(`${y}-06`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
+                          >
+                            أشهر (1 - 6)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const y = calendarYear;
+                              setMonthSelectionType('range');
+                              setCustomMonthFrom(`${y}-01`);
+                              setCustomMonthTo(`${y}-12`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
+                          >
+                            كامل السنة
+                          </button>
+                        </div>
+
+                        {/* شبكة أرقام الأشهر (1 إلى 12) */}
+                        <div className="grid grid-cols-4 gap-1.5 mb-2.5">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => {
+                            const ym = `${calendarYear}-${String(num).padStart(2, '0')}`;
+                            const isFrom = customMonthFrom === ym;
+                            const isTo = customMonthTo === ym;
+                            const isExactSingle = isFrom && isTo;
+                            const [minYm, maxYm] =
+                              customMonthFrom && customMonthTo && customMonthFrom > customMonthTo
+                                ? [customMonthTo, customMonthFrom]
+                                : [customMonthFrom, customMonthTo];
+                            const inRange = minYm && maxYm && ym >= minYm && ym <= maxYm;
+
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => handleMonthNumberClick(num)}
+                                className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer font-mono font-black ${
+                                  isExactSingle
+                                    ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-400'
+                                    : isFrom || isTo
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : inRange
+                                    ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                                }`}
+                              >
+                                <span className="text-[10px] font-sans font-medium text-slate-400 block -mb-0.5">
+                                  شهر
+                                </span>
+                                <span className="text-base">{num}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      /* تبويب الأيام */
+                      <div className="space-y-2.5 mb-3">
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomFrom(todayStr);
+                              setCustomTo(todayStr);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                          >
+                            اليوم
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              d.setDate(d.getDate() - 1);
+                              const yest = d.toISOString().slice(0, 10);
+                              setCustomFrom(yest);
+                              setCustomTo(yest);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                          >
+                            أمس
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              const end = d.toISOString().slice(0, 10);
+                              d.setDate(d.getDate() - 7);
+                              const start = d.toISOString().slice(0, 10);
+                              setCustomFrom(start);
+                              setCustomTo(end);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                          >
+                            آخر 7 أيام
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              const end = d.toISOString().slice(0, 10);
+                              d.setDate(d.getDate() - 30);
+                              const start = d.toISOString().slice(0, 10);
+                              setCustomFrom(start);
+                              setCustomTo(end);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                          >
+                            آخر 30 يوماً
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">من تاريخ:</label>
+                            <input
+                              type="date"
+                              value={customFrom}
+                              onChange={(e) => setCustomFrom(e.target.value)}
+                              className="w-full text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">إلى تاريخ:</label>
+                            <input
+                              type="date"
+                              value={customTo}
+                              onChange={(e) => setCustomTo(e.target.value)}
+                              className="w-full text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ملخص الفترة المختارة */}
+                    <div className="bg-slate-100 px-3 py-1.5 rounded-xl mb-3 text-xs flex items-center justify-between text-slate-700 font-bold">
+                      <span className="text-[11px] text-slate-500">المحدد:</span>
+                      <span className="font-mono text-indigo-950 font-black text-[11px] truncate max-w-[200px]">
+                        {customSubMode === 'months' ? (
+                          customMonthFrom === customMonthTo ? (
+                            `شهر ${parseInt(customMonthFrom?.split('-')[1] || '1', 10)} / ${calendarYear}`
+                          ) : (
+                            `أشهر (${parseInt(customMonthFrom?.split('-')[1] || '1', 10)} - ${parseInt(customMonthTo?.split('-')[1] || '12', 10)}) / ${calendarYear}`
+                          )
+                        ) : (
+                          customFrom && customTo ? `${customFrom} ↔ ${customTo}` : 'يرجى تحديد التاريخ'
+                        )}
+                      </span>
+                    </div>
+
+                    {/* أزرار الإجراء */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowCalendarPopover(false)}
+                        className="flex-1 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer text-center"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customSubMode === 'months') {
+                            if (!customMonthFrom) {
+                              const ym = `${calendarYear}-01`;
+                              setCustomMonthFrom(ym);
+                              setCustomMonthTo(ym);
+                            } else if (!customMonthTo) {
+                              setCustomMonthTo(customMonthFrom);
+                            }
+                          } else {
+                            if (!customFrom) setCustomFrom(todayStr);
+                            if (!customTo) setCustomTo(todayStr);
+                          }
+                          setPeriod('custom');
+                          setShowCalendarPopover(false);
+                        }}
+                        className="flex-1 py-1.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-2xs cursor-pointer text-center"
+                      >
+                        تطبيق الفلتر
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* تحديد المدة: اليوم | هذا الشهر | مخصص */}
-          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => {
-                  setPeriod('today');
-                  setShowCalendarPopover(false);
-                }}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  period === 'today'
-                    ? 'bg-white text-slate-900 shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                اليوم
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPeriod('month');
-                  setShowCalendarPopover(false);
-                }}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  period === 'month'
-                    ? 'bg-white text-slate-900 shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                هذا الشهر
-              </button>
-
-              {/* زر مخصص مع القائمة المنبثقة */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={handleToggleCustomPopover}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                    period === 'custom'
-                      ? 'bg-white text-indigo-900 shadow-2xs border border-indigo-200 font-black'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <span>📅</span>
-                  <span>مخصص</span>
-                  {period === 'custom' && (
-                    <span className="text-[10px] bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded-full font-mono font-bold">
-                      {periodLabel}
-                    </span>
-                  )}
-                  <svg
-                    className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showCalendarPopover ? 'rotate-180 text-indigo-600' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {/* النافذة المنبثقة */}
-                {showCalendarPopover && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40 bg-black/10 sm:bg-transparent"
-                      onClick={() => setShowCalendarPopover(false)}
-                    />
-
-                    <div
-                      className="fixed sm:absolute top-20 sm:top-full start-2 sm:start-auto sm:end-0 mt-0 sm:mt-2 w-80 max-w-[95vw] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 p-3.5 text-right font-sans"
-                      dir="rtl"
-                    >
-                      {/* أشهر vs أيام */}
-                      <div className="flex bg-slate-100 p-0.5 rounded-xl mb-3 text-xs font-bold">
-                        <button
-                          type="button"
-                          onClick={() => setCustomSubMode('months')}
-                          className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer text-center ${
-                            customSubMode === 'months'
-                              ? 'bg-white text-indigo-900 shadow-2xs font-black'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          📅 بالأشهر
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCustomSubMode('days')}
-                          className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer text-center ${
-                            customSubMode === 'days'
-                              ? 'bg-white text-indigo-900 shadow-2xs font-black'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          📆 بالأيام
-                        </button>
-                      </div>
-
-                      {/* تبويب الأشهر */}
-                      {customSubMode === 'months' ? (
-                        <div>
-                          <div className="flex items-center justify-between bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl mb-2.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newY = calendarYear - 1;
-                                setCalendarYear(newY);
-                                if (customMonthFrom) {
-                                  const m = customMonthFrom.split('-')[1];
-                                  setCustomMonthFrom(`${newY}-${m}`);
-                                }
-                                if (customMonthTo) {
-                                  const m = customMonthTo.split('-')[1];
-                                  setCustomMonthTo(`${newY}-${m}`);
-                                }
-                              }}
-                              className="w-7 h-7 flex items-center justify-center hover:bg-white rounded-lg text-slate-700 font-bold transition-colors cursor-pointer text-xs"
-                              title="السنة السابقة"
-                            >
-                              ◀
-                            </button>
-                            <span className="font-mono font-black text-slate-900 text-sm">
-                              {calendarYear}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newY = calendarYear + 1;
-                                setCalendarYear(newY);
-                                if (customMonthFrom) {
-                                  const m = customMonthFrom.split('-')[1];
-                                  setCustomMonthFrom(`${newY}-${m}`);
-                                }
-                                if (customMonthTo) {
-                                  const m = customMonthTo.split('-')[1];
-                                  setCustomMonthTo(`${newY}-${m}`);
-                                }
-                              }}
-                              className="w-7 h-7 flex items-center justify-center hover:bg-white rounded-lg text-slate-700 font-bold transition-colors cursor-pointer text-xs"
-                              title="السنة التالية"
-                            >
-                              ▶
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-1 mb-2 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMonthSelectionType('single');
-                                if (customMonthFrom) setCustomMonthTo(customMonthFrom);
-                              }}
-                              className={`flex-1 py-1 rounded-md transition-all cursor-pointer text-center ${
-                                monthSelectionType === 'single'
-                                  ? 'bg-white text-indigo-900 shadow-2xs font-black'
-                                  : 'text-slate-500 hover:text-slate-800'
-                              }`}
-                            >
-                              شهر واحد
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setMonthSelectionType('range')}
-                              className={`flex-1 py-1 rounded-md transition-all cursor-pointer text-center ${
-                                monthSelectionType === 'range'
-                                  ? 'bg-white text-indigo-900 shadow-2xs font-black'
-                                  : 'text-slate-500 hover:text-slate-800'
-                              }`}
-                            >
-                              فترة عدة أشهر
-                            </button>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1 mb-2.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const d = new Date();
-                                const ym = d.toISOString().slice(0, 7);
-                                setCalendarYear(d.getFullYear());
-                                setMonthSelectionType('single');
-                                setCustomMonthFrom(ym);
-                                setCustomMonthTo(ym);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            >
-                              الشهر الحالي
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const d = new Date();
-                                d.setMonth(d.getMonth() - 1);
-                                const ym = d.toISOString().slice(0, 7);
-                                setCalendarYear(d.getFullYear());
-                                setMonthSelectionType('single');
-                                setCustomMonthFrom(ym);
-                                setCustomMonthTo(ym);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            >
-                              الشهر السابق
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const y = calendarYear;
-                                setMonthSelectionType('range');
-                                setCustomMonthFrom(`${y}-01`);
-                                setCustomMonthTo(`${y}-03`);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
-                            >
-                              أشهر (1 - 3)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const y = calendarYear;
-                                setMonthSelectionType('range');
-                                setCustomMonthFrom(`${y}-01`);
-                                setCustomMonthTo(`${y}-06`);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
-                            >
-                              أشهر (1 - 6)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const y = calendarYear;
-                                setMonthSelectionType('range');
-                                setCustomMonthFrom(`${y}-01`);
-                                setCustomMonthTo(`${y}-12`);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
-                            >
-                              كامل السنة
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-1.5 mb-2.5">
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => {
-                              const ym = `${calendarYear}-${String(num).padStart(2, '0')}`;
-                              const isFrom = customMonthFrom === ym;
-                              const isTo = customMonthTo === ym;
-                              const isExactSingle = isFrom && isTo;
-                              const [minYm, maxYm] =
-                                customMonthFrom && customMonthTo && customMonthFrom > customMonthTo
-                                  ? [customMonthTo, customMonthFrom]
-                                  : [customMonthFrom, customMonthTo];
-                              const inRange = minYm && maxYm && ym >= minYm && ym <= maxYm;
-
-                              return (
-                                <button
-                                  key={num}
-                                  type="button"
-                                  onClick={() => handleMonthNumberClick(num)}
-                                  className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer font-mono font-black ${
-                                    isExactSingle
-                                      ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-400'
-                                      : isFrom || isTo
-                                      ? 'bg-indigo-600 text-white shadow-xs'
-                                      : inRange
-                                      ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
-                                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
-                                  }`}
-                                >
-                                  <span className="text-[10px] font-sans font-medium text-slate-400 block -mb-0.5">
-                                    شهر
-                                  </span>
-                                  <span className="text-base">{num}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5 mb-3">
-                          <div className="flex flex-wrap gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustomFrom(todayStr);
-                                setCustomTo(todayStr);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            >
-                              اليوم
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const d = new Date();
-                                d.setDate(d.getDate() - 1);
-                                const yest = d.toISOString().slice(0, 10);
-                                setCustomFrom(yest);
-                                setCustomTo(yest);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            >
-                              أمس
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const d = new Date();
-                                const end = d.toISOString().slice(0, 10);
-                                d.setDate(d.getDate() - 7);
-                                const start = d.toISOString().slice(0, 10);
-                                setCustomFrom(start);
-                                setCustomTo(end);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            >
-                              آخر 7 أيام
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const d = new Date();
-                                const end = d.toISOString().slice(0, 10);
-                                d.setDate(d.getDate() - 30);
-                                const start = d.toISOString().slice(0, 10);
-                                setCustomFrom(start);
-                                setCustomTo(end);
-                              }}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            >
-                              آخر 30 يوماً
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 mb-1">من تاريخ:</label>
-                              <input
-                                type="date"
-                                value={customFrom}
-                                onChange={(e) => setCustomFrom(e.target.value)}
-                                className="w-full text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 mb-1">إلى تاريخ:</label>
-                              <input
-                                type="date"
-                                value={customTo}
-                                onChange={(e) => setCustomTo(e.target.value)}
-                                className="w-full text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="bg-slate-100 px-3 py-1.5 rounded-xl mb-3 text-xs flex items-center justify-between text-slate-700 font-bold">
-                        <span className="text-[11px] text-slate-500">المحدد:</span>
-                        <span className="font-mono text-indigo-950 font-black text-[11px] truncate max-w-[200px]">
-                          {customSubMode === 'months' ? (
-                            customMonthFrom === customMonthTo ? (
-                              `شهر ${parseInt(customMonthFrom?.split('-')[1] || '1', 10)} / ${calendarYear}`
-                            ) : (
-                              `أشهر (${parseInt(customMonthFrom?.split('-')[1] || '1', 10)} - ${parseInt(customMonthTo?.split('-')[1] || '12', 10)}) / ${calendarYear}`
-                            )
-                          ) : (
-                            customFrom && customTo ? `${customFrom} ↔ ${customTo}` : 'يرجى تحديد التاريخ'
-                          )}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => setShowCalendarPopover(false)}
-                          className="flex-1 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer text-center"
-                        >
-                          إلغاء
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (customSubMode === 'months') {
-                              if (!customMonthFrom) {
-                                const ym = `${calendarYear}-01`;
-                                setCustomMonthFrom(ym);
-                                setCustomMonthTo(ym);
-                              } else if (!customMonthTo) {
-                                setCustomMonthTo(customMonthFrom);
-                              }
-                            } else {
-                              if (!customFrom) setCustomFrom(todayStr);
-                              if (!customTo) setCustomTo(todayStr);
-                            }
-                            setPeriod('custom');
-                            setShowCalendarPopover(false);
-                          }}
-                          className="flex-1 py-1.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-2xs cursor-pointer text-center"
-                        >
-                          تطبيق الاختيار
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* زر طباعة الكشف */}
+          {/* زر طباعة التقرير الشامل (مطابق تماماً للزر الأسود مع الأيقونة الخضراء بالصورة) */}
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={() => handlePrintReport(activeTab)}
-              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              onClick={handlePrintFullReport}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
             >
-              <span>🖨️</span>
-              <span>
-                طباعة {activeTab === 'fixed' ? 'المصاريف الثابتة' : 'المصاريف المتغيرة'} (PDF)
-              </span>
+              <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              <span>طباعة التقرير الشامل (A4)</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* شريط الملخص الإجمالي السريع */}
-      <div className="bg-slate-100 rounded-2xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-600">إجمالي كافة المصاريف ({periodLabel}):</span>
-          <strong className="font-mono text-slate-900 font-black text-sm">
-            {formatIQD(totalExpensesAmount)} د.ع
-          </strong>
-          <span className="text-slate-400 font-mono">({analyzedExpenses.length} قيد)</span>
+      {/* 2. البطاقات الأربع التفاعلية الرئيسية (مطابقة 100% لتصميم الصورة media_1792069314588_b86a04f1.png) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* البطاقة 1 (اليمين): إجمالي كافة المصاريف */}
+        <div
+          onClick={() => handleOpenModal('all')}
+          className="group relative bg-white hover:bg-sky-50/40 rounded-2xl border-2 border-sky-300 hover:border-sky-500 p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 select-none active:scale-[0.99]"
+        >
+          <div className="flex items-start justify-between">
+            <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-800 border border-sky-300 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors shadow-2xs">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+            </div>
+            <span className="font-mono text-[11px] font-black text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
+              {analyzedExpenses.length} قيد مسجل
+            </span>
+          </div>
+
+          <div>
+            <h2 className="text-xs font-bold text-slate-500 mb-1">إجمالي كافة المصاريف</h2>
+            <div className="text-xl sm:text-2xl font-black text-sky-950 font-mono tracking-tight">
+              {formatIQD(totalExpensesAmount)} <span className="text-xs font-bold font-sans text-sky-700">د.ع</span>
+            </div>
+          </div>
         </div>
 
-        {/* نسبة التوزيع */}
-        <div className="flex items-center gap-3 text-[11px] font-bold">
-          <span className="flex items-center gap-1 text-purple-900">
-            <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-            <span>ثابتة: {fixedPercentage}%</span>
-          </span>
-          <span className="flex items-center gap-1 text-amber-900">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-            <span>متغيرة: {sundryPercentage}%</span>
-          </span>
+        {/* البطاقة 2: المصاريف الثابتة والتشغيلية */}
+        <div
+          onClick={() => handleOpenModal('fixed')}
+          className="group relative bg-white hover:bg-amber-50/40 rounded-2xl border-2 border-amber-300 hover:border-amber-500 p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 select-none active:scale-[0.99]"
+        >
+          <div className="flex items-start justify-between">
+            <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-colors shadow-2xs">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <span className="font-mono text-[11px] font-black text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+              {fixedPercentage}% من الإجمالي
+            </span>
+          </div>
+
+          <div>
+            <h2 className="text-xs font-bold text-slate-500 mb-1">المصاريف الثابتة والتشغيلية</h2>
+            <div className="text-xl sm:text-2xl font-black text-amber-950 font-mono tracking-tight">
+              {formatIQD(totalFixedAmount)} <span className="text-xs font-bold font-sans text-amber-700">د.ع</span>
+            </div>
+          </div>
+        </div>
+
+        {/* البطاقة 3: المصاريف المتغيرة (النثريات) */}
+        <div
+          onClick={() => handleOpenModal('variable')}
+          className="group relative bg-white hover:bg-rose-50/40 rounded-2xl border-2 border-rose-300 hover:border-rose-500 p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 select-none active:scale-[0.99]"
+        >
+          <div className="flex items-start justify-between">
+            <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-800 border border-rose-300 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-colors shadow-2xs">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <span className="font-mono text-[11px] font-black text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+              {sundryPercentage}% من الإجمالي
+            </span>
+          </div>
+
+          <div>
+            <h2 className="text-xs font-bold text-slate-500 mb-1">المصاريف المتغيرة (النثريات)</h2>
+            <div className="text-xl sm:text-2xl font-black text-rose-950 font-mono tracking-tight">
+              {formatIQD(totalSundryAmount)} <span className="text-xs font-bold font-sans text-rose-700">د.ع</span>
+            </div>
+          </div>
+        </div>
+
+        {/* البطاقة 4 (اليسار): بنود وتصنيفات الصرف */}
+        <div
+          onClick={() => handleOpenModal('categories')}
+          className="group relative bg-white hover:bg-emerald-50/40 rounded-2xl border-2 border-emerald-300 hover:border-emerald-500 p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 select-none active:scale-[0.99]"
+        >
+          <div className="flex items-start justify-between">
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-2xs">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+            </div>
+            <span className="font-mono text-[11px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+              {allCategoryBreakdown.length} تصنيف نشط
+            </span>
+          </div>
+
+          <div>
+            <h2 className="text-xs font-bold text-slate-500 mb-1 truncate">
+              أعلى بند: {topCategory?.category || 'لا يوجد'}
+            </h2>
+            <div className="text-xl sm:text-2xl font-black text-emerald-950 font-mono tracking-tight">
+              {formatIQD(topCategory?.totalAmount || 0)} <span className="text-xs font-bold font-sans text-emerald-700">د.ع</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 2. زرا الاختيار الرئيسيان: المصاريف الثابتة vs المصاريف المتغيرة */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-        {/* زر 1: المصاريف الثابتة */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('fixed');
-            setSelectedCategory('all');
-          }}
-          className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
-            activeTab === 'fixed'
-              ? 'bg-purple-900 text-white border-purple-900 shadow-md ring-4 ring-purple-100'
-              : 'bg-white hover:bg-purple-50/50 border-purple-200 text-slate-800 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2.5">
-              <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${
-                activeTab === 'fixed' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-900'
-              }`}>
-                🏢
-              </span>
-              <div>
-                <h3 className={`text-sm font-black ${
-                  activeTab === 'fixed' ? 'text-white' : 'text-purple-950'
-                }`}>
-                  المصاريف الثابتة
-                </h3>
-                <span className={`text-[11px] font-medium block ${
-                  activeTab === 'fixed' ? 'text-purple-200' : 'text-slate-500'
-                }`}>
-                  الالتزامات الدورية (رواتب، إيجار، كهرباء، إنترنت...)
-                </span>
-              </div>
-            </div>
-            <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full ${
-              activeTab === 'fixed'
-                ? 'bg-white text-purple-950 font-black'
-                : 'bg-purple-100 text-purple-900'
-            }`}>
-              {fixedPercentage}%
-            </span>
-          </div>
-
-          <div className="my-2 flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl sm:text-3xl font-black font-mono">
-                {formatIQD(totalFixedAmount)}
-              </span>
-              <span className={`text-xs font-bold ${
-                activeTab === 'fixed' ? 'text-purple-200' : 'text-slate-500'
-              }`}>
-                د.ع
-              </span>
-            </div>
-            <span className={`text-xs font-mono font-bold ${
-              activeTab === 'fixed' ? 'text-purple-200' : 'text-slate-500'
-            }`}>
-              {fixedExpenses.length} قيد مسجل
-            </span>
-          </div>
-
-          <div className={`pt-2 border-t flex items-center justify-between text-xs font-bold ${
-            activeTab === 'fixed' ? 'border-purple-800/80 text-purple-200' : 'border-slate-100 text-purple-900'
-          }`}>
-            <span>اضغط لعرض بنود وسجلات المصاريف الثابتة</span>
-            {activeTab === 'fixed' ? (
-              <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                معروضة حالياً ✓
-              </span>
-            ) : (
-              <span className="text-purple-700">عرض ➔</span>
-            )}
-          </div>
-        </button>
-
-        {/* زر 2: المصاريف المتغيرة */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('variable');
-            setSelectedCategory('all');
-          }}
-          className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
-            activeTab === 'variable'
-              ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-4 ring-amber-100'
-              : 'bg-white hover:bg-amber-50/50 border-amber-200 text-slate-800 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2.5">
-              <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${
-                activeTab === 'variable' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
-              }`}>
-                ☕
-              </span>
-              <div>
-                <h3 className={`text-sm font-black ${
-                  activeTab === 'variable' ? 'text-white' : 'text-amber-950'
-                }`}>
-                  المصاريف المتغيرة (النثريات)
-                </h3>
-                <span className={`text-[11px] font-medium block ${
-                  activeTab === 'variable' ? 'text-amber-100' : 'text-slate-500'
-                }`}>
-                  المصروفات اليومية المتفرقة (طعام، ضيافة، نظافة، مشتريات...)
-                </span>
-              </div>
-            </div>
-            <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full ${
-              activeTab === 'variable'
-                ? 'bg-white text-amber-950 font-black'
-                : 'bg-amber-100 text-amber-900'
-            }`}>
-              {sundryPercentage}%
-            </span>
-          </div>
-
-          <div className="my-2 flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl sm:text-3xl font-black font-mono">
-                {formatIQD(totalSundryAmount)}
-              </span>
-              <span className={`text-xs font-bold ${
-                activeTab === 'variable' ? 'text-amber-200' : 'text-slate-500'
-              }`}>
-                د.ع
-              </span>
-            </div>
-            <span className={`text-xs font-mono font-bold ${
-              activeTab === 'variable' ? 'text-amber-100' : 'text-slate-500'
-            }`}>
-              {sundryExpenses.length} قيد مسجل
-            </span>
-          </div>
-
-          <div className={`pt-2 border-t flex items-center justify-between text-xs font-bold ${
-            activeTab === 'variable' ? 'border-amber-700/80 text-amber-100' : 'border-slate-100 text-amber-900'
-          }`}>
-            <span>اضغط لعرض بنود وسجلات المصاريف المتغيرة</span>
-            {activeTab === 'variable' ? (
-              <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                معروضة حالياً ✓
-              </span>
-            ) : (
-              <span className="text-amber-700">عرض ➔</span>
-            )}
-          </div>
-        </button>
-      </div>
-
-      {/* 3. بنود القسم المحدد فقط (تظهر بنود الثابتة عند الضغط على الثابتة، وبنود المتغيرة عند الضغط على المتغيرة) */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">
-              {activeTab === 'fixed' ? '🏢' : '☕'}
-            </span>
-            <h3 className="text-sm font-black text-slate-900">
-              {activeTab === 'fixed'
-                ? 'بنود المصاريف الثابتة والتشغيلية'
-                : 'بنود المصاريف المتغيرة (النثريات)'}
-            </h3>
-            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-              activeTab === 'fixed'
-                ? 'bg-purple-100 text-purple-900'
-                : 'bg-amber-100 text-amber-900'
-            }`}>
-              {categoryBreakdown.length} بنود
-            </span>
-          </div>
-
-          <div className="text-xs text-slate-600 font-bold">
-            إجمالي بنود {activeTab === 'fixed' ? 'المصاريف الثابتة' : 'المصاريف المتغيرة'}:{' '}
-            <strong className="font-mono text-slate-900 font-black">
-              {formatIQD(activeTab === 'fixed' ? totalFixedAmount : totalSundryAmount)} د.ع
-            </strong>
-          </div>
-        </div>
-
-        {/* شبكة البنود للقسم المحدد فقط */}
-        {categoryBreakdown.length === 0 ? (
-          <div className="py-6 text-center text-slate-400 text-xs font-medium">
-            لا توجد بنود مسجلة لهذا القسم خلال الفترة المحددة ({periodLabel})
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            {categoryBreakdown.map((catItem) => {
-              const isSelected = selectedCategory === catItem.category;
-              return (
-                <div
-                  key={catItem.category}
-                  onClick={() => setSelectedCategory(isSelected ? 'all' : catItem.category)}
-                  className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                    isSelected
-                      ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200 shadow-xs'
-                      : activeTab === 'fixed'
-                      ? 'border-purple-200 bg-purple-50/40 hover:bg-purple-100/60'
-                      : 'border-amber-200 bg-amber-50/40 hover:bg-amber-100/60'
-                  }`}
-                  title={isSelected ? 'إلغاء التحديد وعرض كل البنود' : `تصفية الجدول حسب ${catItem.category}`}
-                >
-                  <div className="flex items-center justify-between text-xs font-black">
-                    <span className="truncate flex items-center gap-1" title={catItem.category}>
-                      <span>{catItem.icon}</span>
-                      <span className="text-slate-800">{catItem.category}</span>
-                    </span>
-                    <span className="text-[10px] font-mono font-bold text-slate-500">
-                      {catItem.percentage}%
-                    </span>
-                  </div>
-
-                  <div className="text-xs font-black font-mono text-slate-900">
-                    {formatIQD(catItem.totalAmount)}{' '}
-                    <span className="text-[9px] font-sans font-bold text-slate-500">د.ع</span>
-                  </div>
-
-                  {/* شريط نسبة البند */}
-                  <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div
-                      style={{ width: `${catItem.percentage}%` }}
-                      className={`h-full ${activeTab === 'fixed' ? 'bg-purple-600' : 'bg-amber-500'}`}
-                    />
-                  </div>
-
-                  <div className="text-[10px] font-bold text-slate-500 flex items-center justify-between">
-                    <span>العمليات:</span>
-                    <span className="font-mono text-slate-800 font-bold">{catItem.count}</span>
-                  </div>
+      {/* ======================================================== */}
+      {/* 3. MODAL 1: تفاصيل كافة المصاريف (ALL EXPENSES MODAL) */}
+      {/* ======================================================== */}
+      {activeModal === 'all' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-6xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            {/* رأس النافذة */}
+            <div className="p-4 bg-sky-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-800 text-sky-200 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 4. شريط الفلترة والبحث والترتيب للجدول */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          {/* البحث */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              البحث في مصاريف {activeTab === 'fixed' ? 'الثابتة' : 'المتغيرة'}:
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="ابحث بالبند، التصنيف، المشتري، الملاحظات..."
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-slate-800 placeholder:text-slate-400"
-              />
-              {searchTerm && (
+                <div>
+                  <h2 className="text-base font-black">تفاصيل وسجل كافة المصاريف</h2>
+                  <p className="text-xs text-sky-200 font-medium">
+                    كشف شامل لجميع القيود المسجلة خلال ({periodLabel})
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  onClick={() => handlePrintModalReport('all')}
+                  className="px-3 py-1.5 bg-sky-800 hover:bg-sky-700 text-white text-xs font-bold rounded-lg border border-sky-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>طباعة (A4)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="w-8 h-8 rounded-lg bg-sky-800 hover:bg-sky-700 text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
                 >
                   ✕
                 </button>
-              )}
+              </div>
             </div>
-          </div>
 
-          {/* فلتر البند/التصنيف */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              تصفية حسب البند:
-            </label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-slate-800"
-            >
-              <option value="all">كافة بنود {activeTab === 'fixed' ? 'المصاريف الثابتة' : 'المصاريف المتغيرة'} ({availableCategories.length})</option>
-              {availableCategories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* ترتيب القائمة */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              ترتيب القائمة حسب:
-            </label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-slate-800"
-            >
-              <option value="date_desc">📅 الأحدث تاريخاً أولاً</option>
-              <option value="date_asc">📆 الأقدم تاريخاً أولاً</option>
-              <option value="amount_desc">💰 الأعلى مبلغاً أولاً</option>
-              <option value="amount_asc">📉 الأقل مبلغاً أولاً</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* 5. جدول قيود وسجلات المصاريف المفصلة للقسم النشط فقط */}
-      <div className="bg-white rounded-2xl border border-slate-300 shadow-2xs overflow-hidden">
-        {/* شريط الإجماليات أعلى الجدول */}
-        <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-slate-700">
-              عدد القيود المعروضة:{' '}
-              <strong className="font-mono text-slate-900">{displayedExpenses.length}</strong>
-            </span>
-            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-              activeTab === 'fixed' ? 'bg-purple-100 text-purple-900' : 'bg-amber-100 text-amber-900'
-            }`}>
-              {activeTab === 'fixed' ? '🏢 المصاريف الثابتة والتشغيلية' : '☕ المصاريف المتغيرة (النثريات)'}
-            </span>
-            {selectedCategory !== 'all' && (
-              <span className="text-[11px] bg-indigo-100 text-indigo-900 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                بند محدد: {selectedCategory}
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory('all')}
-                  className="text-indigo-600 hover:text-indigo-950 font-black cursor-pointer"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-          </div>
-
-          <span className="font-bold text-slate-700">
-            إجمالي المبلغ المعروض:{' '}
-            <strong className="font-mono text-rose-700 font-black text-sm">
-              {formatIQD(displayedExpenses.reduce((s, e) => s + e.numAmount, 0))} د.ع
-            </strong>
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-right border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-900 text-white">
-                <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
-                <th className="py-2.5 px-3 font-bold">التاريخ واليوم</th>
-                <th className="py-2.5 px-3 font-bold">عنوان وبند المصروف</th>
-                <th className="py-2.5 px-3 font-bold text-center">نوع المصروف</th>
-                <th className="py-2.5 px-3 font-bold">التصنيف</th>
-                <th className="py-2.5 px-3 font-bold">الفترة المغطاة / ملاحظات</th>
-                <th className="py-2.5 px-3 font-bold">المنفذ / المشتري</th>
-                <th className="py-2.5 px-3 font-bold text-left">المبلغ المنصرف</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {displayedExpenses.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
-                    {expensesLoading ? 'جاري تحميل سجلات المصاريف...' : `🎉 لا توجد مصاريف ${activeTab === 'fixed' ? 'ثابتة' : 'متغيرة'} مسجلة تطابق هذه الفترة والخيارات!`}
-                  </td>
-                </tr>
-              ) : (
-                displayedExpenses.map((e, idx) => (
-                  <tr
-                    key={e.id || idx}
-                    className={`transition-colors ${
-                      idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'
-                    }`}
+            {/* شريط الفلاتر والبحث */}
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+                <input
+                  type="text"
+                  value={modalSearch}
+                  onChange={(e) => setModalSearch(e.target.value)}
+                  placeholder="ابحث بالبند، التصنيف، المسؤول، أو الملاحظات..."
+                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                {modalSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setModalSearch('')}
+                    className="text-slate-400 hover:text-slate-600 font-bold px-1"
                   >
-                    <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
-                      {idx + 1}
-                    </td>
+                    مسح
+                  </button>
+                )}
+              </div>
 
-                    <td className="py-2.5 px-3">
-                      <div className="font-mono font-bold text-slate-800">{e.dateStr || '—'}</div>
-                      {e.dayName && (
-                        <div className="text-[10px] text-slate-400 font-sans">{e.dayName}</div>
-                      )}
-                    </td>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-bold">النوع:</span>
+                  <select
+                    value={modalTypeFilter}
+                    onChange={(e) => setModalTypeFilter(e.target.value)}
+                    className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-700"
+                  >
+                    <option value="all">كافة الأنواع</option>
+                    <option value="fixed">🏢 ثابتة فقط</option>
+                    <option value="variable">☕ متغيرة فقط</option>
+                  </select>
+                </div>
 
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm shrink-0">{e.typeIcon}</span>
-                        <div>
-                          <div className="font-black text-slate-900 text-xs sm:text-sm">
-                            {e.title}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-bold">التصنيف:</span>
+                  <select
+                    value={modalCategoryFilter}
+                    onChange={(e) => setModalCategoryFilter(e.target.value)}
+                    className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-700"
+                  >
+                    <option value="all">كافة التصنيفات</option>
+                    {allCategoryBreakdown.map((c) => (
+                      <option key={c.category} value={c.category}>
+                        {c.category} ({c.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* جدول السجلات */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-white">
+                    <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
+                    <th className="py-2.5 px-3 font-bold">التاريخ واليوم</th>
+                    <th className="py-2.5 px-3 font-bold">عنوان وبند المصروف</th>
+                    <th className="py-2.5 px-3 font-bold text-center">نوع المصروف</th>
+                    <th className="py-2.5 px-3 font-bold">التصنيف</th>
+                    <th className="py-2.5 px-3 font-bold text-left">المبلغ المنصرف</th>
+                    <th className="py-2.5 px-3 font-bold">المسؤول / المشتري</th>
+                    <th className="py-2.5 px-3 font-bold">ملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {modalFilteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400 font-bold">
+                        لا توجد مصاريف مطابقة لمعايير البحث في هذه الفترة.
+                      </td>
+                    </tr>
+                  ) : (
+                    modalFilteredExpenses.map((e, idx) => (
+                      <tr key={e.id || idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          <span className="font-bold">{e.dateStr || '—'}</span>
+                          {e.dayName && <span className="text-[10px] text-slate-400 block">{e.dayName}</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span>{e.typeIcon}</span>
+                            <span className="font-black text-slate-900">{e.title}</span>
                           </div>
                           {e.periodCovered && (
-                            <span className="inline-block text-[10px] bg-indigo-50 text-indigo-800 border border-indigo-200 px-1.5 py-0.2 rounded font-bold mt-0.5">
+                            <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-bold mt-0.5 inline-block">
                               🗓️ {e.periodCovered}
                             </span>
                           )}
-                        </div>
-                      </div>
-                    </td>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${e.typeBadgeColor}`}>
+                            {e.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-700">
+                          {e.category || 'عام'}
+                        </td>
+                        <td className="py-2.5 px-3 text-left font-mono font-black text-slate-900 text-sm">
+                          {formatIQD(e.numAmount)} د.ع
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700 font-medium">
+                          {e.buyerName || 'قاصة المحل'}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">
+                          {e.notes || '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {modalFilteredExpenses.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
+                      <td colSpan={5} className="py-3 px-3 text-right">
+                        المجموع الإجمالي ({modalFilteredExpenses.length} قيد)
+                      </td>
+                      <td className="py-3 px-3 text-left font-mono text-slate-950 text-sm">
+                        {formatIQD(modalFilteredExpenses.reduce((s, x) => s + x.numAmount, 0))} د.ع
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
 
-                    <td className="py-2.5 px-3 text-center">
-                      <span
-                        className={`inline-block text-[11px] font-black px-2 py-0.5 rounded-full border ${e.typeBadgeColor}`}
-                      >
-                        {e.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-3 font-bold text-slate-700">
-                      {e.category || 'عام'}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">
-                      {e.notes || (e.periodCovered ? `تغطية ${e.periodCovered}` : '—')}
-                    </td>
-
-                    <td className="py-2.5 px-3 font-medium text-slate-700">
-                      {e.buyerName || 'قاصة المحل'}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-left font-mono font-black text-rose-700 text-xs sm:text-sm">
-                      {formatIQD(e.numAmount)} د.ع
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-            {displayedExpenses.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-100 border-t-2 border-slate-300 font-black text-xs">
-                  <td colSpan={7} className="py-3 px-3 text-right text-slate-900">
-                    المجموع الإجمالي لمصاريف {activeTab === 'fixed' ? 'الثابتة' : 'المتغيرة'} المعروضة:
-                  </td>
-                  <td className="py-3 px-3 text-left font-mono text-rose-800 text-sm">
-                    {formatIQD(displayedExpenses.reduce((s, e) => s + e.numAmount, 0))} د.ع
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+            {/* أسفل النافذة */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600">
+              <span>إجمالي كافة المصاريف في هذه الفترة: {formatIQD(totalExpensesAmount)} د.ع</span>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* 6. وثيقة التقرير المطبوع بصيغة PDF الرسمية */}
+      {/* ======================================================== */}
+      {/* 4. MODAL 2: تفاصيل وبنود المصاريف الثابتة (FIXED MODAL) */}
+      {/* ======================================================== */}
+      {activeModal === 'fixed' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-6xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            {/* رأس النافذة */}
+            <div className="p-4 bg-amber-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-800 text-amber-200 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-black">تفاصيل وبنود المصاريف الثابتة والتشغيلية</h2>
+                  <p className="text-xs text-amber-200 font-medium">
+                    كشف الالتزامات الدورية (رواتب، إيجار، كهرباء، إنترنت، تشغيل...) خلال ({periodLabel})
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintModalReport('fixed')}
+                  className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-white text-xs font-bold rounded-lg border border-amber-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>طباعة (A4)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="w-8 h-8 rounded-lg bg-amber-800 hover:bg-amber-700 text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* بنود المصاريف الثابتة فقط (أزرار سريعة لتصفية البنود) */}
+            <div className="p-3 bg-amber-50/50 border-b border-amber-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                  <span>🏢</span>
+                  <span>بنود وتصنيفات المصاريف الثابتة:</span>
+                  <span className="text-[10px] font-mono bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                    {fixedCategoryBreakdown.length} بنود
+                  </span>
+                </span>
+                <span className="text-xs font-mono font-bold text-amber-900">
+                  إجمالي الثابتة: <strong>{formatIQD(totalFixedAmount)} د.ع</strong>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setModalCategoryFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    modalCategoryFilter === 'all'
+                      ? 'bg-amber-700 text-white shadow-xs'
+                      : 'bg-white text-slate-700 hover:bg-amber-100 border border-amber-200'
+                  }`}
+                >
+                  كافة البنود الثابتة ({fixedExpenses.length})
+                </button>
+                {fixedCategoryBreakdown.map((cat) => (
+                  <button
+                    key={cat.category}
+                    type="button"
+                    onClick={() => setModalCategoryFilter(modalCategoryFilter === cat.category ? 'all' : cat.category)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      modalCategoryFilter === cat.category
+                        ? 'bg-amber-700 text-white shadow-xs ring-2 ring-amber-400'
+                        : 'bg-white text-slate-700 hover:bg-amber-100 border border-amber-200'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.category}</span>
+                    <span className="font-mono text-[10px] opacity-80">({formatIQD(cat.totalAmount)} د.ع)</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* شريط البحث */}
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2 text-xs">
+              <input
+                type="text"
+                value={modalSearch}
+                onChange={(e) => setModalSearch(e.target.value)}
+                placeholder="ابحث في قيود المصاريف الثابتة (البند، الملاحظات، المسؤول...)"
+                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              {modalSearch && (
+                <button
+                  type="button"
+                  onClick={() => setModalSearch('')}
+                  className="text-slate-400 hover:text-slate-600 font-bold px-1"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+
+            {/* جدول سجلات المصاريف الثابتة */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-white">
+                    <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
+                    <th className="py-2.5 px-3 font-bold">التاريخ واليوم</th>
+                    <th className="py-2.5 px-3 font-bold">عنوان وبند المصروف</th>
+                    <th className="py-2.5 px-3 font-bold">التصنيف</th>
+                    <th className="py-2.5 px-3 font-bold text-left">المبلغ المنصرف</th>
+                    <th className="py-2.5 px-3 font-bold">المسؤول / المشتري</th>
+                    <th className="py-2.5 px-3 font-bold">الفترة المغطاة / ملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {modalFilteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400 font-bold">
+                        لا توجد مصاريف ثابتة مسجلة تطابق البحث في هذه الفترة.
+                      </td>
+                    </tr>
+                  ) : (
+                    modalFilteredExpenses.map((e, idx) => (
+                      <tr key={e.id || idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          <span className="font-bold">{e.dateStr || '—'}</span>
+                          {e.dayName && <span className="text-[10px] text-slate-400 block">{e.dayName}</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span>{e.typeIcon}</span>
+                            <span className="font-black text-slate-900">{e.title}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-700">
+                          <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[10px]">
+                            {e.category || 'عام'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-left font-mono font-black text-amber-950 text-sm">
+                          {formatIQD(e.numAmount)} د.ع
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700 font-medium">
+                          {e.buyerName || 'قاصة المحل'}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">
+                          {e.notes || (e.periodCovered ? `تغطية ${e.periodCovered}` : '—')}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {modalFilteredExpenses.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-amber-50 border-t-2 border-slate-800 font-black text-slate-900">
+                      <td colSpan={4} className="py-3 px-3 text-right">
+                        المجموع الإجمالي للمصاريف الثابتة ({modalFilteredExpenses.length} قيد)
+                      </td>
+                      <td className="py-3 px-3 text-left font-mono text-amber-950 text-sm">
+                        {formatIQD(modalFilteredExpenses.reduce((s, x) => s + x.numAmount, 0))} د.ع
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {/* أسفل النافذة */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600">
+              <span>إجمالي المصاريف الثابتة: {formatIQD(totalFixedAmount)} د.ع ({fixedPercentage}% من الإجمالي)</span>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 5. MODAL 3: تفاصيل وبنود المصاريف المتغيرة (VARIABLE MODAL) */}
+      {/* ======================================================== */}
+      {activeModal === 'variable' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-6xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            {/* رأس النافذة */}
+            <div className="p-4 bg-rose-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-800 text-rose-200 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-black">تفاصيل وبنود المصاريف المتغيرة (النثريات اليومية)</h2>
+                  <p className="text-xs text-rose-200 font-medium">
+                    كشف نثريات المحل والضيافة والغداء والمشتريات الموقعية خلال ({periodLabel})
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintModalReport('variable')}
+                  className="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white text-xs font-bold rounded-lg border border-rose-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>طباعة (A4)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="w-8 h-8 rounded-lg bg-rose-800 hover:bg-rose-700 text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* بنود المصاريف المتغيرة فقط (أزرار سريعة لتصفية البنود) */}
+            <div className="p-3 bg-rose-50/50 border-b border-rose-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-black text-rose-950 flex items-center gap-1.5">
+                  <span>☕</span>
+                  <span>بنود وتصنيفات المصاريف المتغيرة (النثريات):</span>
+                  <span className="text-[10px] font-mono bg-rose-200/70 text-rose-900 px-2 py-0.5 rounded-full font-bold">
+                    {sundryCategoryBreakdown.length} بنود
+                  </span>
+                </span>
+                <span className="text-xs font-mono font-bold text-rose-900">
+                  إجمالي النثريات: <strong>{formatIQD(totalSundryAmount)} د.ع</strong>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setModalCategoryFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    modalCategoryFilter === 'all'
+                      ? 'bg-rose-700 text-white shadow-xs'
+                      : 'bg-white text-slate-700 hover:bg-rose-100 border border-rose-200'
+                  }`}
+                >
+                  كافة بنود النثريات ({sundryExpenses.length})
+                </button>
+                {sundryCategoryBreakdown.map((cat) => (
+                  <button
+                    key={cat.category}
+                    type="button"
+                    onClick={() => setModalCategoryFilter(modalCategoryFilter === cat.category ? 'all' : cat.category)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      modalCategoryFilter === cat.category
+                        ? 'bg-rose-700 text-white shadow-xs ring-2 ring-rose-400'
+                        : 'bg-white text-slate-700 hover:bg-rose-100 border border-rose-200'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.category}</span>
+                    <span className="font-mono text-[10px] opacity-80">({formatIQD(cat.totalAmount)} د.ع)</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* شريط البحث */}
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2 text-xs">
+              <input
+                type="text"
+                value={modalSearch}
+                onChange={(e) => setModalSearch(e.target.value)}
+                placeholder="ابحث في نثريات المحل (البند، الملاحظات، المسؤول...)"
+                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+              {modalSearch && (
+                <button
+                  type="button"
+                  onClick={() => setModalSearch('')}
+                  className="text-slate-400 hover:text-slate-600 font-bold px-1"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+
+            {/* جدول سجلات المصاريف المتغيرة */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-white">
+                    <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
+                    <th className="py-2.5 px-3 font-bold">التاريخ واليوم</th>
+                    <th className="py-2.5 px-3 font-bold">عنوان وبند المصروف</th>
+                    <th className="py-2.5 px-3 font-bold">التصنيف</th>
+                    <th className="py-2.5 px-3 font-bold text-left">المبلغ المنصرف</th>
+                    <th className="py-2.5 px-3 font-bold">المسؤول / المشتري</th>
+                    <th className="py-2.5 px-3 font-bold">ملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {modalFilteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400 font-bold">
+                        لا توجد نثريات مسجلة تطابق البحث في هذه الفترة.
+                      </td>
+                    </tr>
+                  ) : (
+                    modalFilteredExpenses.map((e, idx) => (
+                      <tr key={e.id || idx} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          <span className="font-bold">{e.dateStr || '—'}</span>
+                          {e.dayName && <span className="text-[10px] text-slate-400 block">{e.dayName}</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span>{e.typeIcon}</span>
+                            <span className="font-black text-slate-900">{e.title}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-700">
+                          <span className="bg-rose-50 text-rose-900 border border-rose-200 px-2 py-0.5 rounded text-[10px]">
+                            {e.category || 'عام'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-left font-mono font-black text-rose-950 text-sm">
+                          {formatIQD(e.numAmount)} د.ع
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700 font-medium">
+                          {e.buyerName || 'قاصة المحل'}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">
+                          {e.notes || '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {modalFilteredExpenses.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-rose-50 border-t-2 border-slate-800 font-black text-slate-900">
+                      <td colSpan={4} className="py-3 px-3 text-right">
+                        المجموع الإجمالي للنثريات ({modalFilteredExpenses.length} قيد)
+                      </td>
+                      <td className="py-3 px-3 text-left font-mono text-rose-950 text-sm">
+                        {formatIQD(modalFilteredExpenses.reduce((s, x) => s + x.numAmount, 0))} د.ع
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {/* أسفل النافذة */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600">
+              <span>إجمالي المصاريف المتغيرة: {formatIQD(totalSundryAmount)} د.ع ({sundryPercentage}% من الإجمالي)</span>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 6. MODAL 4: بنود وتصنيفات الصرف (CATEGORIES BREAKDOWN) */}
+      {/* ======================================================== */}
+      {activeModal === 'categories' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            {/* رأس النافذة */}
+            <div className="p-4 bg-emerald-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-800 text-emerald-200 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-black">تحليل وتوزيع بنود وتصنيفات الصرف</h2>
+                  <p className="text-xs text-emerald-200 font-medium">
+                    كافة مجالات وبنود الصرف مرتبة من الأكثر استهلاكاً إلى الأقل خلال ({periodLabel})
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintModalReport('categories')}
+                  className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg border border-emerald-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>طباعة (A4)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="w-8 h-8 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* شريط الإحصائيات السريعة */}
+            <div className="p-3 bg-emerald-50/60 border-b border-emerald-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
+                <span className="text-[11px] text-slate-500 block">إجمالي المصاريف:</span>
+                <span className="font-mono font-black text-slate-900 text-sm">
+                  {formatIQD(totalExpensesAmount)} د.ع
+                </span>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
+                <span className="text-[11px] text-slate-500 block">عدد التصنيفات النشطة:</span>
+                <span className="font-mono font-black text-emerald-950 text-sm">
+                  {allCategoryBreakdown.length} تصنيف
+                </span>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
+                <span className="text-[11px] text-slate-500 block">المصاريف الثابتة:</span>
+                <span className="font-mono font-black text-amber-950 text-sm">
+                  {formatIQD(totalFixedAmount)} د.ع ({fixedPercentage}%)
+                </span>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
+                <span className="text-[11px] text-slate-500 block">المصاريف المتغيرة:</span>
+                <span className="font-mono font-black text-rose-950 text-sm">
+                  {formatIQD(totalSundryAmount)} د.ع ({sundryPercentage}%)
+                </span>
+              </div>
+            </div>
+
+            {/* جدول بنود وتصنيفات الصرف */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-white">
+                    <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
+                    <th className="py-2.5 px-3 font-bold">بند / تصنيف المصروف</th>
+                    <th className="py-2.5 px-3 font-bold text-center">نوع المصروف</th>
+                    <th className="py-2.5 px-3 font-bold text-center">عدد القيود</th>
+                    <th className="py-2.5 px-3 font-bold text-left">إجمالي المبلغ</th>
+                    <th className="py-2.5 px-3 font-bold text-center w-40">النسبة من الإجمالي</th>
+                    <th className="py-2.5 px-3 font-bold text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {allCategoryBreakdown.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400 font-bold">
+                        لا توجد بنود مصاريف مسجلة في هذه الفترة.
+                      </td>
+                    </tr>
+                  ) : (
+                    allCategoryBreakdown.map((cat, idx) => (
+                      <tr key={cat.category} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{cat.icon}</span>
+                            <span className="font-black text-slate-900 text-sm">{cat.category}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              cat.isFixed
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-rose-100 text-rose-900 border-rose-300'
+                            }`}
+                          >
+                            {cat.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700">
+                          {cat.count}
+                        </td>
+                        <td className="py-2.5 px-3 text-left font-mono font-black text-slate-950 text-sm">
+                          {formatIQD(cat.totalAmount)} د.ع
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-700 w-8 text-left text-[11px]">
+                              {cat.percentage}%
+                            </span>
+                            <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                              <div
+                                style={{ width: `${cat.percentage}%` }}
+                                className={`h-full ${cat.isFixed ? 'bg-amber-600' : 'bg-rose-500'}`}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalCategoryFilter(cat.category);
+                              setActiveModal(cat.isFixed ? 'fixed' : 'variable');
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                          >
+                            عرض القيود ➔
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* أسفل النافذة */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600">
+              <span>إجمالي كافة بنود الصرف: {formatIQD(totalExpensesAmount)} د.ع</span>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. وثيقة الطباعة الرسمية بصيغة PDF الرسمية A4 */}
       {printDocumentProps && (
         <PrintableReportDocument
           {...printDocumentProps}
