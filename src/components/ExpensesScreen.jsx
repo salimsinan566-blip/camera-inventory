@@ -15,7 +15,7 @@ function formatIQD(num) {
   return Number(Math.round(num || 0)).toLocaleString('en-US');
 }
 
-export default function ExpensesScreen({ user }) {
+export default function ExpensesScreen({ user, onNavigate }) {
   const { expenses, stats, loading } = useExpenses();
   const { employees: salaryEmployees } = useSalaries();
   const { toast, confirm } = useUI();
@@ -644,6 +644,27 @@ export default function ExpensesScreen({ user }) {
           </div>
         </div>
       </div>
+
+      {/* رابط سريع إلى تقارير المصاريف المفصلة في مركز التقارير */}
+      {onNavigate && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-xl">📊</span>
+            <div>
+              <span className="font-black text-slate-800 block">هل ترغب في تصدير كشوفات أو طباعة تقارير المصاريف الرسمية؟</span>
+              <span className="text-slate-500 font-medium text-[11px]">يمكنك تحديد فترات زمنية دقيقة بالأشهر والأيام مثل تقرير الأرباح، وفصل المصاريف الثابتة عن النثريات وطباعتها PDF</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('reports')}
+            className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>فتح تقارير المصاريف</span>
+            <span>➔</span>
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: Form on the Right / Table on the Left */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-6">

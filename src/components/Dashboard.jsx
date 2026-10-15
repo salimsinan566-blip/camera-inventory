@@ -427,7 +427,7 @@ export default function Dashboard({ user }) {
         </div>
 
         <div className={activeTab === 'expenses' ? 'block h-full' : 'hidden'}>
-          <ExpensesScreen user={user} />
+          <ExpensesScreen user={user} onNavigate={navigateToTab} />
         </div>
 
         <div className={activeTab === 'sales_archive' ? 'block h-full' : 'hidden'}>

@@ -147,7 +147,7 @@ export async function deleteExpense(id) {
   }
 }
 
-export function subscribeToExpenses(callback, maxLimit = 150) {
+export function subscribeToExpenses(callback, maxLimit = 1000) {
   const cached = loadLocalBackup(BACKUP_KEYS.EXPENSES, []);
   if (Array.isArray(cached) && cached.length > 0) {
     callback(cached);

@@ -3,6 +3,7 @@ import SuppliersReportsTab from './reports/SuppliersReportsTab';
 import InventoryReportsTab from './reports/InventoryReportsTab';
 import CustomersReportsTab from './reports/CustomersReportsTab';
 import SalesProfitsReportsTab from './reports/SalesProfitsReportsTab';
+import ExpensesReportsTab from './reports/ExpensesReportsTab';
 import { useSettings } from '../hooks/useSettings';
 import { getDisplayName } from '../utils/userUtils';
 
@@ -58,9 +59,9 @@ const REPORT_DEPARTMENTS = [
   { 
     id: 'expenses', 
     code: 'SEC-EXP-01',
-    label: 'تقارير المصاريف والمالية', 
-    isReady: false, 
-    countText: 'قيد الإعداد',
+    label: 'تقارير المصاريف', 
+    isReady: true, 
+    countText: 'المصاريف الثابتة والنثريات',
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -241,6 +242,16 @@ export default function ReportsCenter({ user, onNavigate, onUpdateNav }) {
         {/* 5. المستوى الثاني: فتح تقارير المبيعات والأرباح والتكاليف */}
         {selectedDepartment === 'sales' && (
           <SalesProfitsReportsTab 
+            storeSettings={settings} 
+            userName={userName}
+            onBackToDepartments={handleSingleBack}
+            setReportMeta={setReportMeta}
+          />
+        )}
+
+        {/* 6. المستوى الثاني: فتح تقارير المصاريف والنثريات */}
+        {selectedDepartment === 'expenses' && (
+          <ExpensesReportsTab 
             storeSettings={settings} 
             userName={userName}
             onBackToDepartments={handleSingleBack}
