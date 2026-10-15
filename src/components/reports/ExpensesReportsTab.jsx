@@ -52,7 +52,7 @@ function getLastDayOfMonth(yearMonth) {
   return `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
 }
 
-// دالة التحقق الدقيقة: هل المصروف ثابت/تشغيلي أم نثرية يومية؟
+// دالة التحقق الدقيقة: هل المصروف ثابت/تشغيلي أم متغير/نثريات؟
 export function isFixedExpense(e) {
   if (e.expenseType === 'shop') return true;
   if (e.expenseType === 'daily') return false;
@@ -102,8 +102,9 @@ export default function ExpensesReportsTab({
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
   const [monthSelectionType, setMonthSelectionType] = useState('single'); // 'single' | 'range'
 
-  // Separation Tab: 'all' | 'fixed' | 'sundries'
-  const [activeTab, setActiveTab] = useState('all');
+  // القسم النشط: 'fixed' (المصاريف الثابتة) أو 'variable' (المصاريف المتغيرة)
+  // تم إلغاء 'all' وعرض البنود فقط عند الضغط على القسم المطلوب
+  const [activeTab, setActiveTab] = useState('fixed');
 
   // Search, Category, and Sorting
   const [searchTerm, setSearchTerm] = useState('');
@@ -215,7 +216,7 @@ export default function ExpensesReportsTab({
       return {
         ...e,
         isFixed,
-        typeLabel: isFixed ? 'مصاريف ثابتة' : 'نثريات',
+        typeLabel: isFixed ? 'مصاريف ثابتة' : 'مصاريف متغيرة',
         typeBadgeColor: isFixed
           ? 'bg-purple-100 text-purple-900 border-purple-300'
           : 'bg-amber-100 text-amber-900 border-amber-300',
@@ -261,30 +262,19 @@ export default function ExpensesReportsTab({
       : 0;
   }, [totalExpensesAmount, fixedPercentage]);
 
-  // Categories available for currently active separation tab
+  // Categories available for the currently active tab (fixed or variable)
   const availableCategories = useMemo(() => {
-    const list =
-      activeTab === 'fixed'
-        ? fixedExpenses
-        : activeTab === 'sundries'
-        ? sundryExpenses
-        : analyzedExpenses;
-
+    const list = activeTab === 'fixed' ? fixedExpenses : sundryExpenses;
     const set = new Set();
     list.forEach((e) => {
       if (e.category) set.add(e.category.trim());
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'));
-  }, [activeTab, fixedExpenses, sundryExpenses, analyzedExpenses]);
+  }, [activeTab, fixedExpenses, sundryExpenses]);
 
-  // Filtered & Sorted list for the table
+  // Filtered & Sorted list for the table (strictly based on activeTab)
   const displayedExpenses = useMemo(() => {
-    let list =
-      activeTab === 'fixed'
-        ? fixedExpenses
-        : activeTab === 'sundries'
-        ? sundryExpenses
-        : analyzedExpenses;
+    let list = activeTab === 'fixed' ? fixedExpenses : sundryExpenses;
 
     // Search filter
     if (searchTerm.trim()) {
@@ -318,24 +308,13 @@ export default function ExpensesReportsTab({
       const d2 = new Date(a.date || a.createdAt || 0).getTime();
       return d1 - d2;
     });
-  }, [activeTab, fixedExpenses, sundryExpenses, analyzedExpenses, searchTerm, selectedCategory, sortBy]);
+  }, [activeTab, fixedExpenses, sundryExpenses, searchTerm, selectedCategory, sortBy]);
 
-  // Category Breakdown for the Active Tab
+  // بنود القسم المحدد فقط (تظهر فقط بنود الثابتة عند الضغط على الثابتة، وبنود المتغيرة عند الضغط على المتغيرة)
   const categoryBreakdown = useMemo(() => {
     const map = new Map();
-    const sourceList =
-      activeTab === 'fixed'
-        ? fixedExpenses
-        : activeTab === 'sundries'
-        ? sundryExpenses
-        : analyzedExpenses;
-
-    const currentTotal =
-      activeTab === 'fixed'
-        ? totalFixedAmount
-        : activeTab === 'sundries'
-        ? totalSundryAmount
-        : totalExpensesAmount;
+    const sourceList = activeTab === 'fixed' ? fixedExpenses : sundryExpenses;
+    const currentTotal = activeTab === 'fixed' ? totalFixedAmount : totalSundryAmount;
 
     sourceList.forEach((e) => {
       const cat = (e.category || 'عام').trim();
@@ -359,7 +338,7 @@ export default function ExpensesReportsTab({
         percentage: currentTotal > 0 ? Math.round((entry.totalAmount / currentTotal) * 100) : 0,
       }))
       .sort((a, b) => b.totalAmount - a.totalAmount);
-  }, [activeTab, fixedExpenses, sundryExpenses, analyzedExpenses, totalFixedAmount, totalSundryAmount, totalExpensesAmount]);
+  }, [activeTab, fixedExpenses, sundryExpenses, totalFixedAmount, totalSundryAmount]);
 
   // Date Popover handlers
   const handleToggleCustomPopover = () => {
@@ -403,7 +382,7 @@ export default function ExpensesReportsTab({
     if (!setReportMeta) return;
     setReportMeta({
       code: 'SEC-EXP-01',
-      title: 'تقارير المصاريف',
+      title: activeTab === 'fixed' ? 'تقارير المصاريف الثابتة' : 'تقارير المصاريف المتغيرة',
       onPrint: () => handlePrintReport(activeTab),
     });
   }, [setReportMeta, activeTab]);
@@ -411,56 +390,33 @@ export default function ExpensesReportsTab({
   // Print Handler
   const handlePrintReport = useCallback(
     (tab = activeTab) => {
-      let printTitle = 'تقرير المصاريف الشامل';
-      let printSub = `كشف المصاريف الثابتة والنثريات - ${periodLabel}`;
-      let reportCode = `REP-EXP-ALL-${Date.now().toString().slice(-6)}`;
+      let printTitle = 'تقرير المصاريف الثابتة والتشغيلية';
+      let printSub = `كشف الالتزامات الدورية والمصاريف الثابتة - ${periodLabel}`;
+      let reportCode = `REP-EXP-FIX-${Date.now().toString().slice(-6)}`;
       let kpis = [
-        { label: 'إجمالي كافة المصاريف', value: totalExpensesAmount, currency: 'د.ع', highlight: true },
-        { label: 'المصاريف الثابتة', value: totalFixedAmount, currency: 'د.ع' },
-        { label: 'النثريات والمصاريف اليومية', value: totalSundryAmount, currency: 'د.ع' },
-        { label: 'إجمالي عدد القيود', value: analyzedExpenses.length },
+        { label: 'إجمالي المصاريف الثابتة', value: totalFixedAmount, currency: 'د.ع', highlight: true },
+        { label: 'نسبة من إجمالي المصاريف', value: `${fixedPercentage}%` },
+        { label: 'عدد القيود المسجلة', value: fixedExpenses.length },
       ];
 
-      if (tab === 'fixed') {
-        printTitle = 'تقرير المصاريف الثابتة والتشغيلية';
-        printSub = `كشف الالتزامات الدورية والمصاريف الثابتة - ${periodLabel}`;
-        reportCode = `REP-EXP-FIX-${Date.now().toString().slice(-6)}`;
-        kpis = [
-          { label: 'إجمالي المصاريف الثابتة', value: totalFixedAmount, currency: 'د.ع', highlight: true },
-          { label: 'نسبة من إجمالي المصاريف', value: `${fixedPercentage}%` },
-          { label: 'عدد القيود', value: fixedExpenses.length },
-        ];
-      } else if (tab === 'sundries') {
-        printTitle = 'تقرير النثريات والمصاريف اليومية';
+      if (tab === 'variable') {
+        printTitle = 'تقرير المصاريف المتغيرة (النثريات)';
         printSub = `كشف النثريات والمنصرفات اليومية - ${periodLabel}`;
-        reportCode = `REP-EXP-SUN-${Date.now().toString().slice(-6)}`;
+        reportCode = `REP-EXP-VAR-${Date.now().toString().slice(-6)}`;
         kpis = [
-          { label: 'إجمالي النثريات', value: totalSundryAmount, currency: 'د.ع', highlight: true },
+          { label: 'إجمالي المصاريف المتغيرة', value: totalSundryAmount, currency: 'د.ع', highlight: true },
           { label: 'نسبة من إجمالي المصاريف', value: `${sundryPercentage}%` },
-          { label: 'عدد القيود', value: sundryExpenses.length },
+          { label: 'عدد القيود المسجلة', value: sundryExpenses.length },
         ];
       }
-
-      const activeList =
-        tab === 'fixed'
-          ? fixedExpenses
-          : tab === 'sundries'
-          ? sundryExpenses
-          : analyzedExpenses;
-
-      const subTotal = activeList.reduce((s, x) => s + x.numAmount, 0);
 
       setPrintDocumentProps({
         title: printTitle,
         subtitle: printSub,
         reportCode,
         filterDescription: `الفترة الزمنية: ${periodLabel} | التصنيف المعروض: ${
-          tab === 'fixed'
-            ? 'المصاريف الثابتة فقط'
-            : tab === 'sundries'
-            ? 'النثريات فقط'
-            : 'كافة المصاريف (مفصولة ومقسمة)'
-        }`,
+          tab === 'fixed' ? 'المصاريف الثابتة والتشغيلية' : 'المصاريف المتغيرة (النثريات)'
+        }${selectedCategory !== 'all' ? ` | البند: ${selectedCategory}` : ''}`,
         kpis,
         columns: [
           {
@@ -519,7 +475,7 @@ export default function ExpensesReportsTab({
                   printColorAdjust: 'exact',
                 }}
               >
-                {row.isFixed ? '🏢 ثابتة' : '☕ نثريات'}
+                {row.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
               </span>
             ),
           },
@@ -535,24 +491,24 @@ export default function ExpensesReportsTab({
             render: (v) => `${formatIQD(v)} د.ع`,
           },
         ],
-        data: activeList,
+        data: displayedExpenses,
         totals: {
           title: 'المجموع الإجمالي',
-          numAmount: `${formatIQD(subTotal)} د.ع`,
+          numAmount: `${formatIQD(displayedExpenses.reduce((s, e) => s + e.numAmount, 0))} د.ع`,
         },
       });
     },
     [
       activeTab,
       periodLabel,
-      totalExpensesAmount,
       totalFixedAmount,
       totalSundryAmount,
-      analyzedExpenses,
       fixedExpenses,
       sundryExpenses,
+      displayedExpenses,
       fixedPercentage,
       sundryPercentage,
+      selectedCategory,
     ]
   );
 
@@ -584,12 +540,12 @@ export default function ExpensesReportsTab({
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                كشف تحليلي للمصاريف مع فصل المصاريف الثابتة والتشغيلية عن النثريات اليومية
+                اضغط على المصاريف الثابتة أو المصاريف المتغيرة لعرض بنودها وسجلاتها بدقة
               </p>
             </div>
           </div>
 
-          {/* الأزرار الثلاثة المحددة بدقة مثل تقرير الأرباح: اليوم | هذا الشهر | مخصص */}
+          {/* تحديد المدة: اليوم | هذا الشهر | مخصص */}
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
               <button
@@ -621,7 +577,7 @@ export default function ExpensesReportsTab({
                 هذا الشهر
               </button>
 
-              {/* زر مخصص مع القائمة المنبثقة ملتصقة به مباشرة */}
+              {/* زر مخصص مع القائمة المنبثقة */}
               <div className="relative">
                 <button
                   type="button"
@@ -649,7 +605,7 @@ export default function ExpensesReportsTab({
                   </svg>
                 </button>
 
-                {/* النافذة المنبثقة الملتصقة بالزر مباشرة */}
+                {/* النافذة المنبثقة */}
                 {showCalendarPopover && (
                   <>
                     <div
@@ -661,7 +617,7 @@ export default function ExpensesReportsTab({
                       className="fixed sm:absolute top-20 sm:top-full start-2 sm:start-auto sm:end-0 mt-0 sm:mt-2 w-80 max-w-[95vw] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 p-3.5 text-right font-sans"
                       dir="rtl"
                     >
-                      {/* التبويب الداخلي: أشهر vs أيام */}
+                      {/* أشهر vs أيام */}
                       <div className="flex bg-slate-100 p-0.5 rounded-xl mb-3 text-xs font-bold">
                         <button
                           type="button"
@@ -690,7 +646,6 @@ export default function ExpensesReportsTab({
                       {/* تبويب الأشهر */}
                       {customSubMode === 'months' ? (
                         <div>
-                          {/* شريط تبديل السنة */}
                           <div className="flex items-center justify-between bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl mb-2.5">
                             <button
                               type="button"
@@ -735,7 +690,6 @@ export default function ExpensesReportsTab({
                             </button>
                           </div>
 
-                          {/* نوع الاختيار: شهر واحد أم عدة أشهر */}
                           <div className="flex items-center gap-1 mb-2 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
                             <button
                               type="button"
@@ -764,7 +718,6 @@ export default function ExpensesReportsTab({
                             </button>
                           </div>
 
-                          {/* اختصارات سريعة */}
                           <div className="flex flex-wrap gap-1 mb-2.5">
                             <button
                               type="button"
@@ -833,7 +786,6 @@ export default function ExpensesReportsTab({
                             </button>
                           </div>
 
-                          {/* شبكة الأرقام فقط (1 إلى 12) - أرقام بدون أسماء */}
                           <div className="grid grid-cols-4 gap-1.5 mb-2.5">
                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => {
                               const ym = `${calendarYear}-${String(num).padStart(2, '0')}`;
@@ -871,7 +823,6 @@ export default function ExpensesReportsTab({
                           </div>
                         </div>
                       ) : (
-                        /* محتوى اختيار الأيام */
                         <div className="space-y-2.5 mb-3">
                           <div className="flex flex-wrap gap-1">
                             <button
@@ -950,7 +901,6 @@ export default function ExpensesReportsTab({
                         </div>
                       )}
 
-                      {/* ملخص الفترة المحددة */}
                       <div className="bg-slate-100 px-3 py-1.5 rounded-xl mb-3 text-xs flex items-center justify-between text-slate-700 font-bold">
                         <span className="text-[11px] text-slate-500">المحدد:</span>
                         <span className="font-mono text-indigo-950 font-black text-[11px] truncate max-w-[200px]">
@@ -966,7 +916,6 @@ export default function ExpensesReportsTab({
                         </span>
                       </div>
 
-                      {/* أزرار الإجراءات */}
                       <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
                         <button
                           type="button"
@@ -1004,208 +953,230 @@ export default function ExpensesReportsTab({
               </div>
             </div>
 
-            {/* زر طباعة الكشف بصيغة PDF مباشرة */}
+            {/* زر طباعة الكشف */}
             <button
               type="button"
               onClick={() => handlePrintReport(activeTab)}
               className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <span>🖨️</span>
-              <span>طباعة الكشف (PDF)</span>
+              <span>
+                طباعة {activeTab === 'fixed' ? 'المصاريف الثابتة' : 'المصاريف المتغيرة'} (PDF)
+              </span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. KPI Cards: فصل المصاريف الثابتة عن النثريات بصرياً وبالأرقام */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* الكارت 1: إجمالي كافة المصاريف */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-500">إجمالي كافة المصاريف</span>
-            <span className="w-8 h-8 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center text-sm font-bold">
-              💰
-            </span>
-          </div>
-          <div className="text-xl lg:text-2xl font-black text-slate-900 font-mono">
-            {formatIQD(totalExpensesAmount)} <span className="text-xs font-sans text-slate-500">د.ع</span>
-          </div>
-          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-bold">
-            <span>عدد العمليات:</span>
-            <span className="font-mono text-slate-800 font-black">{analyzedExpenses.length} قيد</span>
-          </div>
+      {/* شريط الملخص الإجمالي السريع */}
+      <div className="bg-slate-100 rounded-2xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-600">إجمالي كافة المصاريف ({periodLabel}):</span>
+          <strong className="font-mono text-slate-900 font-black text-sm">
+            {formatIQD(totalExpensesAmount)} د.ع
+          </strong>
+          <span className="text-slate-400 font-mono">({analyzedExpenses.length} قيد)</span>
         </div>
 
-        {/* الكارت 2: المصاريف الثابتة (إيجار، رواتب، كهرباء، إنترنت...) */}
-        <div
-          onClick={() => setActiveTab('fixed')}
-          className={`bg-white rounded-2xl border-2 p-4 shadow-2xs cursor-pointer transition-all ${
+        {/* نسبة التوزيع */}
+        <div className="flex items-center gap-3 text-[11px] font-bold">
+          <span className="flex items-center gap-1 text-purple-900">
+            <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+            <span>ثابتة: {fixedPercentage}%</span>
+          </span>
+          <span className="flex items-center gap-1 text-amber-900">
+            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span>متغيرة: {sundryPercentage}%</span>
+          </span>
+        </div>
+      </div>
+
+      {/* 2. زرا الاختيار الرئيسيان: المصاريف الثابتة vs المصاريف المتغيرة */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        {/* زر 1: المصاريف الثابتة */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('fixed');
+            setSelectedCategory('all');
+          }}
+          className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
             activeTab === 'fixed'
-              ? 'border-purple-600 ring-2 ring-purple-100'
-              : 'border-purple-200 hover:border-purple-400'
+              ? 'bg-purple-900 text-white border-purple-900 shadow-md ring-4 ring-purple-100'
+              : 'bg-white hover:bg-purple-50/50 border-purple-200 text-slate-800 shadow-2xs'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-black text-purple-900 flex items-center gap-1">
-              <span>🏢</span> المصاريف الثابتة والتشغيلية
-            </span>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+            <div className="flex items-center gap-2.5">
+              <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${
+                activeTab === 'fixed' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-900'
+              }`}>
+                🏢
+              </span>
+              <div>
+                <h3 className={`text-sm font-black ${
+                  activeTab === 'fixed' ? 'text-white' : 'text-purple-950'
+                }`}>
+                  المصاريف الثابتة
+                </h3>
+                <span className={`text-[11px] font-medium block ${
+                  activeTab === 'fixed' ? 'text-purple-200' : 'text-slate-500'
+                }`}>
+                  الالتزامات الدورية (رواتب، إيجار، كهرباء، إنترنت...)
+                </span>
+              </div>
+            </div>
+            <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full ${
+              activeTab === 'fixed'
+                ? 'bg-white text-purple-950 font-black'
+                : 'bg-purple-100 text-purple-900'
+            }`}>
               {fixedPercentage}%
             </span>
           </div>
-          <div className="text-xl lg:text-2xl font-black text-purple-950 font-mono">
-            {formatIQD(totalFixedAmount)} <span className="text-xs font-sans text-purple-700">د.ع</span>
-          </div>
-          <div className="mt-2 pt-2 border-t border-purple-50 flex items-center justify-between text-xs text-purple-700 font-bold">
-            <span>الالتزامات الدورية:</span>
-            <span className="font-mono text-purple-900 font-black">{fixedExpenses.length} بند</span>
-          </div>
-        </div>
 
-        {/* الكارت 3: النثريات (غداء، شاي، مستلزمات، نظافة، نقل...) */}
-        <div
-          onClick={() => setActiveTab('sundries')}
-          className={`bg-white rounded-2xl border-2 p-4 shadow-2xs cursor-pointer transition-all ${
-            activeTab === 'sundries'
-              ? 'border-amber-600 ring-2 ring-amber-100'
-              : 'border-amber-200 hover:border-amber-400'
+          <div className="my-2 flex items-baseline justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl sm:text-3xl font-black font-mono">
+                {formatIQD(totalFixedAmount)}
+              </span>
+              <span className={`text-xs font-bold ${
+                activeTab === 'fixed' ? 'text-purple-200' : 'text-slate-500'
+              }`}>
+                د.ع
+              </span>
+            </div>
+            <span className={`text-xs font-mono font-bold ${
+              activeTab === 'fixed' ? 'text-purple-200' : 'text-slate-500'
+            }`}>
+              {fixedExpenses.length} قيد مسجل
+            </span>
+          </div>
+
+          <div className={`pt-2 border-t flex items-center justify-between text-xs font-bold ${
+            activeTab === 'fixed' ? 'border-purple-800/80 text-purple-200' : 'border-slate-100 text-purple-900'
+          }`}>
+            <span>اضغط لعرض بنود وسجلات المصاريف الثابتة</span>
+            {activeTab === 'fixed' ? (
+              <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                معروضة حالياً ✓
+              </span>
+            ) : (
+              <span className="text-purple-700">عرض ➔</span>
+            )}
+          </div>
+        </button>
+
+        {/* زر 2: المصاريف المتغيرة */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('variable');
+            setSelectedCategory('all');
+          }}
+          className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+            activeTab === 'variable'
+              ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-4 ring-amber-100'
+              : 'bg-white hover:bg-amber-50/50 border-amber-200 text-slate-800 shadow-2xs'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-black text-amber-900 flex items-center gap-1">
-              <span>☕</span> النثريات والمصاريف اليومية
-            </span>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+            <div className="flex items-center gap-2.5">
+              <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${
+                activeTab === 'variable' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+              }`}>
+                ☕
+              </span>
+              <div>
+                <h3 className={`text-sm font-black ${
+                  activeTab === 'variable' ? 'text-white' : 'text-amber-950'
+                }`}>
+                  المصاريف المتغيرة (النثريات)
+                </h3>
+                <span className={`text-[11px] font-medium block ${
+                  activeTab === 'variable' ? 'text-amber-100' : 'text-slate-500'
+                }`}>
+                  المصروفات اليومية المتفرقة (طعام، ضيافة، نظافة، مشتريات...)
+                </span>
+              </div>
+            </div>
+            <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full ${
+              activeTab === 'variable'
+                ? 'bg-white text-amber-950 font-black'
+                : 'bg-amber-100 text-amber-900'
+            }`}>
               {sundryPercentage}%
             </span>
           </div>
-          <div className="text-xl lg:text-2xl font-black text-amber-950 font-mono">
-            {formatIQD(totalSundryAmount)} <span className="text-xs font-sans text-amber-700">د.ع</span>
-          </div>
-          <div className="mt-2 pt-2 border-t border-amber-50 flex items-center justify-between text-xs text-amber-700 font-bold">
-            <span>المصاريف اليومية:</span>
-            <span className="font-mono text-amber-900 font-black">{sundryExpenses.length} بند</span>
-          </div>
-        </div>
 
-        {/* الكارت 4: نسبة التوزيع البصري والمقارنة */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-bold text-slate-500">نسبة توزيع المصاريف</span>
-              <span className="text-[10px] font-mono font-bold text-slate-400">{periodLabel}</span>
-            </div>
-            {/* شريط المقارنة ثنائي اللون */}
-            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex my-2 border border-slate-200">
-              <div
-                style={{ width: `${fixedPercentage}%` }}
-                className="bg-purple-600 h-full transition-all duration-500"
-                title={`ثابتة: ${fixedPercentage}%`}
-              />
-              <div
-                style={{ width: `${sundryPercentage}%` }}
-                className="bg-amber-500 h-full transition-all duration-500"
-                title={`نثريات: ${sundryPercentage}%`}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] font-bold pt-2 border-t border-slate-100">
-            <span className="flex items-center gap-1 text-purple-900">
-              <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-              <span>ثابتة ({fixedPercentage}%)</span>
-            </span>
-            <span className="flex items-center gap-1 text-amber-900">
-              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              <span>نثريات ({sundryPercentage}%)</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. تبويبات الفصل: المصاريف الثابتة | النثريات | الكل */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-2 shadow-2xs">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('all');
-              setSelectedCategory('all');
-            }}
-            className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'all'
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            <span>📑</span>
-            <span>كافة المصاريف (مفصلة ومقسمة)</span>
-            <span className="font-mono text-[11px] bg-white/20 px-1.5 py-0.5 rounded">
-              {analyzedExpenses.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('fixed');
-              setSelectedCategory('all');
-            }}
-            className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'fixed'
-                ? 'bg-purple-700 text-white shadow-2xs'
-                : 'bg-purple-50 hover:bg-purple-100 text-purple-900'
-            }`}
-          >
-            <span>🏢</span>
-            <span>المصاريف الثابتة فقط</span>
-            <span className="font-mono text-[11px] bg-white/20 px-1.5 py-0.5 rounded">
-              {fixedExpenses.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('sundries');
-              setSelectedCategory('all');
-            }}
-            className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'sundries'
-                ? 'bg-amber-600 text-white shadow-2xs'
-                : 'bg-amber-50 hover:bg-amber-100 text-amber-900'
-            }`}
-          >
-            <span>☕</span>
-            <span>النثريات فقط</span>
-            <span className="font-mono text-[11px] bg-white/20 px-1.5 py-0.5 rounded">
-              {sundryExpenses.length}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* 4. كروت توزيع المصاريف حسب التصنيف (Category Breakdown) */}
-      {categoryBreakdown.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-              <span>📊</span>
-              <span>
-                توزيع المصاريف حسب البنود والتصنيفات (
-                {activeTab === 'fixed'
-                  ? 'المصاريف الثابتة'
-                  : activeTab === 'sundries'
-                  ? 'النثريات'
-                  : 'كافة التصنيفات'}
-                )
+          <div className="my-2 flex items-baseline justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl sm:text-3xl font-black font-mono">
+                {formatIQD(totalSundryAmount)}
               </span>
-            </h3>
-            <span className="text-[11px] text-slate-500 font-bold font-mono">
-              {categoryBreakdown.length} تصنيف
+              <span className={`text-xs font-bold ${
+                activeTab === 'variable' ? 'text-amber-200' : 'text-slate-500'
+              }`}>
+                د.ع
+              </span>
+            </div>
+            <span className={`text-xs font-mono font-bold ${
+              activeTab === 'variable' ? 'text-amber-100' : 'text-slate-500'
+            }`}>
+              {sundryExpenses.length} قيد مسجل
             </span>
           </div>
 
+          <div className={`pt-2 border-t flex items-center justify-between text-xs font-bold ${
+            activeTab === 'variable' ? 'border-amber-700/80 text-amber-100' : 'border-slate-100 text-amber-900'
+          }`}>
+            <span>اضغط لعرض بنود وسجلات المصاريف المتغيرة</span>
+            {activeTab === 'variable' ? (
+              <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                معروضة حالياً ✓
+              </span>
+            ) : (
+              <span className="text-amber-700">عرض ➔</span>
+            )}
+          </div>
+        </button>
+      </div>
+
+      {/* 3. بنود القسم المحدد فقط (تظهر بنود الثابتة عند الضغط على الثابتة، وبنود المتغيرة عند الضغط على المتغيرة) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
+        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">
+              {activeTab === 'fixed' ? '🏢' : '☕'}
+            </span>
+            <h3 className="text-sm font-black text-slate-900">
+              {activeTab === 'fixed'
+                ? 'بنود المصاريف الثابتة والتشغيلية'
+                : 'بنود المصاريف المتغيرة (النثريات)'}
+            </h3>
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+              activeTab === 'fixed'
+                ? 'bg-purple-100 text-purple-900'
+                : 'bg-amber-100 text-amber-900'
+            }`}>
+              {categoryBreakdown.length} بنود
+            </span>
+          </div>
+
+          <div className="text-xs text-slate-600 font-bold">
+            إجمالي بنود {activeTab === 'fixed' ? 'المصاريف الثابتة' : 'المصاريف المتغيرة'}:{' '}
+            <strong className="font-mono text-slate-900 font-black">
+              {formatIQD(activeTab === 'fixed' ? totalFixedAmount : totalSundryAmount)} د.ع
+            </strong>
+          </div>
+        </div>
+
+        {/* شبكة البنود للقسم المحدد فقط */}
+        {categoryBreakdown.length === 0 ? (
+          <div className="py-6 text-center text-slate-400 text-xs font-medium">
+            لا توجد بنود مسجلة لهذا القسم خلال الفترة المحددة ({periodLabel})
+          </div>
+        ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             {categoryBreakdown.map((catItem) => {
               const isSelected = selectedCategory === catItem.category;
@@ -1215,11 +1186,12 @@ export default function ExpensesReportsTab({
                   onClick={() => setSelectedCategory(isSelected ? 'all' : catItem.category)}
                   className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
                     isSelected
-                      ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-200'
-                      : catItem.isFixed
-                      ? 'border-purple-200 bg-purple-50/40 hover:bg-purple-50'
-                      : 'border-amber-200 bg-amber-50/40 hover:bg-amber-50'
+                      ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200 shadow-xs'
+                      : activeTab === 'fixed'
+                      ? 'border-purple-200 bg-purple-50/40 hover:bg-purple-100/60'
+                      : 'border-amber-200 bg-amber-50/40 hover:bg-amber-100/60'
                   }`}
+                  title={isSelected ? 'إلغاء التحديد وعرض كل البنود' : `تصفية الجدول حسب ${catItem.category}`}
                 >
                   <div className="flex items-center justify-between text-xs font-black">
                     <span className="truncate flex items-center gap-1" title={catItem.category}>
@@ -1236,32 +1208,32 @@ export default function ExpensesReportsTab({
                     <span className="text-[9px] font-sans font-bold text-slate-500">د.ع</span>
                   </div>
 
-                  {/* شريط نسبة التصنيف */}
+                  {/* شريط نسبة البند */}
                   <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                     <div
                       style={{ width: `${catItem.percentage}%` }}
-                      className={`h-full ${catItem.isFixed ? 'bg-purple-600' : 'bg-amber-500'}`}
+                      className={`h-full ${activeTab === 'fixed' ? 'bg-purple-600' : 'bg-amber-500'}`}
                     />
                   </div>
 
                   <div className="text-[10px] font-bold text-slate-500 flex items-center justify-between">
                     <span>العمليات:</span>
-                    <span className="font-mono text-slate-800">{catItem.count}</span>
+                    <span className="font-mono text-slate-800 font-bold">{catItem.count}</span>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* 5. شريط الفلترة والبحث والترتيب للجدول */}
+      {/* 4. شريط الفلترة والبحث والترتيب للجدول */}
       <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           {/* البحث */}
           <div>
             <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              البحث في المصاريف:
+              البحث في مصاريف {activeTab === 'fixed' ? 'الثابتة' : 'المتغيرة'}:
             </label>
             <div className="relative">
               <input
@@ -1283,17 +1255,17 @@ export default function ExpensesReportsTab({
             </div>
           </div>
 
-          {/* فلتر التصنيف */}
+          {/* فلتر البند/التصنيف */}
           <div>
             <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              تصفية حسب التصنيف:
+              تصفية حسب البند:
             </label>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-slate-800"
             >
-              <option value="all">كافة التصنيفات ({availableCategories.length})</option>
+              <option value="all">كافة بنود {activeTab === 'fixed' ? 'المصاريف الثابتة' : 'المصاريف المتغيرة'} ({availableCategories.length})</option>
               {availableCategories.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -1321,7 +1293,7 @@ export default function ExpensesReportsTab({
         </div>
       </div>
 
-      {/* 6. جدول قيود وسجلات المصاريف المفصلة */}
+      {/* 5. جدول قيود وسجلات المصاريف المفصلة للقسم النشط فقط */}
       <div className="bg-white rounded-2xl border border-slate-300 shadow-2xs overflow-hidden">
         {/* شريط الإجماليات أعلى الجدول */}
         <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -1330,13 +1302,18 @@ export default function ExpensesReportsTab({
               عدد القيود المعروضة:{' '}
               <strong className="font-mono text-slate-900">{displayedExpenses.length}</strong>
             </span>
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+              activeTab === 'fixed' ? 'bg-purple-100 text-purple-900' : 'bg-amber-100 text-amber-900'
+            }`}>
+              {activeTab === 'fixed' ? '🏢 المصاريف الثابتة والتشغيلية' : '☕ المصاريف المتغيرة (النثريات)'}
+            </span>
             {selectedCategory !== 'all' && (
               <span className="text-[11px] bg-indigo-100 text-indigo-900 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                تصفية: {selectedCategory}
+                بند محدد: {selectedCategory}
                 <button
                   type="button"
                   onClick={() => setSelectedCategory('all')}
-                  className="text-indigo-600 hover:text-indigo-950 font-black"
+                  className="text-indigo-600 hover:text-indigo-950 font-black cursor-pointer"
                 >
                   ✕
                 </button>
@@ -1370,7 +1347,7 @@ export default function ExpensesReportsTab({
               {displayedExpenses.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
-                    {expensesLoading ? 'جاري تحميل سجلات المصاريف...' : '🎉 لا توجد مصاريف مسجلة تطابق هذه الفترة والخيارات!'}
+                    {expensesLoading ? 'جاري تحميل سجلات المصاريف...' : `🎉 لا توجد مصاريف ${activeTab === 'fixed' ? 'ثابتة' : 'متغيرة'} مسجلة تطابق هذه الفترة والخيارات!`}
                   </td>
                 </tr>
               ) : (
@@ -1412,7 +1389,7 @@ export default function ExpensesReportsTab({
                       <span
                         className={`inline-block text-[11px] font-black px-2 py-0.5 rounded-full border ${e.typeBadgeColor}`}
                       >
-                        {e.isFixed ? '🏢 ثابتة' : '☕ نثريات'}
+                        {e.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
                       </span>
                     </td>
 
@@ -1439,7 +1416,7 @@ export default function ExpensesReportsTab({
               <tfoot>
                 <tr className="bg-slate-100 border-t-2 border-slate-300 font-black text-xs">
                   <td colSpan={7} className="py-3 px-3 text-right text-slate-900">
-                    المجموع الإجمالي للمصاريف المعروضة:
+                    المجموع الإجمالي لمصاريف {activeTab === 'fixed' ? 'الثابتة' : 'المتغيرة'} المعروضة:
                   </td>
                   <td className="py-3 px-3 text-left font-mono text-rose-800 text-sm">
                     {formatIQD(displayedExpenses.reduce((s, e) => s + e.numAmount, 0))} د.ع
@@ -1451,7 +1428,7 @@ export default function ExpensesReportsTab({
         </div>
       </div>
 
-      {/* 7. وثيقة التقرير المطبوع بصيغة PDF الرسمية */}
+      {/* 6. وثيقة التقرير المطبوع بصيغة PDF الرسمية */}
       {printDocumentProps && (
         <PrintableReportDocument
           {...printDocumentProps}
