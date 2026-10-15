@@ -53,7 +53,7 @@ function getLastDayOfMonth(yearMonth) {
 }
 
 // دالة التحقق الدقيقة: هل المصروف ثابت/تشغيلي أم متغير/نثريات؟
-export function isFixedExpense(e) {
+function isFixedExpense(e) {
   if (e.expenseType === 'shop') return true;
   if (e.expenseType === 'daily') return false;
 
