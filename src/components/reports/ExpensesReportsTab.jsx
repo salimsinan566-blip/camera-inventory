@@ -538,33 +538,6 @@ export default function ExpensesReportsTab({
           numAmount: `${formatIQD(modalFilteredExpenses.reduce((s, x) => s + x.numAmount, 0))} د.ع`,
         },
       });
-    } else if (modalName === 'categories') {
-      setPrintDocumentProps({
-        title: 'تقرير بنود وتصنيفات الصرف',
-        subtitle: `توزيع وتحليل نفقات المحل حسب التصنيفات - ${periodLabel}`,
-        reportCode: `REP-EXP-CAT-${Date.now().toString().slice(-6)}`,
-        filterDescription: `تحليل التصنيفات خلال: ${periodLabel}`,
-        kpis: [
-          { label: 'إجمالي المصاريف', value: totalExpensesAmount, currency: 'د.ع', highlight: true },
-          { label: 'عدد بنود الصرف', value: allCategoryBreakdown.length },
-          { label: 'أعلى بند صرف', value: topCategory ? `${topCategory.category} (${formatIQD(topCategory.totalAmount)} د.ع)` : '—' },
-        ],
-        columns: [
-          { header: 'ت', key: 'index', align: 'center', render: (_, __, idx) => idx + 1, isMono: true },
-          { header: 'اسم البند / التصنيف', key: 'category', isBold: true },
-          { header: 'نوع المصروف', key: 'isFixed', render: (v) => (v ? '🏢 ثابتة' : '☕ متغيرة') },
-          { header: 'عدد القيود', key: 'count', align: 'center', isMono: true },
-          { header: 'إجمالي المبلغ', key: 'totalAmount', isMono: true, isBold: true, render: (v) => `${formatIQD(v)} د.ع` },
-          { header: 'النسبة من الإجمالي', key: 'percentage', align: 'center', render: (v) => `${v}%` },
-        ],
-        data: allCategoryBreakdown,
-        totals: {
-          category: 'المجموع الإجمالي',
-          count: allCategoryBreakdown.reduce((s, x) => s + x.count, 0),
-          totalAmount: `${formatIQD(totalExpensesAmount)} د.ع`,
-          percentage: '100%',
-        },
-      });
     } else {
       handlePrintFullReport();
     }
@@ -1033,9 +1006,9 @@ export default function ExpensesReportsTab({
         </div>
       </div>
 
-      {/* 2. البطاقات الأربع التفاعلية الرئيسية (مطابقة 100% لتصميم الصورة media_1792069314588_b86a04f1.png) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* البطاقة 1 (اليمين): إجمالي كافة المصاريف */}
+      {/* 2. البطاقات الثلاث الرئيسية (إجمالي المصاريف، المصاريف الثابتة، المصاريف المتغيرة) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* البطاقة 1: إجمالي كافة المصاريف */}
         <div
           onClick={() => handleOpenModal('all')}
           className="group relative bg-white hover:bg-sky-50/40 rounded-2xl border-2 border-sky-300 hover:border-sky-500 p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 select-none active:scale-[0.99]"
@@ -1103,32 +1076,6 @@ export default function ExpensesReportsTab({
             <h2 className="text-xs font-bold text-slate-500 mb-1">المصاريف المتغيرة (النثريات)</h2>
             <div className="text-xl sm:text-2xl font-black text-rose-950 font-mono tracking-tight">
               {formatIQD(totalSundryAmount)} <span className="text-xs font-bold font-sans text-rose-700">د.ع</span>
-            </div>
-          </div>
-        </div>
-
-        {/* البطاقة 4 (اليسار): بنود وتصنيفات الصرف */}
-        <div
-          onClick={() => handleOpenModal('categories')}
-          className="group relative bg-white hover:bg-emerald-50/40 rounded-2xl border-2 border-emerald-300 hover:border-emerald-500 p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 select-none active:scale-[0.99]"
-        >
-          <div className="flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-2xs">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-            </div>
-            <span className="font-mono text-[11px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              {allCategoryBreakdown.length} تصنيف نشط
-            </span>
-          </div>
-
-          <div>
-            <h2 className="text-xs font-bold text-slate-500 mb-1 truncate">
-              أعلى بند: {topCategory?.category || 'لا يوجد'}
-            </h2>
-            <div className="text-xl sm:text-2xl font-black text-emerald-950 font-mono tracking-tight">
-              {formatIQD(topCategory?.totalAmount || 0)} <span className="text-xs font-bold font-sans text-emerald-700">د.ع</span>
             </div>
           </div>
         </div>
@@ -1712,172 +1659,6 @@ export default function ExpensesReportsTab({
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* 6. MODAL 4: بنود وتصنيفات الصرف (CATEGORIES BREAKDOWN) */}
-      {/* ======================================================== */}
-      {activeModal === 'categories' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
-            {/* رأس النافذة */}
-            <div className="p-4 bg-emerald-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-800 text-emerald-200 flex items-center justify-center">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-base font-black">تحليل وتوزيع بنود وتصنيفات الصرف</h2>
-                  <p className="text-xs text-emerald-200 font-medium">
-                    كافة مجالات وبنود الصرف مرتبة من الأكثر استهلاكاً إلى الأقل خلال ({periodLabel})
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handlePrintModalReport('categories')}
-                  className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg border border-emerald-700 transition-colors flex items-center gap-1.5 cursor-pointer"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  <span>طباعة (A4)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="w-8 h-8 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* شريط الإحصائيات السريعة */}
-            <div className="p-3 bg-emerald-50/60 border-b border-emerald-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
-                <span className="text-[11px] text-slate-500 block">إجمالي المصاريف:</span>
-                <span className="font-mono font-black text-slate-900 text-sm">
-                  {formatIQD(totalExpensesAmount)} د.ع
-                </span>
-              </div>
-              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
-                <span className="text-[11px] text-slate-500 block">عدد التصنيفات النشطة:</span>
-                <span className="font-mono font-black text-emerald-950 text-sm">
-                  {allCategoryBreakdown.length} تصنيف
-                </span>
-              </div>
-              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
-                <span className="text-[11px] text-slate-500 block">المصاريف الثابتة:</span>
-                <span className="font-mono font-black text-amber-950 text-sm">
-                  {formatIQD(totalFixedAmount)} د.ع ({fixedPercentage}%)
-                </span>
-              </div>
-              <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
-                <span className="text-[11px] text-slate-500 block">المصاريف المتغيرة:</span>
-                <span className="font-mono font-black text-rose-950 text-sm">
-                  {formatIQD(totalSundryAmount)} د.ع ({sundryPercentage}%)
-                </span>
-              </div>
-            </div>
-
-            {/* جدول بنود وتصنيفات الصرف */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <table className="w-full text-right border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-900 text-white">
-                    <th className="py-2.5 px-3 font-bold text-center w-10">ت</th>
-                    <th className="py-2.5 px-3 font-bold">بند / تصنيف المصروف</th>
-                    <th className="py-2.5 px-3 font-bold text-center">نوع المصروف</th>
-                    <th className="py-2.5 px-3 font-bold text-center">عدد القيود</th>
-                    <th className="py-2.5 px-3 font-bold text-left">إجمالي المبلغ</th>
-                    <th className="py-2.5 px-3 font-bold text-center w-40">النسبة من الإجمالي</th>
-                    <th className="py-2.5 px-3 font-bold text-center">إجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {allCategoryBreakdown.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400 font-bold">
-                        لا توجد بنود مصاريف مسجلة في هذه الفترة.
-                      </td>
-                    </tr>
-                  ) : (
-                    allCategoryBreakdown.map((cat, idx) => (
-                      <tr key={cat.category} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
-                        <td className="py-2.5 px-3 text-center font-bold text-slate-400 font-mono">
-                          {idx + 1}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">{cat.icon}</span>
-                            <span className="font-black text-slate-900 text-sm">{cat.category}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span
-                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              cat.isFixed
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-rose-100 text-rose-900 border-rose-300'
-                            }`}
-                          >
-                            {cat.isFixed ? '🏢 ثابتة' : '☕ متغيرة'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700">
-                          {cat.count}
-                        </td>
-                        <td className="py-2.5 px-3 text-left font-mono font-black text-slate-950 text-sm">
-                          {formatIQD(cat.totalAmount)} د.ع
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-slate-700 w-8 text-left text-[11px]">
-                              {cat.percentage}%
-                            </span>
-                            <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                              <div
-                                style={{ width: `${cat.percentage}%` }}
-                                className={`h-full ${cat.isFixed ? 'bg-amber-600' : 'bg-rose-500'}`}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setModalCategoryFilter(cat.category);
-                              setActiveModal(cat.isFixed ? 'fixed' : 'variable');
-                            }}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                          >
-                            عرض القيود ➔
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* أسفل النافذة */}
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600">
-              <span>إجمالي كافة بنود الصرف: {formatIQD(totalExpensesAmount)} د.ع</span>
-              <button
-                type="button"
-                onClick={() => setActiveModal(null)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors cursor-pointer"
-              >
-                إغلاق
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 7. وثيقة الطباعة الرسمية بصيغة PDF الرسمية A4 */}
       {printDocumentProps && (
