@@ -25,6 +25,13 @@ export function useSales() {
       q,
       (snapshot) => {
         const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // فرز الفواتير زمنياً الأحدث أولاً لضمان ظهور فواتير اليوم والعمليات الأخيرة في المقدمة دائماً
+        items.sort((a, b) => {
+          const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : (a.confirmedAt?.toDate ? a.confirmedAt.toDate().getTime() : 0));
+          const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : (b.confirmedAt?.toDate ? b.confirmedAt.toDate().getTime() : 0));
+          if (tB !== tA) return tB - tA;
+          return (Number(b.invoiceNumber) || 0) - (Number(a.invoiceNumber) || 0);
+        });
         setSales(items);
         saveLocalBackup(BACKUP_KEYS.SALES, items);
         if (items.length > 0 && items[0].invoiceNumber) {
@@ -47,4 +54,3 @@ export function useSales() {
 
   return { sales, loading, error };
 }
-

@@ -99,7 +99,7 @@ export function useCashDrawerLedger(selectedDateStr) {
         if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
           if (s.payments && Array.isArray(s.payments)) {
             s.payments.forEach((p) => {
-              const pDate = p.date ? new Date(p.date) : null;
+              const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
               if (pDate && pDate > recDate) {
                 const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
                 if (!isPCard) inflowSince += Number(p.amount || 0);
@@ -191,7 +191,7 @@ export function useCashDrawerLedger(selectedDateStr) {
 
       // التحويلات المالية منذ تاريخ التسوية
       (transfers || []).forEach((t) => {
-        const tDate = toDateSafe(t.date || t.createdAt);
+        const tDate = toDateSafe(t.createdAt || t.date);
         if (tDate && tDate > recDate) {
           const tAmt = Number(t.amount || 0);
           if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {

@@ -885,7 +885,19 @@ async function handleDailyIncome(chatId) {
     if (sDate && isTodayIraq(sDate)) {
       todayInvoicesCount++;
       todayTotalSales += total;
-      todayCashSales += paid;
+      todayCashSales += (s.invoiceType === 'debt' ? 0 : paid);
+    }
+
+    // احتساب دفعات الديون النقدية المسددة اليوم لفواتير سابقة
+    if (s.invoiceType === 'debt' && Array.isArray(s.payments) && s.payments.length > 0) {
+      s.payments.forEach(p => {
+        const pDate = parseDateSafe(p.createdAt) || parseDateSafe(p.date);
+        const pAmt = Number(p.amount || 0);
+        const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+        if (pDate && isTodayIraq(pDate) && !isCard) {
+          todayCashSales += pAmt;
+        }
+      });
     }
   });
 
@@ -953,8 +965,33 @@ async function handleDailyIncome(chatId) {
           const sDate = parseDateSafe(s.createdAt) || parseDateSafe(s.confirmedAt);
           if (sDate && sDate > recDate) {
             inflowSince += Number(s.paidAmount || (s.invoiceType === 'debt' ? 0 : s.total) || 0);
+          } else if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+            s.payments.forEach(p => {
+              const pDate = parseDateSafe(p.createdAt) || parseDateSafe(p.date);
+              if (pDate && pDate > recDate) {
+                const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+                if (!isCard) inflowSince += Number(p.amount || 0);
+              }
+            });
           }
         });
+
+        // التحويلات المالية منذ التسوية
+        try {
+          const transSnap = await db.collection('fund_transfers').get();
+          transSnap.forEach(tDoc => {
+            const t = tDoc.data();
+            const tDate = parseDateSafe(t.createdAt) || parseDateSafe(t.date);
+            if (tDate && tDate > recDate) {
+              const tAmt = Number(t.amount || 0);
+              if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+                inflowSince += tAmt;
+              } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+                outflowSince += tAmt;
+              }
+            }
+          });
+        } catch (tErr) {}
 
         incomesSnap.forEach(doc => {
           const inc = doc.data();

@@ -179,22 +179,40 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       .reduce((sum, s) => sum + Number(s.total || 0), 0);
   }, [filteredSales]);
 
-  // Customer debt repayments collected
+  // Customer debt repayments collected during the selected period
   const { customerDebtRepaymentsCash, customerDebtRepaymentsMastercard, totalCustomerDebtRepayments } = useMemo(() => {
     let cashSum = 0;
     let cardSum = 0;
-    filteredSales.forEach((s) => {
-      if (s.invoiceType === 'debt') {
-        if (s.payments && Array.isArray(s.payments) && s.payments.length > 0) {
-          s.payments.forEach(p => {
+    sales.forEach((s) => {
+      if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+        s.payments.forEach((p) => {
+          const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
+          if (!pDate) return;
+          const dateStr = pDate.toISOString().slice(0, 10);
+          const monthStr = pDate.toISOString().slice(0, 7);
+
+          let inPeriod = false;
+          if (period === 'today') inPeriod = dateStr === todayStr;
+          else if (period === 'month') inPeriod = monthStr === currentMonthStr;
+          else if (period === 'week') {
+            const d = new Date();
+            d.setDate(d.getDate() - 7);
+            inPeriod = pDate >= d;
+          } else if (period === 'custom') {
+            if (customFrom && dateStr < customFrom) inPeriod = false;
+            else if (customTo && dateStr > customTo) inPeriod = false;
+            else inPeriod = true;
+          } else {
+            inPeriod = true; // 'all'
+          }
+
+          if (inPeriod) {
             const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
             const amt = Number(p.amount || 0);
             if (isCard) cardSum += amt;
             else cashSum += amt;
-          });
-        } else {
-          cashSum += Number(s.paidAmount || 0);
-        }
+          }
+        });
       }
     });
     return {
@@ -202,7 +220,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       customerDebtRepaymentsMastercard: cardSum,
       totalCustomerDebtRepayments: cashSum + cardSum
     };
-  }, [filteredSales]);
+  }, [sales, period, customFrom, customTo, todayStr, currentMonthStr]);
 
   // Manual Incomes Breakdown
   const { manualIncomesCash, manualIncomesMastercard, totalManualIncomesAmount } = useMemo(() => {
@@ -305,7 +323,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
         if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
           if (s.payments && Array.isArray(s.payments)) {
             s.payments.forEach(p => {
-              const pDate = p.date ? new Date(p.date) : null;
+              const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
               if (pDate && pDate > recDate) {
                 const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر');
                 if (isPCard) cardInflowSince += Number(p.amount || 0);

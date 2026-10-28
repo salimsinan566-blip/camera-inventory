@@ -89,8 +89,8 @@ export default function SalesReports({ onOpenDraft }) {
   }
 
   const filteredSales = useMemo(() => {
-    return sales.filter((sale) => {
-      const date = toDateSafe(sale.createdAt);
+    const list = sales.filter((sale) => {
+      const date = toDateSafe(sale.createdAt || sale.confirmedAt);
       if (!date) return true; // فاتورة حديثة جداً ولسا ما وصلها الـ timestamp من السيرفر
       if (dateFrom && date < new Date(dateFrom)) return false;
       if (dateTo && date > new Date(dateTo + 'T23:59:59')) return false;
@@ -105,6 +105,14 @@ export default function SalesReports({ onOpenDraft }) {
         if (!nameMatch && !invoiceMatch) return false;
       }
       return true;
+    });
+
+    // فرز الفواتير دائماً حسب التاريخ الفعلي الأحدث أولاً
+    return list.sort((a, b) => {
+      const tA = toDateSafe(a.createdAt || a.confirmedAt)?.getTime() || 0;
+      const tB = toDateSafe(b.createdAt || b.confirmedAt)?.getTime() || 0;
+      if (tB !== tA) return tB - tA;
+      return (Number(b.invoiceNumber) || 0) - (Number(a.invoiceNumber) || 0);
     });
   }, [sales, dateFrom, dateTo, filterInvoiceType, searchQuery]);
 

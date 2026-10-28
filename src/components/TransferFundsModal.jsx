@@ -85,11 +85,14 @@ export default function TransferFundsModal({
         ? 'سحب نقدي من الماستر كارد وإيداع في القاصة'
         : 'إيداع نقدي من القاصة في حساب الماستر كارد';
 
+      const isDateToday = !date || date === new Date().toISOString().slice(0, 10);
+      const effectiveDate = isDateToday ? new Date().toISOString() : new Date(date).toISOString();
+
       await transferFunds({
         fromAccount,
         toAccount,
         amount: numAmount,
-        date: date ? new Date(date).toISOString() : new Date().toISOString(),
+        date: effectiveDate,
         notes: (notes || defaultNote).trim(),
         createdBy: user?.displayName || user?.email?.split('@')[0] || 'المسؤول'
       });

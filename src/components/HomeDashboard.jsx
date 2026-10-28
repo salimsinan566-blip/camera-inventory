@@ -132,9 +132,25 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     sales.forEach((s) => {
       if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
         s.payments.forEach((p) => {
-          const pDate = (p.date || '').slice(0, 10);
+          const pDate = (p.date || p.createdAt || '').slice(0, 10);
           const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
           if (pDate === todayStr && isCard) {
+            sum += Number(p.amount || 0);
+          }
+        });
+      }
+    });
+    return sum;
+  }, [sales, todayStr]);
+
+  const todaysDebtCashRepayments = useMemo(() => {
+    let sum = 0;
+    sales.forEach((s) => {
+      if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+        s.payments.forEach((p) => {
+          const pDate = (p.date || p.createdAt || '').slice(0, 10);
+          const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+          if (pDate === todayStr && !isCard) {
             sum += Number(p.amount || 0);
           }
         });
@@ -201,7 +217,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         const sDate = toDateSafe(s.createdAt);
         if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
           s.payments.forEach((p) => {
-            const pDate = p.date ? new Date(p.date) : null;
+            const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
             if (pDate && pDate > recDate) {
               const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
               if (isPCard) inflowSince += Number(p.amount || 0);
@@ -224,7 +240,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       let transfersOutSince = 0;
       let transfersInSince = 0;
       (transfers || []).forEach((t) => {
-        const tDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null);
+        const tDate = t.createdAt ? new Date(t.createdAt) : (t.date ? new Date(t.date) : null);
         if (tDate && tDate > recDate) {
           const tAmt = Number(t.amount || 0);
           if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
@@ -386,7 +402,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     return cost;
   }, [todaysSales]);
 
-  const todaysInflow = todaysRevenue + todaysManualIncome + todaysAdvanceRepayments;
+  const todaysInflow = todaysRevenue + todaysDebtCashRepayments + todaysManualIncome + todaysAdvanceRepayments;
   const todaysOutflows = todaysDrawerExpense + todaysPurchasesCash + todaysGiftsCost;
   const todaysNet = todaysInflow - todaysOutflows;
 
@@ -423,7 +439,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
           if (s.payments && Array.isArray(s.payments)) {
             s.payments.forEach((p) => {
-              const pDate = p.date ? new Date(p.date) : null;
+              const pDate = p.createdAt ? new Date(p.createdAt) : (p.date ? new Date(p.date) : null);
               if (pDate && pDate > recDate) {
                 const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
                 if (!isPCard) inflowSince += Number(p.amount || 0);
@@ -514,7 +530,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
       // التحويلات المالية منذ تاريخ التسوية
       (transfers || []).forEach((t) => {
-        const tDate = t.date ? new Date(t.date) : (t.createdAt ? new Date(t.createdAt) : null);
+        const tDate = t.createdAt ? new Date(t.createdAt) : (t.date ? new Date(t.date) : null);
         if (tDate && tDate > recDate) {
           const tAmt = Number(t.amount || 0);
           if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
@@ -863,6 +879,12 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
             <span>نقدي: {todaysDirectCashSales.toLocaleString()}</span>
             <span>•</span>
             <span className="text-indigo-600 font-bold">ماستر: {todaysMastercardSales.toLocaleString()}</span>
+            {todaysDebtCashRepayments > 0 && (
+              <>
+                <span>•</span>
+                <span className="text-emerald-600 font-bold" title="مقبوضات تسديد ديون نقدية اليوم">+ ديون: {todaysDebtCashRepayments.toLocaleString()}</span>
+              </>
+            )}
           </div>
         </div>
 

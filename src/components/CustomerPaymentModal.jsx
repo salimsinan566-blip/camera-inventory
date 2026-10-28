@@ -46,10 +46,13 @@ export default function CustomerPaymentModal({ sale, onClose, onSuccess }) {
 
     setIsSubmitting(true);
     try {
+      const isDateToday = !paymentDate || paymentDate === new Date().toISOString().slice(0, 10);
+      const effectiveDate = isDateToday ? new Date().toISOString() : new Date(paymentDate).toISOString();
+
       await recordCustomerDebtPayment(sale.id, numAmt, {
         paymentMethod,
         notes: paymentNotes,
-        date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString(),
+        date: effectiveDate,
         receivedBy: user?.email || 'المسؤول'
       });
       toast(`تم تسجيل تسديد دفعة بمبلغ ${formatIQD(numAmt)} د.ع بنجاح ✓`, 'success');
