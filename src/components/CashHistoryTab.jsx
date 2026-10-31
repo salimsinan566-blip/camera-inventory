@@ -32,9 +32,9 @@ export default function CashHistoryTab({ initialDateStr }) {
     auditsCount
   } = daySummary;
 
-  // فلترة المعاملات حسب البحث ونوع الحركة
+  // فلترة المعاملات حسب البحث ونوع الحركة (إخفاء التسويات بناءً على الطلب)
   const filteredTransactions = useMemo(() => {
-    let list = [...transactions];
+    let list = [...transactions].filter((t) => t.type !== 'reconciliation');
 
     if (filterType === 'in') {
       list = list.filter((t) => t.direction === 'in');
@@ -70,7 +70,7 @@ export default function CashHistoryTab({ initialDateStr }) {
       day: 'numeric'
     });
 
-    const rowsHtml = transactionsChronological.map((t, idx) => `
+    const rowsHtml = transactionsChronological.filter((t) => t.type !== 'reconciliation').map((t, idx) => `
       <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
         <td style="padding: 8px 4px; text-align: center; color: #64748b;">${idx + 1}</td>
         <td style="padding: 8px 6px; font-family: monospace;">${t.timeFormatted}</td>
@@ -79,8 +79,8 @@ export default function CashHistoryTab({ initialDateStr }) {
           <div>${t.title}</div>
           <div style="font-size: 10px; color: #64748b;">${t.subtitle || ''}</div>
         </td>
-        <td style="padding: 8px 6px; text-align: right; font-weight: bold; font-family: monospace; color: ${t.direction === 'in' ? '#059669' : (t.direction === 'out' ? '#dc2626' : '#4f46e5')};">
-          ${t.direction === 'in' ? `+${formatIQD(t.amount)}` : (t.direction === 'out' ? `-${formatIQD(t.amount)}` : `تسوية: ${formatIQD(t.amount)}`)}
+        <td style="padding: 8px 6px; text-align: right; font-weight: bold; font-family: monospace; color: ${t.type === 'reconciliation' ? (t.difference >= 0 ? '#059669' : '#dc2626') : (t.direction === 'in' ? '#059669' : '#dc2626')};">
+          ${t.type === 'reconciliation' ? `تسوية (${t.difference >= 0 ? `+${formatIQD(t.difference)}` : formatIQD(t.difference)} د.ع)` : (t.direction === 'in' ? `+${formatIQD(t.amount)}` : `-${formatIQD(t.amount)}`)}
         </td>
         <td style="padding: 8px 6px; text-align: right; font-weight: 800; font-family: monospace; color: #0f172a; background-color: #f8fafc;">
           ${formatIQD(t.runningBalance)} د.ع
@@ -379,18 +379,6 @@ export default function CashHistoryTab({ initialDateStr }) {
           >
             🔴 مصروفات فقط ({outflowsCount})
           </button>
-
-          {auditsCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setFilterType('audit')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                filterType === 'audit' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100 border border-indigo-200'
-              }`}
-            >
-              ⚖️ تسويات ({auditsCount})
-            </button>
-          )}
         </div>
 
         <div className="relative">
@@ -457,7 +445,16 @@ export default function CashHistoryTab({ initialDateStr }) {
                         )}
                       </td>
                       <td className="p-3 text-left">
-                        {isAudit ? (
+                        {t.type === 'reconciliation' ? (
+                          <div className="flex flex-col items-end">
+                            <span className={`font-black font-mono text-sm ${t.difference > 0 ? 'text-emerald-600' : (t.difference < 0 ? 'text-rose-600' : 'text-indigo-700')}`}>
+                              {t.difference > 0 ? `+${formatIQD(t.difference)}` : (t.difference < 0 ? `-${formatIQD(Math.abs(t.difference))}` : '0')} <span className="text-[10px] font-normal text-slate-500">د.ع</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-bold">
+                              {t.difference === 0 ? 'مطابقة تامة' : (t.difference > 0 ? 'فائض تسوية' : 'عجز تسوية')}
+                            </span>
+                          </div>
+                        ) : isAudit ? (
                           <span className="font-black font-mono text-indigo-700">
                             تسوية: {formatIQD(t.amount)} د.ع
                           </span>

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { usePurchases } from '../hooks/usePurchases';
 import { useCashReconciliation } from '../hooks/useCashReconciliation';
 import { useIncomes } from '../hooks/useIncomes';
+import { useFundTransfers } from '../hooks/useFundTransfers';
 import { deleteIncome } from '../services/incomesService';
 import { useUI } from '../contexts/UIContext';
 import CashReconciliationModal from './CashReconciliationModal';
@@ -21,6 +22,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
   const { purchases, debtPayments: supplierDebtPayments } = usePurchases();
   const { latestReconciliation } = useCashReconciliation();
   const { incomes } = useIncomes();
+  const { transfers } = useFundTransfers();
   const { toast, confirm } = useUI();
 
   const [period, setPeriod] = useState('month'); // 'today' | 'week' | 'month' | 'all' | 'custom'
@@ -33,16 +35,17 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
   const [editingIncomeItem, setEditingIncomeItem] = useState(null);
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState(null);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const nowForToday = new Date();
+  const todayStr = `${nowForToday.getFullYear()}-${String(nowForToday.getMonth() + 1).padStart(2, '0')}-${String(nowForToday.getDate()).padStart(2, '0')}`;
+  const currentMonthStr = `${nowForToday.getFullYear()}-${String(nowForToday.getMonth() + 1).padStart(2, '0')}`;
 
   // Filter Sales
   const filteredSales = useMemo(() => {
     return sales.filter((s) => {
-      const date = toDateSafe(s.createdAt);
+      const date = toDateSafe(s.confirmedAt || s.createdAt);
       if (!date) return true;
-      const dateStr = date.toISOString().slice(0, 10);
-      const monthStr = date.toISOString().slice(0, 7);
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
       if (period === 'today') return dateStr === todayStr;
       if (period === 'month') return monthStr === currentMonthStr;
@@ -301,7 +304,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       let cardInflowSince = 0;
 
       sales.forEach((s) => {
-        const sDate = toDateSafe(s.createdAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         if (sDate && sDate > recDate) {
           const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
           if (s.invoiceType === 'cash' || !s.invoiceType) {
@@ -310,15 +313,22 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
           } else if (s.invoiceType === 'mastercard') {
             cardInflowSince += Number(s.total || 0);
           } else if (s.invoiceType === 'debt') {
-            // نفس منطق لوحة التحكم: نستخدم paidAmount مباشرة للفواتير المسجلة بعد التسوية
-            cashInflowSince += Number(s.paidAmount || 0);
+            if (s.payments && Array.isArray(s.payments) && s.payments.length > 0) {
+              s.payments.forEach((p) => {
+                const isPCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+                if (isPCard) cardInflowSince += Number(p.amount || 0);
+                else cashInflowSince += Number(p.amount || 0);
+              });
+            } else {
+              cashInflowSince += Number(s.paidAmount || 0);
+            }
           }
         }
       });
 
       // دفعات الديون اللاحقة (payments على فواتير قبل تاريخ التسوية)
       sales.forEach((s) => {
-        const sDate = toDateSafe(s.createdAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         // فواتير الدين المسجلة قبل تاريخ التسوية: نحتسب فقط دفعاتها اللاحقة
         if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
           if (s.payments && Array.isArray(s.payments)) {
@@ -344,9 +354,24 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
         }
       });
 
+      let transfersOutCard = 0;
+      let transfersInCard = 0;
+      (transfers || []).forEach((t) => {
+        const tDate = t.createdAt ? new Date(t.createdAt) : (t.date ? new Date(t.date) : null);
+        if (tDate && tDate > recDate) {
+          const tAmt = Number(t.amount || 0);
+          if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+            transfersOutCard += tAmt;
+            cashInflowSince += tAmt;
+          } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+            transfersInCard += tAmt;
+          }
+        }
+      });
+
       let cashOutflowSince = 0;
       expenses.forEach((e) => {
-        if (e.paymentSource !== 'management') {
+        if (e.paymentSource !== 'management' && e.paymentSource !== 'mastercard') {
           const eDate = e.createdAt ? new Date(e.createdAt) : (e.date ? new Date(e.date) : null);
           if (eDate && eDate > recDate) {
             cashOutflowSince += Number(e.amount || 0);
@@ -366,7 +391,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       });
 
       supplierDebtPayments.forEach((p) => {
-        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening') return;
+        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening' || p.paymentSource === 'mastercard' || p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard') return;
         const pDate = new Date(p.paymentDate || p.date || p.createdAt);
         if (pDate > recDate) {
           cashOutflowSince += Number(p.amount || 0);
@@ -375,7 +400,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
 
       return {
         liveDrawerCash: baseCash + cashInflowSince - cashOutflowSince,
-        liveDrawerMastercard: baseMastercard + cardInflowSince
+        liveDrawerMastercard: Math.max(0, baseMastercard + cardInflowSince + transfersInCard - transfersOutCard)
       };
     }
 
@@ -408,7 +433,20 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       else allDirectCash += Number(inc.amount || 0);
     });
 
-    const allExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    let allTransfersOutCard = 0;
+    let allTransfersInCard = 0;
+    (transfers || []).forEach((t) => {
+      const tAmt = Number(t.amount || 0);
+      if (t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer') {
+        allTransfersOutCard += tAmt;
+      } else if (t.fromAccount === 'cash_drawer' && t.toAccount === 'mastercard') {
+        allTransfersInCard += tAmt;
+      }
+    });
+
+    const allExpenses = expenses
+      .filter((e) => e.paymentSource !== 'management' && e.paymentSource !== 'mastercard')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     const allCashPurchases = purchases.reduce((sum, p) => {
       const isCard = p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard';
       const actualDrawerPaid = p.paidFromCashDrawerAmount !== undefined && p.paidFromCashDrawerAmount !== null
@@ -417,14 +455,14 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
       return sum + actualDrawerPaid;
     }, 0);
     const allSupplierDebtPayments = supplierDebtPayments
-      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening')
+      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening' && p.paymentSource !== 'mastercard' && p.paymentMethod !== 'ماستر كارد' && p.paymentMethod !== 'mastercard')
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     return {
-      liveDrawerCash: allDirectCash - (allExpenses + allCashPurchases + allSupplierDebtPayments),
-      liveDrawerMastercard: allMastercard
+      liveDrawerCash: allDirectCash + allTransfersOutCard - (allExpenses + allCashPurchases + allSupplierDebtPayments + allTransfersInCard),
+      liveDrawerMastercard: Math.max(0, allMastercard + allTransfersInCard - allTransfersOutCard)
     };
-  }, [sales, expenses, purchases, supplierDebtPayments, incomes, latestReconciliation]);
+  }, [sales, expenses, purchases, supplierDebtPayments, incomes, transfers, latestReconciliation]);
 
   // Unified Income Ledger Transactions List
   const unifiedTransactions = useMemo(() => {
@@ -662,7 +700,7 @@ export default function IncomeReportTab({ sales = [], expenses = [], onViewSale 
             <div>
               <span className="text-sm font-black text-white block">قاصة الصندوق والماستركارد (الرصيد الفعلي المعتمد)</span>
               <span className="text-[10px] text-slate-400 block font-mono">
-                {latestReconciliation ? `آخر تسوية: ${formatIQD(latestReconciliation.actualCashAmount)} د.ع` : 'رصيد تراكمي مستمر'}
+                الرصيد الفعلي المعتمد في الصندوق
               </span>
             </div>
           </div>

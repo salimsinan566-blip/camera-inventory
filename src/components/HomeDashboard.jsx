@@ -71,7 +71,8 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0))
     .slice(0, 5);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const nowForToday = new Date();
+  const todayStr = `${nowForToday.getFullYear()}-${String(nowForToday.getMonth() + 1).padStart(2, '0')}-${String(nowForToday.getDate()).padStart(2, '0')}`;
   const confirmedSaleIds = useMemo(() => new Set((sales || []).map((s) => s.id)), [sales]);
 
   // تنظيف تلقائي لأي مصاريف شراء موقعي أو إيرادات استرداد يتيمة تم حذف فاتورتها
@@ -90,7 +91,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
   }, [sales, expenses, incomes, salesLoading, expensesLoading, confirmedSaleIds]);
 
   const todaysSales = useMemo(
-    () => sales.filter((s) => isToday(toDateSafe(s.createdAt))),
+    () => sales.filter((s) => isToday(toDateSafe(s.confirmedAt || s.createdAt))),
     [sales]
   );
   const todaysRevenue = todaysSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
@@ -161,12 +162,32 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
   const todaysMastercardTotal = todaysMastercardSales + todaysMastercardIncomes + todaysDebtMastercardRepayments;
 
+  // إجمالي التحويلات من الماستر كارد إلى القاصة اليوم
+  const todaysMastercardTransfersOut = useMemo(() => {
+    return (transfers || [])
+      .filter((t) => (t.date || t.createdAt || '').slice(0, 10) === todayStr && t.fromAccount === 'mastercard' && t.toAccount === 'cash_drawer')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  }, [transfers, todayStr]);
+
   const todaysMastercardCount = useMemo(() => {
     const sCount = todaysSales.filter((s) => s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard').length;
     const incCount = (incomes || [])
       .filter((inc) => (inc.date || inc.createdAt || '').slice(0, 10) === todayStr && (inc.paymentMethod === 'mastercard' || inc.paymentMethod === 'card')).length;
-    return sCount + incCount;
-  }, [todaysSales, incomes, todayStr]);
+    let debtCardCount = 0;
+    sales.forEach((s) => {
+      if (s.invoiceType === 'debt' && Array.isArray(s.payments)) {
+        s.payments.forEach((p) => {
+          const pDate = (p.date || p.createdAt || '').slice(0, 10);
+          const isCard = p.paymentMethod === 'mastercard' || String(p.paymentMethod || '').includes('ماستر') || String(p.paymentMethod || '').includes('مصرف');
+          if (pDate === todayStr && isCard) debtCardCount++;
+        });
+      }
+    });
+    const transfersCount = (transfers || []).filter(
+      (t) => (t.date || t.createdAt || '').slice(0, 10) === todayStr && (t.fromAccount === 'mastercard' || t.toAccount === 'mastercard')
+    ).length;
+    return sCount + incCount + debtCardCount + transfersCount;
+  }, [todaysSales, incomes, sales, transfers, todayStr]);
 
   const allMastercardSales = useMemo(() => {
     return sales
@@ -200,13 +221,13 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
   // Live Mastercard Balance accounting for reconciliation & fund transfers
   const liveMastercardBalance = useMemo(() => {
-    if (latestReconciliation && latestReconciliation.date && typeof latestReconciliation.actualMastercardAmount === 'number' && latestReconciliation.actualMastercardAmount > 0) {
+    if (latestReconciliation && latestReconciliation.date && typeof latestReconciliation.actualMastercardAmount === 'number' && latestReconciliation.actualMastercardAmount >= 0) {
       const recDate = new Date(latestReconciliation.date);
       const baseAmount = Number(latestReconciliation.actualMastercardAmount) || 0;
 
       let inflowSince = 0;
       sales.forEach((s) => {
-        const sDate = toDateSafe(s.createdAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         if (sDate && sDate > recDate) {
           const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
           if (isCard) inflowSince += Number(s.total || 0);
@@ -357,7 +378,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
   const todaysDrawerExpense = useMemo(() => {
     return expenses
-      .filter((e) => (e.date || e.createdAt || '').slice(0, 10) === todayStr && e.paymentSource !== 'management')
+      .filter((e) => (e.date || e.createdAt || '').slice(0, 10) === todayStr && e.paymentSource !== 'management' && e.paymentSource !== 'mastercard')
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }, [expenses, todayStr]);
 
@@ -372,7 +393,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         return sum + actualFromDrawer;
       }, 0);
     const spCash = (supplierDebtPayments || [])
-      .filter((sp) => sp.paymentSource !== 'management' && sp.paymentSource !== 'previous_opening' && (sp.paymentDate || sp.date || sp.createdAt || '').slice(0, 10) === todayStr)
+      .filter((sp) => sp.paymentSource !== 'management' && sp.paymentSource !== 'previous_opening' && sp.paymentSource !== 'mastercard' && sp.paymentMethod !== 'ماستر كارد' && sp.paymentMethod !== 'mastercard' && (sp.paymentDate || sp.date || sp.createdAt || '').slice(0, 10) === todayStr)
       .reduce((sum, sp) => sum + (Number(sp.amount) || 0), 0);
     
     // Employee reimbursements settled from drawer today
@@ -415,7 +436,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
       let inflowSince = 0;
       sales.forEach((s) => {
-        const sDate = toDateSafe(s.createdAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         if (sDate && sDate > recDate) {
           const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
           if (s.invoiceType === 'cash' || !s.invoiceType) {
@@ -435,7 +456,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
       // دفعات الديون اللاحقة لفواتير مسجلة قبل تاريخ التسوية
       sales.forEach((s) => {
-        const sDate = toDateSafe(s.createdAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
           if (s.payments && Array.isArray(s.payments)) {
             s.payments.forEach((p) => {
@@ -484,7 +505,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
 
       let outflowSince = 0;
       expenses.forEach((e) => {
-        if (e.paymentSource !== 'management') {
+        if (e.paymentSource !== 'management' && e.paymentSource !== 'mastercard') {
           const eDate = e.createdAt ? new Date(e.createdAt) : (e.date ? new Date(e.date) : null);
           if (eDate && eDate > recDate) {
             outflowSince += Number(e.amount || 0);
@@ -504,7 +525,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       });
 
       (supplierDebtPayments || []).forEach((p) => {
-        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening') return;
+        if (p.paymentSource === 'management' || p.paymentSource === 'previous_opening' || p.paymentSource === 'mastercard' || p.paymentMethod === 'ماستر كارد' || p.paymentMethod === 'mastercard') return;
         const pDate = new Date(p.paymentDate || p.date || p.createdAt);
         if (pDate > recDate) {
           outflowSince += Number(p.amount || 0);
@@ -584,7 +605,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
     });
 
     const allDrawerExpenses = expenses
-      .filter((e) => e.paymentSource !== 'management')
+      .filter((e) => e.paymentSource !== 'management' && e.paymentSource !== 'mastercard')
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     const allCashPurchases = purchases.reduce((sum, p) => {
@@ -595,7 +616,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
       return sum + actualDrawerPaid;
     }, 0);
     const allSupplierDebtPayments = (supplierDebtPayments || [])
-      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening')
+      .filter((p) => p.paymentSource !== 'management' && p.paymentSource !== 'previous_opening' && p.paymentSource !== 'mastercard' && p.paymentMethod !== 'ماستر كارد' && p.paymentMethod !== 'mastercard')
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const allReimbursementsFromDrawer = (reimbursements || [])
       .filter((r) => r.status === 'reimbursed' && r.reimbursementSource === 'cash_drawer')
@@ -725,9 +746,7 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
               <span className="text-[11px] font-bold text-emerald-200/70">د.ع</span>
             </div>
             <span className="text-[10px] text-emerald-200/60 block mt-0.5 font-medium truncate">
-              {latestReconciliation 
-                ? `مطابق لتسوية: ${new Date(latestReconciliation.date).toLocaleDateString('ar-IQ')}`
-                : 'رصيد الصندوق المتاح حالياً'}
+              رصيد الصندوق المتاح حالياً
             </span>
           </div>
 
@@ -792,10 +811,16 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
               <span className="text-[11px] font-bold text-amber-200/80">د.ع</span>
             </div>
             <div className="text-[10px] text-slate-300 flex items-center gap-1.5 mt-0.5 font-medium truncate">
-              <span>دخل اليوم: {todaysMastercardTotal > 0 ? `+${todaysMastercardTotal.toLocaleString()} د.ع` : '0 د.ع'}</span>
+              {todaysMastercardTotal > 0 ? (
+                <span>دخل اليوم: +{todaysMastercardTotal.toLocaleString()} د.ع</span>
+              ) : todaysMastercardTransfersOut > 0 ? (
+                <span className="text-amber-300/90 font-bold">تم تحويل {todaysMastercardTransfersOut.toLocaleString()} د.ع للقاصة</span>
+              ) : (
+                <span>دخل اليوم: 0 د.ع</span>
+              )}
               <span>•</span>
               <span className="text-slate-400">
-                {todaysMastercardCount > 0 ? `${todaysMastercardCount} حركة` : 'لا توجد حركات اليوم'}
+                {todaysMastercardCount > 0 ? `${todaysMastercardCount} حركة اليوم` : 'لا توجد حركات اليوم'}
               </span>
             </div>
           </div>

@@ -90,8 +90,10 @@ export default function IncomeExpensesModal({ sales = [], expenses = [], onClose
 
   // Totals
   const totalIncome = useMemo(() => {
-    return filteredSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
-  }, [filteredSales]);
+    const salesTotal = filteredSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
+    const manualIncomesTotal = filteredIncomes.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+    return salesTotal + manualIncomesTotal;
+  }, [filteredSales, filteredIncomes]);
 
   const totalExpense = useMemo(() => {
     return filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);

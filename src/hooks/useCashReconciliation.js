@@ -23,7 +23,7 @@ export function useCashReconciliation() {
     });
 
     const unsubList = subscribeToCashReconciliations((list) => {
-      setReconciliations(list);
+      setReconciliations((list || []).filter((r) => !r.hidden));
       checkDone();
     });
 

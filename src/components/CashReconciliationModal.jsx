@@ -475,37 +475,42 @@ export default function CashReconciliationModal({ currentCalculatedCash = 0, cur
               </form>
 
               {/* History Section Toggle */}
-              <div className="pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setViewHistory(!viewHistory)}
-                  className="text-xs font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 cursor-pointer"
-                >
-                  <span>{viewHistory ? '▼ إخفاء سجل التسويات السابقة' : '◀ عرض سجل التسويات المالية السابقة (' + reconciliations.length + ')'}</span>
-                </button>
+              {(() => {
+                const visibleReconciliations = (reconciliations || []).filter((r) => !r.hidden);
+                return (
+                  <div className="pt-4 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setViewHistory(!viewHistory)}
+                      className="text-xs font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{viewHistory ? '▼ إخفاء سجل التسويات السابقة' : '◀ عرض سجل التسويات المالية السابقة (' + visibleReconciliations.length + ')'}</span>
+                    </button>
 
-                {viewHistory && (
-                  <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto">
-                    {reconciliations.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4">لا توجد تسويات سابقة مسجلة</p>
-                    ) : (
-                      <div className="divide-y divide-slate-200 text-xs">
-                        {reconciliations.map((rec) => (
-                          <div key={rec.id} className="py-2 flex items-center justify-between">
-                            <div>
-                              <span className="font-bold text-slate-900 font-mono">{formatIQD(rec.actualCashAmount)} د.ع</span>
-                              <span className="text-slate-500 text-[11px] mr-2">({rec.notes || 'تسوية'})</span>
-                            </div>
-                            <div className="text-left font-mono text-slate-400 text-[11px]">
-                              <span>{rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('ar-IQ') : rec.date}</span>
-                            </div>
+                    {viewHistory && (
+                      <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto">
+                        {visibleReconciliations.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-4">لا توجد تسويات سابقة مسجلة</p>
+                        ) : (
+                          <div className="divide-y divide-slate-200 text-xs">
+                            {visibleReconciliations.map((rec) => (
+                              <div key={rec.id} className="py-2 flex items-center justify-between">
+                                <div>
+                                  <span className="font-bold text-slate-900 font-mono">{formatIQD(rec.actualCashAmount)} د.ع</span>
+                                  <span className="text-slate-500 text-[11px] mr-2">({rec.notes || 'تسوية'})</span>
+                                </div>
+                                <div className="text-left font-mono text-slate-400 text-[11px]">
+                                  <span>{rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('ar-IQ') : rec.date}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
           )}
 

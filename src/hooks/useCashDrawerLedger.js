@@ -21,7 +21,10 @@ function getIsoDateStr(d) {
   if (!d) return '';
   const dateObj = d instanceof Date ? d : new Date(d);
   if (isNaN(dateObj.getTime())) return '';
-  return dateObj.toISOString().slice(0, 10);
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatTimeOnly(d) {
@@ -47,7 +50,8 @@ export function useCashDrawerLedger(selectedDateStr) {
 
   const loading = salesLoading || expensesLoading || incomesLoading || transfersLoading;
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const nowForToday = new Date();
+  const todayStr = `${nowForToday.getFullYear()}-${String(nowForToday.getMonth() + 1).padStart(2, '0')}-${String(nowForToday.getDate()).padStart(2, '0')}`;
   const targetDateStr = selectedDateStr || todayStr;
 
   const confirmedSaleIds = useMemo(() => new Set((sales || []).map((s) => s.id)), [sales]);
@@ -75,7 +79,7 @@ export function useCashDrawerLedger(selectedDateStr) {
 
       let inflowSince = 0;
       (sales || []).forEach((s) => {
-        const sDate = toDateSafe(s.createdAt || s.confirmedAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         if (sDate && sDate > recDate) {
           const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
           if (s.invoiceType === 'cash' || !s.invoiceType) {
@@ -95,7 +99,7 @@ export function useCashDrawerLedger(selectedDateStr) {
 
       // دفعات الديون اللاحقة لفواتير مسجلة قبل تاريخ التسوية
       (sales || []).forEach((s) => {
-        const sDate = toDateSafe(s.createdAt || s.confirmedAt);
+        const sDate = toDateSafe(s.confirmedAt || s.createdAt);
         if (s.invoiceType === 'debt' && sDate && sDate <= recDate) {
           if (s.payments && Array.isArray(s.payments)) {
             s.payments.forEach((p) => {
@@ -290,7 +294,7 @@ export function useCashDrawerLedger(selectedDateStr) {
       const isCard = s.invoiceType === 'mastercard' || s.paymentMethod === 'mastercard';
       if (isCard) return;
 
-      const sDate = toDateSafe(s.createdAt || s.confirmedAt || s.date);
+      const sDate = toDateSafe(s.confirmedAt || s.createdAt || s.date);
       if (!sDate) return;
 
       if (s.invoiceType === 'cash' || !s.invoiceType) {
@@ -700,10 +704,14 @@ export function useCashDrawerLedger(selectedDateStr) {
     ];
 
     labels.forEach(({ daysAgo, label }) => {
-      const d = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
       options.push({
         label,
-        dateStr: d.toISOString().slice(0, 10),
+        dateStr,
         displayDate: d.toLocaleDateString('ar-IQ', { weekday: 'short', month: 'short', day: 'numeric' })
       });
     });
