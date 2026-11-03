@@ -1,13 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useOffers } from '../hooks/useOffers';
 import { deleteOffer, markOfferAsConverted, updateOfferItemsOrder } from '../services/offersService';
 import { useUI } from '../contexts/UIContext';
 import InvoiceReceipt from './InvoiceReceipt';
 
+const normalizeArabic = (text) => {
+  if (!text) return '';
+  return String(text)
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\u064B-\u065F]/g, '') // إزالة التشكيل
+    .trim();
+};
+
 export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOfferToSale }) {
   const { offers, loading, error } = useOffers();
   const { toast, confirm } = useUI();
   
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'converted'
   const [printingOffer, setPrintingOffer] = useState(null);
   const [reorderingOffer, setReorderingOffer] = useState(null);
 
@@ -47,6 +60,79 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
     setPrintingOffer(pseudoSale);
   };
 
+  // Smart Search & Filtering Logic
+  const { filteredOffers, stats } = useMemo(() => {
+    const normSearch = normalizeArabic(searchTerm);
+    const tokens = normSearch ? normSearch.split(/\s+/).filter(Boolean) : [];
+
+    let activeCount = 0;
+    let convertedCount = 0;
+
+    offers.forEach((o) => {
+      if (o.status === 'converted') convertedCount++;
+      else activeCount++;
+    });
+
+    const filtered = [];
+
+    offers.forEach((offer) => {
+      // 1. Status Filter
+      if (statusFilter === 'active' && offer.status === 'converted') return;
+      if (statusFilter === 'converted' && offer.status !== 'converted') return;
+
+      // 2. Search Filter
+      if (tokens.length === 0) {
+        filtered.push({ offer, matchedItemSummary: null, totalMatchedItems: 0 });
+        return;
+      }
+
+      const offerNum = String(offer.offerNumber || '');
+      const offerName = normalizeArabic(offer.offerName || '');
+      const custName = normalizeArabic(offer.customerName || '');
+      const notes = normalizeArabic(offer.notes || '');
+      const totalStr = String(offer.total || '');
+
+      // Check items inside this offer
+      const matchedItems = [];
+      let itemsSearchableText = '';
+
+      (offer.items || []).forEach((item) => {
+        const itemNameNorm = normalizeArabic(item.name || '');
+        const skuNorm = normalizeArabic(item.sku || '');
+        const itemNotesNorm = normalizeArabic(item.notes || '');
+        const itemFull = `${itemNameNorm} ${skuNorm} ${itemNotesNorm}`;
+        itemsSearchableText += ' ' + itemFull;
+
+        const isItemMatched = tokens.some((t) => itemFull.includes(t));
+        if (isItemMatched && item.name) {
+          matchedItems.push(item.name);
+        }
+      });
+
+      const fullCombinedText = `${offerNum} #${offerNum} ${offerName} ${custName} ${notes} ${totalStr} ${itemsSearchableText}`;
+
+      // Every search token must match somewhere in the offer or its items
+      const isMatch = tokens.every((token) => fullCombinedText.includes(token));
+
+      if (isMatch) {
+        filtered.push({
+          offer,
+          matchedItemSummary: matchedItems.length > 0 ? matchedItems[0] : null,
+          totalMatchedItems: matchedItems.length
+        });
+      }
+    });
+
+    return {
+      filteredOffers: filtered,
+      stats: {
+        total: offers.length,
+        active: activeCount,
+        converted: convertedCount
+      }
+    };
+  }, [offers, searchTerm, statusFilter]);
+
   if (loading) {
     return <div className="p-8 text-center text-ink-500">جاري تحميل العروض...</div>;
   }
@@ -57,6 +143,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
 
   return (
     <div className="space-y-6">
+      {/* Top Banner */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-brand-100">
         <div>
           <h1 className="text-2xl font-bold text-ink-900">عروض الأسعار</h1>
@@ -64,13 +151,91 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
         </div>
         <button
           onClick={onCreateOffer}
-          className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-sm transition-all flex items-center gap-2"
+          className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
           إنشاء عرض جديد
         </button>
       </div>
 
+      {/* Smart Search Bar & Filter Controls */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-ink-200 space-y-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-ink-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="🔍 بحث ذكي: رقم العرض، اسم العميل، اسم العرض، أو أي مادة داخل العرض (مثل: 5 ميكا، كيبل، هارد)..."
+              className="w-full pl-10 pr-10 py-2.5 bg-ink-50/70 border border-ink-200 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-xl text-sm font-medium text-ink-900 placeholder:text-ink-400 transition-all outline-hidden"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute inset-y-0 left-0 pl-3 flex items-center text-ink-400 hover:text-ink-700 transition-colors"
+                title="مسح البحث"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Status Filter Pills */}
+          <div className="flex items-center gap-1.5 shrink-0 bg-ink-50 p-1 rounded-xl border border-ink-200/60 select-none overflow-x-auto">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                statusFilter === 'all'
+                  ? 'bg-white text-brand-700 shadow-xs border border-ink-200/50'
+                  : 'text-ink-500 hover:text-ink-800'
+              }`}
+            >
+              الكل ({stats.total})
+            </button>
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                statusFilter === 'active'
+                  ? 'bg-brand-600 text-white shadow-xs'
+                  : 'text-ink-500 hover:text-ink-800'
+              }`}
+            >
+              النشطة ({stats.active})
+            </button>
+            <button
+              onClick={() => setStatusFilter('converted')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                statusFilter === 'converted'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-ink-500 hover:text-ink-800'
+              }`}
+            >
+              المحولة لفواتير ({stats.converted})
+            </button>
+          </div>
+        </div>
+
+        {/* Search Results Summary */}
+        <div className="flex items-center justify-between text-xs text-ink-500 pt-1 px-1 border-t border-ink-100">
+          <span>
+            عرض <strong className="text-ink-800 font-bold">{filteredOffers.length}</strong> من أصل <strong className="text-ink-800 font-bold">{stats.total}</strong> عرض سعر
+          </span>
+          {searchTerm && (
+            <span className="text-brand-600 flex items-center gap-1">
+              <span>نتائج البحث عن:</span>
+              <span className="font-bold bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-md text-brand-700">"{searchTerm}"</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Main Table / Content */}
       <div className="bg-white rounded-2xl shadow-sm border border-ink-200 overflow-hidden">
         {offers.length === 0 ? (
           <div className="p-12 text-center">
@@ -82,14 +247,34 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
             <h3 className="text-lg font-bold text-ink-900">لا توجد عروض أسعار</h3>
             <p className="text-ink-500 mt-2">انقر على الزر أعلاه لإنشاء أول عرض سعر.</p>
           </div>
+        ) : filteredOffers.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-16 h-16 bg-ink-100 text-ink-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+              🔍
+            </div>
+            <h3 className="text-lg font-bold text-ink-900">لا توجد نتائج مطابقة</h3>
+            <p className="text-ink-500 mt-1 text-sm">
+              لم نعثر على أي عرض سعر يحتوي على كلمة <span className="font-bold text-ink-700">"{searchTerm}"</span> في اسمه أو عميله أو مواده.
+            </p>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('all');
+              }}
+              className="mt-4 px-4 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold rounded-xl text-xs transition-colors"
+            >
+              إلغاء البحث وإظهار كل العروض
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-right">
               <thead className="bg-ink-50 text-ink-600 font-bold border-b border-ink-200">
                 <tr>
                   <th className="px-6 py-4">رقم العرض</th>
-                  <th className="px-6 py-4">اسم العرض</th>
+                  <th className="px-6 py-4">اسم العرض والمواد</th>
                   <th className="px-6 py-4">اسم العميل</th>
+                  <th className="px-6 py-4">عدد المواد</th>
                   <th className="px-6 py-4">تاريخ الإنشاء</th>
                   <th className="px-6 py-4">الإجمالي</th>
                   <th className="px-6 py-4">الحالة</th>
@@ -97,11 +282,29 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
-                {offers.map((offer) => (
+                {filteredOffers.map(({ offer, matchedItemSummary, totalMatchedItems }) => (
                   <tr key={offer.id} className="hover:bg-brand-50/50 transition-colors">
                     <td className="px-6 py-4 font-mono font-bold text-ink-900">#{offer.offerNumber || '---'}</td>
-                    <td className="px-6 py-4 font-bold text-brand-700">{offer.offerName}</td>
-                    <td className="px-6 py-4 text-ink-700">{offer.customerName || '-'}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-brand-700">{offer.offerName}</div>
+                      {matchedItemSummary && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[11px] font-semibold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                            <span className="text-brand-500">🔍 تطابق في المواد:</span>
+                            <span className="font-bold text-ink-800">{matchedItemSummary}</span>
+                            {totalMatchedItems > 1 && (
+                              <span className="text-ink-400 text-[10px]">(+{totalMatchedItems - 1} مواد أخرى)</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-ink-700 font-medium">{offer.customerName || '-'}</td>
+                    <td className="px-6 py-4 text-ink-500 font-mono text-xs">
+                      <span className="bg-ink-100 text-ink-700 px-2 py-0.5 rounded-full font-bold">
+                        {offer.items?.length || 0} مواد
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-ink-500 font-mono" dir="ltr">{formatOfferDate(offer.createdAt)}</td>
                     <td className="px-6 py-4 font-bold text-ink-900">{Number(offer.total).toLocaleString()} د.ع</td>
                     <td className="px-6 py-4">
@@ -115,7 +318,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => handlePrint(offer)}
-                          className="p-2 text-ink-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          className="p-2 text-ink-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors cursor-pointer"
                           title="طباعة عرض السعر"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -125,7 +328,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
 
                         <button
                           onClick={() => setReorderingOffer(offer)}
-                          className="p-2 text-ink-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          className="p-2 text-ink-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                           title="ترتيب بنود العرض وتحديد العنصر الأول"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -135,7 +338,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
                         
                         <button
                           onClick={() => onEditOffer(offer)}
-                          className="p-2 text-ink-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          className="p-2 text-ink-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                           title="تعديل العرض"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -145,7 +348,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
 
                         <button
                           onClick={() => handleDelete(offer)}
-                          className="p-2 text-ink-500 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
+                          className="p-2 text-ink-500 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors cursor-pointer"
                           title="حذف العرض"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -155,7 +358,7 @@ export default function OffersScreen({ onEditOffer, onCreateOffer, onConvertOffe
 
                         <button
                           onClick={() => onConvertOfferToSale(offer)}
-                          className="px-3 py-1.5 ml-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                          className="px-3 py-1.5 ml-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm cursor-pointer"
                           title="تحويل العرض إلى نقطة البيع للمحاسبة وخصم المخزون"
                         >
                           تحويل لفاتورة
@@ -309,7 +512,6 @@ function ReorderOfferModal({ offer, onClose, onSave, onFullEdit }) {
           ) : (
             items.map((item, index) => {
               const isFirst = index === 0;
-              const isLast = index === items.length - 1;
               const isDragging = draggedIndex === index;
               const isDragOver = dragOverIndex === index;
 
@@ -330,7 +532,7 @@ function ReorderOfferModal({ offer, onClose, onSave, onFullEdit }) {
                     isFirst ? 'border-amber-300 bg-amber-50/20 ring-1 ring-amber-200' : ''
                   }`}
                 >
-                  {/* رقم الترتيب فقط (بدون أي أزرار تزاحم اسم المادة) */}
+                  {/* رقم الترتيب */}
                   <div className="shrink-0 select-none">
                     <select
                       value={index + 1}
