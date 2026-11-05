@@ -123,6 +123,33 @@ export default function UserAccountCard({ user, onLogout, onNavigate, trashCount
                 )}
               </>
             )}
+            <button
+              onClick={async () => {
+                toast('جاري تفريغ الكاش وتحديث النظام لآخر إصدار... 🔄', 'info');
+                try {
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((k) => caches.delete(k)));
+                  }
+                  if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const r of registrations) {
+                      await r.unregister();
+                    }
+                  }
+                } catch (e) {}
+                setTimeout(() => {
+                  window.location.href = window.location.pathname + '?v=' + Date.now();
+                }, 500);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <span>🔄</span>
+                <span>تحديث فوري للنظام (مسح الكاش)</span>
+              </span>
+              <span className="text-[10px] text-emerald-600 font-bold">تحديث</span>
+            </button>
           </div>
 
           <div className="pt-2 border-t border-slate-100">
