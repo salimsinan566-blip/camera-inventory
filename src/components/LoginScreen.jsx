@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { login, loginWithGoogle, loginWithGoogleRedirect, checkRedirectResult, resetPassword } from '../firebase/auth';
 import logo from '../assets/logo.png';
 import { useSettings } from '../hooks/useSettings';
@@ -16,9 +16,25 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
+  // كشف المتصفح الداخلي لتطبيقات المراسلة مثل واتساب وتلغرام وإنستغرام
+  const isInAppBrowser = useMemo(() => {
+    if (typeof window === 'undefined' || !window.navigator?.userAgent) return false;
+    const ua = window.navigator.userAgent || window.navigator.vendor || '';
+    return /FBAN|FBAV|Instagram|WhatsApp|Telegram|Line|Twitter|Snapchat/i.test(ua);
+  }, []);
+
   useEffect(() => {
     checkRedirectResult().catch(err => {
-      if (err) console.warn('Redirect auth result warning:', err?.message);
+      if (err) {
+        console.warn('Redirect auth result warning:', err?.message);
+        const code = err.code || '';
+        const msg = err.message ? err.message.toLowerCase() : '';
+        if (code === 'auth/quota-exceeded' || msg.includes('quota') || code === 'auth/too-many-requests') {
+          setError(
+            '⚠️ تم استنفاد كوتا طلبات جوجل مؤقتاً على هذه الشبكة. يمكنك الدخول فوراً بالبريد وكلمة المرور بالأسفل أو استخدام شبكة Wi-Fi.'
+          );
+        }
+      }
     });
   }, []);
 
@@ -38,10 +54,14 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
       await login(email, password);
     } catch (err) {
       console.error('Login Error:', err);
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setError('كلمة المرور غير صحيحة أو تم ربط الحساب بـ Google');
-      } else if (err.code === 'auth/user-not-found') {
-        setError('البريد الإلكتروني غير مسجل');
+      const code = err.code || '';
+      const msg = err.message ? err.message.toLowerCase() : '';
+      if (code === 'auth/quota-exceeded' || msg.includes('quota') || code === 'auth/too-many-requests') {
+        setError('تم تجاوز حد المحاولات مؤقتاً بسبب قيود الشبكة. يرجى الانتظار دقيقة أو التبديل لشبكة Wi-Fi أو تشغيل وضع الطيران لثوانٍ ثم إيقافه.');
+      } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setError('كلمة المرور غير صحيحة أو لم يتم تعيين كلمة مرور لهذا الحساب بعد (يمكنك الضغط على "نسيت كلمة المرور؟" لتعيينها)');
+      } else if (code === 'auth/user-not-found') {
+        setError('البريد الإلكتروني غير مسجل في النظام');
       } else {
         setError(err.message || 'بيانات الدخول غير صحيحة');
       }
@@ -58,14 +78,26 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
       await loginWithGoogle();
     } catch (err) {
       console.error('Google Sign In Error:', err);
-      if (err.code === 'auth/popup-blocked' || err.message?.includes('popup')) {
+      const code = err.code || '';
+      const msg = err.message ? err.message.toLowerCase() : '';
+
+      if (code === 'auth/quota-exceeded' || msg.includes('quota') || code === 'auth/too-many-requests' || msg.includes('too-many-requests')) {
+        setError(
+          '⚠️ تم استنفاد حد طلبات جوجل مؤقتاً (Quota Exceeded) على شبكة الهاتف الحالية بسبب تجميع الـ IP.\n\n' +
+          'الحلول السريعة:\n' +
+          '1. سجّل الدخول بالبريد وكلمة المرور بالأسفل (أو اضغط "نسيت كلمة المرور؟" لتعيين كلمة سر جديدة).\n' +
+          '2. أو قُم بالتبديل إلى شبكة Wi-Fi أو تفعيل وضع الطيران 10 ثوانٍ لتغيير الـ IP.'
+        );
+      } else if (code === 'auth/popup-blocked' || msg.includes('popup')) {
         try {
           await loginWithGoogleRedirect();
         } catch (rErr) {
           setError(`فشل التحويل لجوجل: ${rErr.message}`);
         }
+      } else if (code === 'auth/network-request-failed') {
+        setError('تعذر الاتصال بالخادم، يرجى التأكد من اتصال الإنترنت.');
       } else {
-        setError(`فشل تسجيل الدخول بجوجل: ${err.message}`);
+        setError(`فشل تسجيل الدخول بجوجل: ${err.message || code}`);
       }
     } finally {
       setGoogleLoading(false);
@@ -82,7 +114,7 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
     setResetLoading(true);
     try {
       await resetPassword(email);
-      setSuccessMsg('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك! (يرجى فحص صندوق الوارد ومجلد Spam/الرسائل غير المرغوبة)');
+      setSuccessMsg('تم إرسال رابط تعيين كلمة المرور إلى بريدك! افتح الجيميل وعيّن كلمة سر لتدخل بها مباشرة بدون جوجل.');
     } catch (err) {
       console.error('Reset Error:', err);
       setError(`فشل إرسال الرابط: ${err.message}`);
@@ -105,6 +137,18 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
           <p className="text-xs text-ink-500 mb-6 text-center">
             نظام إدارة مخزون ومبيعات كامرات المراقبة
           </p>
+
+          {isInAppBrowser && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl p-3 mb-4 space-y-1 text-right">
+              <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                <span>⚠️</span>
+                <span>متصفح التطبيق الداخلي</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-700">
+                أنت تتصفح من داخل تطبيق (مثل واتساب/تليغرام). لتسجيل دخول سريع بحساب Google، اضغط على زر الخيارات (⋮) أعلى الشاشة واختر <strong>"فتح في المتصفح"</strong> (Chrome أو Safari).
+              </p>
+            </div>
+          )}
 
           {unauthorizedEmail && (
             <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl p-3.5 mb-5 space-y-1 text-right shadow-2xs">
@@ -175,7 +219,7 @@ export default function LoginScreen({ onSwitchToCustomerPortal, unauthorizedEmai
             />
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-danger-700 text-xs rounded-lg p-2.5 mb-4">
+              <div className="bg-red-50 border border-red-200 text-danger-700 text-xs rounded-lg p-2.5 mb-4 whitespace-pre-line leading-relaxed">
                 {error}
               </div>
             )}

@@ -45,21 +45,10 @@ if (getAdminApps().length === 0) {
   } catch (e) {}
 }
 
-import { getAuth, signInAnonymously } from 'firebase/auth';
-
 async function getClientDb() {
   if (!_clientDb) {
     const app = getClientApps().length > 0 ? getClientApps()[0] : initClientApp(firebaseClientConfig);
     _clientDb = getClientFirestore(app);
-  }
-  try {
-    const app = getClientApps()[0];
-    const auth = getAuth(app);
-    if (!auth.currentUser) {
-      await signInAnonymously(auth);
-    }
-  } catch (authErr) {
-    console.warn('Anonymous auth note:', authErr.message);
   }
   return _clientDb;
 }

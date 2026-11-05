@@ -15,6 +15,10 @@
   ],
   "rewrites": [
     {
+      "source": "/__/auth/(.*)",
+      "destination": "https://safe-zone-inv.firebaseapp.com/__/auth/$1"
+    },
+    {
       "source": "/aws-whatsapp/:match*",
       "destination": "http://13.61.182.143:8080/:match*"
     },

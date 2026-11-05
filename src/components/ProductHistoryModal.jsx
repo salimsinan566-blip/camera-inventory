@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { getComprehensiveProductHistory, LOG_TYPE_LABELS_AR, LOG_TYPES } from '../services/inventoryLogsService';
+import ProductMonthlyMovementChart from './ProductMonthlyMovementChart';
 
 export default function ProductHistoryModal({ product, onClose }) {
   const [logs, setLogs] = useState([]);
@@ -89,6 +90,30 @@ export default function ProductHistoryModal({ product, onClose }) {
     });
 
     return { sold, loadedToVans, returnedFromVans, purchased };
+  }, [logs]);
+
+  const { salesMovements, purchasesMovements } = useMemo(() => {
+    const sList = [];
+    const pList = [];
+    logs.forEach((l) => {
+      const q = Math.abs(Number(l.quantity) || 0);
+      const ts = l.createdAt?.seconds ? l.createdAt.seconds * 1000 : (l.createdAt ? new Date(l.createdAt).getTime() : Date.now());
+      if (l.type === LOG_TYPES.SALE || l.type === LOG_TYPES.CUSTODY_SALE) {
+        sList.push({
+          timestamp: ts,
+          quantity: q,
+          totalPrice: Number(l.total || (q * Number(l.price || 0)) || 0),
+        });
+      }
+      if (l.type === LOG_TYPES.PURCHASE || l.type === LOG_TYPES.CREATED) {
+        pList.push({
+          timestamp: ts,
+          quantity: q,
+          totalCost: Number(l.total || (q * Number(l.costPrice || l.price || 0)) || 0),
+        });
+      }
+    });
+    return { salesMovements: sList, purchasesMovements: pList };
   }, [logs]);
 
   const getTypeVisuals = (type, source) => {
@@ -291,6 +316,15 @@ export default function ProductHistoryModal({ product, onClose }) {
               </div>
             </div>
           )}
+        </div>
+
+        {/* الرسم البياني لحركة المادة خلال أشهر السنة */}
+        <div className="p-3 bg-slate-50/50 border-b border-slate-200 shrink-0">
+          <ProductMonthlyMovementChart
+            product={product}
+            salesMovements={salesMovements}
+            purchasesMovements={purchasesMovements}
+          />
         </div>
 
         {/* Filter Chips & Search Bar */}

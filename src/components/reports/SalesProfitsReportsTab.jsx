@@ -2,7 +2,9 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSales } from '../../hooks/useSales';
 import { useProducts } from '../../hooks/useProducts';
 import { useExpenses } from '../../hooks/useExpenses';
+import { useIncomes } from '../../hooks/useIncomes';
 import PrintableReportDocument from './PrintableReportDocument';
+import YearlyProfitsChart from '../YearlyProfitsChart';
 
 function formatIQD(num) {
   if (num === undefined || num === null) return '0';
@@ -63,6 +65,7 @@ export default function SalesProfitsReportsTab({
   const { sales = [], loading: salesLoading } = useSales();
   const { products = [], loading: productsLoading } = useProducts();
   const { expenses = [], loading: expensesLoading } = useExpenses();
+  const { incomes = [] } = useIncomes();
 
   // Period Filter: 'today' | 'month' | 'custom'
   const [period, setPeriod] = useState('month');
@@ -1237,6 +1240,14 @@ export default function SalesProfitsReportsTab({
           </div>
         </div>
       </div>
+
+      {/* الرسم البياني السنوي للأرباح ومسار رأس المال (صعود / نزول) */}
+      <YearlyProfitsChart
+        sales={sales}
+        expenses={expenses}
+        products={products}
+        incomes={incomes}
+      />
 
       {/* ======================================================== */}
       {/* 4. MODAL 1: تفاصيل المبيعات (SALES MODAL) */}

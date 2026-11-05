@@ -31,14 +31,6 @@ export default function CustomerPortal({ onSwitchToStaffLogin }) {
 
   // Auto-fill from URL params and auto-login if both name and pin are present
   useEffect(() => {
-    // Ensure anonymous session is initiated silently in background on portal load
-    import('../firebase/auth').then(({ auth }) => {
-      if (!auth.currentUser) {
-        import('firebase/auth').then(({ signInAnonymously }) => {
-          signInAnonymously(auth).catch(() => {});
-        });
-      }
-    });
 
     const urlParams = new URLSearchParams(window.location.search);
     const prefillName = urlParams.get('name') || urlParams.get('customer') || urlParams.get('phone') || '';

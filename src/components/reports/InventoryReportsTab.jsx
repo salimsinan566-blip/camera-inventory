@@ -5,6 +5,8 @@ import { usePurchases } from '../../hooks/usePurchases';
 import { useSales } from '../../hooks/useSales';
 import { useDraftSales } from '../../hooks/useDraftSales';
 import PrintableReportDocument from './PrintableReportDocument';
+import TopSellingProductsChart from '../TopSellingProductsChart';
+import ProductMonthlyMovementChart from '../ProductMonthlyMovementChart';
 
 function formatIQD(num) {
   if (num === undefined || num === null) return '0';
@@ -1245,6 +1247,24 @@ export default function InventoryReportsTab({
             )}
           </div>
 
+          {/* الرسم البياني للقطع الأكثر مبيعاً مع استثناء كيبل Cat6 والكوكسيل - داخل كشف حركة مادة */}
+          {!selectedProduct && (
+            <TopSellingProductsChart
+              sales={sales}
+              products={products}
+              salesLoading={salesLoading}
+              title="القطع الأكثر مبيعاً وحركة في النظام (مع استثناء الكابلات)"
+              onSelectProduct={(item) => {
+                const found = products.find(
+                  (p) => p.sku === item.sku || p.id === item.sku || p.name === item.name
+                );
+                if (found) {
+                  setSelectedProduct(found);
+                }
+              }}
+            />
+          )}
+
           {/* تفاصيل المادة المختارة وسجل حركاتها الكامل */}
           {selectedProduct && (
             <div className="space-y-4">
@@ -1362,6 +1382,13 @@ export default function InventoryReportsTab({
                   </div>
                 </div>
               </div>
+
+              {/* الرسم البياني لمسار حركة المادة والمبيعات الشهرية */}
+              <ProductMonthlyMovementChart
+                product={selectedProduct}
+                salesMovements={productSalesMovements}
+                purchasesMovements={productPurchasesMovements}
+              />
 
               {/* تبويبات وجداول الحركات: البيع (الزبائن والأسعار) / الشراء / الكل */}
               <div className="bg-white rounded-2xl border border-slate-300 shadow-2xs p-4 sm:p-5 space-y-4">

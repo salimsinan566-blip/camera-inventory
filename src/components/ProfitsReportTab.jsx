@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import YearlyProfitsChart from './YearlyProfitsChart';
 
 function formatIQD(num) {
   return Number(Math.round(num || 0)).toLocaleString('en-US');
@@ -437,6 +438,13 @@ export default function ProfitsReportTab({ sales = [], products = [], expenses =
         </div>
 
       </div>
+
+      {/* الرسم البياني السنوي للأرباح ومسار رأس المال (صعود / نزول) */}
+      <YearlyProfitsChart
+        sales={sales}
+        expenses={expenses}
+        products={products}
+      />
 
       {/* Sub-view Switcher & Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">

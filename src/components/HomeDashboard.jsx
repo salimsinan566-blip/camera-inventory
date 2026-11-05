@@ -17,6 +17,8 @@ import CashReconciliationModal from './CashReconciliationModal';
 import AddIncomeModal from './AddIncomeModal';
 import TransferFundsModal from './TransferFundsModal';
 import SuspendedStatementModal from './SuspendedStatementModal';
+import YearlyProfitsChart from './YearlyProfitsChart';
+import TopSellingProductsChart from './TopSellingProductsChart';
 
 function toDateSafe(timestamp) {
   if (!timestamp) return null;
@@ -962,6 +964,14 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
         </div>
       </div>
 
+      {/* الرسم البياني السنوي للأرباح ومسار رأس المال (صعود / نزول) */}
+      <YearlyProfitsChart
+        sales={sales}
+        expenses={expenses}
+        products={products}
+        incomes={incomes}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* الفواتير المعلقة */}
@@ -1028,36 +1038,12 @@ export default function HomeDashboard({ onGoToInventory, onOpenDraft, products, 
             )}
           </div>
 
-          {/* الأكثر مبيعاً */}
-          <div className="card">
-            <div className="p-5 border-b border-ink-100">
-              <h3 className="font-bold text-ink-900 tracking-tight">المنتجات الأكثر مبيعاً</h3>
-            </div>
-            {salesLoading ? (
-              <p className="text-center text-ink-500 py-8 text-sm">جارٍ التحميل...</p>
-            ) : topProducts.length === 0 ? (
-              <p className="text-center text-ink-400 py-8 text-sm">لا توجد مبيعات مؤكدة بعد</p>
-            ) : (
-              <div className="p-2">
-                {topProducts.map((p, i) => (
-                  <div key={p.sku} className="flex items-center justify-between p-3 hover:bg-ink-50 rounded-lg transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded bg-ink-100 flex items-center justify-center font-bold text-ink-500 text-xs">
-                        #{i + 1}
-                      </div>
-                      <div>
-                        <p className="font-medium text-ink-900 text-sm">{p.name}</p>
-                        <p className="text-xs text-ink-500">SKU: {p.sku}</p>
-                      </div>
-                    </div>
-                    <div className="text-sm font-bold text-ink-900 bg-white border border-ink-200 px-2.5 py-1 rounded-md shadow-sm">
-                      {p.quantity} قطعة
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* الرسم البياني للقطع الأكثر مبيعاً مع استثناء كيبل Cat6 والكوكسيل */}
+          <TopSellingProductsChart
+            sales={sales}
+            products={products}
+            salesLoading={salesLoading}
+          />
         </div>
 
         <div className="space-y-6">

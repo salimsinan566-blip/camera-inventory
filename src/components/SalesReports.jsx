@@ -16,6 +16,7 @@ import { useDraftSales } from '../hooks/useDraftSales';
 import { useAuth } from '../hooks/useAuth';
 import { useUI } from '../contexts/UIContext';
 import { deleteConfirmedSale, revertSaleToSuspended } from '../services/salesService';
+import { isExcludedCable } from '../utils/cableFilter';
 
 function toDateSafe(timestamp) {
   if (!timestamp) return null;
@@ -118,10 +119,15 @@ export default function SalesReports({ onOpenDraft }) {
 
   const totalRevenue = filteredSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
 
+  const [excludeCablesInTop, setExcludeCablesInTop] = useState(true);
+
   const topProducts = useMemo(() => {
     const map = new Map();
     for (const sale of filteredSales) {
       for (const item of sale.items || []) {
+        if (excludeCablesInTop && isExcludedCable(item)) {
+          continue; // استثناء كابلات Cat6 والكوكسيل
+        }
         const existing = map.get(item.sku) || { name: item.name, sku: item.sku, quantity: 0, revenue: 0 };
         existing.quantity += item.quantity;
         existing.revenue += item.lineTotal;
@@ -131,7 +137,7 @@ export default function SalesReports({ onOpenDraft }) {
     return Array.from(map.values())
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 10);
-  }, [filteredSales]);
+  }, [filteredSales, excludeCablesInTop]);
 
   // Flattened sold items across all sales
   const allSoldItems = useMemo(() => {
@@ -610,9 +616,23 @@ export default function SalesReports({ onOpenDraft }) {
 
           {topProducts.length > 0 && (
             <div className="bg-white border border-brand-100 rounded-xl shadow-sm overflow-hidden mb-6">
-              <h3 className="p-4 font-bold text-ink-900 border-b border-brand-100">
-                الأكثر مبيعاً
-              </h3>
+              <div className="p-4 border-b border-brand-100 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-ink-900">الأكثر مبيعاً</h3>
+                  {excludeCablesInTop && (
+                    <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                      🛡️ مستثنى: كابلات Cat6 والكوكسيل
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExcludeCablesInTop(!excludeCablesInTop)}
+                  className="text-xs text-brand-600 hover:text-brand-800 font-bold bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded-lg transition-all"
+                >
+                  {excludeCablesInTop ? 'عرض شاملاً الكابلات' : 'استثناء كابلات Cat6 والكوكسيل'}
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-right whitespace-nowrap">
                   <thead className="bg-brand-50 text-ink-900">

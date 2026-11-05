@@ -105,17 +105,7 @@ export async function authenticateCustomer(customerIdentifier, pin = '', remembe
   try {
     const { getDocs, collection } = await import('firebase/firestore');
     const { db } = await import('../firebase/config');
-    const { auth } = await import('../firebase/auth');
-    const { signInAnonymously } = await import('firebase/auth');
-
-    // Ensure client has auth session if required by Firestore rules
-    if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-      } catch (authErr) {
-        console.warn('Anonymous sign-in skipped:', authErr.message);
-      }
-    }
+    // Direct Firestore lookup without anonymous user creation
 
     const normInput = normalizeArabic(trimmedId);
     const cleanPhoneInput = normalizePhone(trimmedId);
